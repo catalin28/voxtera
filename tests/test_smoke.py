@@ -29,9 +29,11 @@ def test_system_prompt_present() -> None:
 def test_load_settings_requires_keys() -> None:
     from voxtera.config import load_settings
 
-    with mock.patch.dict(os.environ, {}, clear=True):
-        with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
-            load_settings()
+    with (
+        mock.patch.dict(os.environ, {}, clear=True),
+        pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"),
+    ):
+        load_settings()
 
 
 def test_load_settings_with_keys() -> None:
