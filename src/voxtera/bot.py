@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sys
 
+from dotenv import load_dotenv
 from loguru import logger
 
 from voxtera.config import load_settings
@@ -19,6 +20,10 @@ from voxtera.config import load_settings
 
 def main() -> int:
     """Placeholder entry point. Replace with the Pipecat pipeline in VOX-6."""
+    # Honour a local `.env` if present. `load_settings()` itself is pure and
+    # only reads `os.environ`, which keeps it filesystem-isolated for tests.
+    load_dotenv()
+
     try:
         settings = load_settings()
     except RuntimeError as exc:

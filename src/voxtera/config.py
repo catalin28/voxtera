@@ -1,15 +1,16 @@
 """Environment-based configuration for Voxtera.
 
-All runtime config is loaded from environment variables (typically via a `.env`
-file in the repo root). See `.env.example` for the canonical list.
+All runtime config is read from `os.environ`. The bot entry point
+(`voxtera.bot.main`) is responsible for calling `load_dotenv()` before
+`load_settings()` so a developer's local `.env` file is honoured. Keeping the
+`.env` side effect out of this module makes `load_settings()` a pure function
+over the environment, which is essential for filesystem-isolated tests.
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-
-from dotenv import load_dotenv
 
 
 @dataclass(frozen=True)
@@ -35,8 +36,11 @@ def _require(name: str) -> str:
 
 
 def load_settings() -> Settings:
-    """Load settings from environment (and `.env` if present)."""
-    load_dotenv()
+    """Load settings from `os.environ`.
+
+    This function does NOT read `.env`. Call `dotenv.load_dotenv()` from your
+    entry point first if you want `.env` honoured.
+    """
     return Settings(
         anthropic_api_key=_require("ANTHROPIC_API_KEY"),
         openai_api_key=_require("OPENAI_API_KEY"),
