@@ -12,6 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install system audio dependencies
+        # pipecat-ai[local] -> pyaudio needs portaudio.h to build from source.
+        # Locally you get this via `brew install portaudio` (macOS) or
+        # `apt install portaudio19-dev` (Ubuntu). CI runs on Ubuntu.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y portaudio19-dev
+
       - name: Install uv
         uses: astral-sh/setup-uv@v3
 
