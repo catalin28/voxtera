@@ -110,47 +110,64 @@ If these all work, the scaffold half is done — VOX-2, VOX-3, VOX-5 are demonst
 
 ---
 
-## 3. Jira project (kickoff §6)
+## 3. Task tracking — GitHub Issues (replaces kickoff §6)
 
-Open `docs/jira-setup.md` — that file has the **exact text to paste** into each epic and ticket.
+We chose GitHub Issues over Jira for solo-dev simplicity. **Milestones** stand in for epics (so you get progress bars per epic), and **labels** carry type + priority + sprint metadata.
 
-### 3.1 Create the project
+`docs/jira-setup.md` is kept as a reference if you ever migrate to Jira; the live source of truth from now on is GitHub Issues.
 
-1. Go to <https://atlassian.com> → Jira → **Create project**.
-2. **Template:** Scrum.
-3. **Name:** `Voxtera`. **Key:** `VOX`. **Access:** Team-managed, private.
+### 3.1 One-time: install and authenticate `gh` CLI
 
-### 3.2 Configure issue types and workflow
+```bash
+brew install gh        # if not already installed
+gh auth login          # follow the prompts, pick GitHub.com + HTTPS + browser
+```
 
-- Issue types: keep the defaults (**Epic, Story, Task, Bug, Sub-task**).
-- Workflow columns: `Backlog → To Do → In Progress → In Review → Done`. (`In Review` = PR open on GitHub.)
+### 3.2 Run the bootstrap script
 
-### 3.3 Create epics
+```bash
+cd ~/ChatGPTPProjects/voxtera
+chmod +x scripts/setup-github-issues.sh
+./scripts/setup-github-issues.sh
+```
 
-In `docs/jira-setup.md`, copy the description for each epic VOX-E1 through VOX-E9 and create them with the priorities listed there.
+This will:
 
-### 3.4 Create Sprint 1 tickets
+- Create labels: `type:task|story|bug|chore`, `priority:highest|high|medium|low`, `sprint:1`.
+- Create 9 milestones, one per epic (`VOX-E1` through `VOX-E9`).
+- Create 7 Sprint 1 issues (`VOX-1`, `VOX-2`, `VOX-3`, `VOX-5`, `VOX-6`, `VOX-7`, `VOX-8`) under milestone `VOX-E1`. (`VOX-4` was Jira-only — running the script itself replaces it.)
+- Auto-close `VOX-1` (repo done) and `VOX-8` (CI green) since they're already complete.
 
-Create VOX-1 through VOX-8 from `docs/jira-setup.md`, link each to **VOX-E1**, and add them all to Sprint 1. Set the sprint goal to **"Working local voice loop in 3 languages on a developer laptop"** and the length to **1 week**.
+The script is **not** idempotent for issues — running it twice would create duplicates. Labels and milestones are upserted safely.
 
-### 3.5 Connect Jira to GitHub
+### 3.3 After running the script
 
-1. **Jira → Project settings → Apps → install GitHub for Jira.**
-2. Authorise the `pokemonnode34-byte/voxtera` repo.
-3. From now on, every commit message and PR title must reference a ticket key (e.g. `VOX-6: add Silero VAD integration`).
+Verify on GitHub:
 
-### 3.6 Mark scaffolded tickets done
+- <https://github.com/pokemonnode34-byte/voxtera/issues> — should show 5 open issues (`VOX-2, VOX-3, VOX-5, VOX-6, VOX-7`) and 2 closed.
+- <https://github.com/pokemonnode34-byte/voxtera/milestones> — 9 milestones, with VOX-E1 showing partial progress.
 
-Once §1, §2, and §3 above are complete, you can move these tickets to **Done** in Jira:
+### 3.4 Going forward — commit + PR convention
 
-- **VOX-1** — repo + branch protection
-- **VOX-2** — Python project + uv
-- **VOX-3** — ruff, mypy, pre-commit, Makefile
-- **VOX-4** — Jira project + epics
-- **VOX-5** — README + .env.example
-- **VOX-8** — GitHub Actions CI (move to Done after the first green CI run)
+Every commit message and PR title should reference an issue with the GitHub `#N` syntax so it auto-links:
 
-That leaves **VOX-6** (the actual user story) and **VOX-7** (multilingual testing) for the developer to pick up next.
+```
+git commit -m "VOX-6: add Silero VAD integration (#6)"
+```
+
+The `VOX-6:` prefix keeps a Jira-style traceable identifier; the `#6` is what GitHub uses to auto-link to the issue. To auto-close an issue when its PR merges, use `Closes #6` in the PR description.
+
+### 3.5 Mark VOX-2, VOX-3, VOX-5 done
+
+Once you've finished §2 of this doc (`make install`, `make test`, `make lint`, `make run` all working locally), close those three issues with a brief comment:
+
+```bash
+gh issue close 2 -c "Done — uv sync clean on local + CI."
+gh issue close 3 -c "Done — make lint and make test pass locally."
+gh issue close 5 -c "Done — README and .env.example committed; verified end-to-end setup."
+```
+
+That leaves **VOX-6** (the actual user story) and **VOX-7** (multilingual testing) — the next work, waiting on the architect's `bot.py`.
 
 ---
 

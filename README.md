@@ -78,9 +78,10 @@ voxtera/
 
 ## Project management
 
-- Jira project: `VOX` (epics `VOX-E1`..`VOX-E9`, tickets `VOX-1`..)
-- Every commit and PR title must reference a Jira key, e.g. `VOX-6: add Silero VAD integration`
-- See [`docs/handoff.md`](docs/handoff.md) for the manual setup steps (GitHub repo creation, branch protection, Jira project, CI, etc.)
+- Tracked in GitHub Issues. Milestones stand in for epics (`VOX-E1`..`VOX-E9`); labels carry type + priority + sprint.
+- Every commit and PR title should reference an issue, e.g. `VOX-6: add Silero VAD integration (#6)`. Use `Closes #6` in PR descriptions to auto-close when merged.
+- See [`docs/handoff.md`](docs/handoff.md) for setup steps (push, CI, GitHub Issues bootstrap, local install).
+- Bootstrap script: [`scripts/setup-github-issues.sh`](scripts/setup-github-issues.sh).
 
 ## License
 
