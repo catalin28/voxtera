@@ -42,7 +42,7 @@ All stages are async and stream where possible. Loguru handles structured loggin
 | 2     | Replace `LocalAudioTransport` with Daily.co WebRTC    | VOX-E2        |
 | 3     | Replace OpenAI TTS with Google Chirp 3 HD             | VOX-E3        |
 | 4     | Switch TTS voice dynamically per detected language    | VOX-E4        |
-| 5     | Add RAG layer for tourism knowledge                   | VOX-E5        |
+| 5     | Add RAG layer for tourism knowledge — see [`rag-architecture.md`](rag-architecture.md) | VOX-E5        |
 | 6     | Deploy to DigitalOcean (Docker + Nginx)               | VOX-E6        |
 | 7     | Twilio phone integration                              | VOX-E7        |
 | 8     | Admin dashboard                                       | VOX-E8        |

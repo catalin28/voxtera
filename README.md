@@ -47,6 +47,26 @@ make run
 
 Speak into your microphone — the bot transcribes via Whisper, replies via Claude, and speaks the reply back via OpenAI TTS in the same language you used.
 
+### Input modes
+
+The bot supports three ways to provide input. Configure with `INPUT_MODE` in `.env` or as a one-off env var:
+
+| Mode | Behaviour | When to use |
+|---|---|---|
+| `voice` | Microphone only (the original) | Default voice-agent experience. |
+| `text` | Keyboard only (mic disabled, no Silero model loaded) | Libraries, trains, quiet spaces — type your question, hear the reply through headphones. |
+| `hybrid` *(default)* | Both — speak or type, mix per turn | Most flexible. Active by default. |
+
+Examples:
+
+```bash
+make run                       # uses INPUT_MODE from .env (default: hybrid)
+INPUT_MODE=text make run       # one-off keyboard-only run
+INPUT_MODE=voice make run      # one-off mic-only run
+```
+
+In text or hybrid mode, type a question and press Enter. Type `quit`, `exit`, or `bye` to end the session cleanly. The bot's reply always plays through your speakers/headphones regardless of mode.
+
 ## Test & lint
 
 ```bash
@@ -74,6 +94,8 @@ voxtera/
 - [Architecture overview](docs/architecture.md)
 - [User stories](docs/user-stories.md)
 - [Setup deep-dive](docs/setup.md)
+- [RAG architecture (VOX-E5)](docs/rag-architecture.md)
+- [RAG implementation plan (LLM coder hand-off)](docs/rag-implementation-plan.md)
 - [Architecture Decision Records](docs/decisions/)
 
 ## Project management

@@ -61,8 +61,25 @@ Leave the other variables at their defaults until you have a reason to change th
 ```bash
 make test       # smoke tests should pass
 make lint       # ruff and mypy should be clean
-make run        # placeholder run — will become the live voice loop in VOX-6
+make run        # launches the live voice loop (VOX-6)
 ```
+
+### Choosing an input mode
+
+`make run` honours the `INPUT_MODE` setting in `.env`:
+
+- `voice` — microphone only.
+- `text` — keyboard only (mic disabled, Silero VAD model not loaded). Useful in libraries, on trains, late at night, or anywhere speaking aloud isn't appropriate.
+- `hybrid` (default) — both. Speak or type per turn.
+
+Override per run:
+
+```bash
+INPUT_MODE=text make run        # type-only this session
+INPUT_MODE=voice make run       # mic-only this session
+```
+
+In `text` and `hybrid` modes you can type a question and press Enter, or say `quit` / `exit` / `bye` to end the session cleanly. The bot's spoken reply always plays through the speakers/headphones regardless of which mode you're in.
 
 ## 6. Common problems
 

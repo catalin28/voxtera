@@ -80,3 +80,30 @@ This file is the canonical home for all user stories. New stories are added by t
 - PortAudio install: `brew install portaudio` (macOS) or `apt install libportaudio2` (Ubuntu).
 - Language drift — Claude may default to English mid-conversation if the system prompt isn't strict enough; this is the main thing to test.
 - Whisper API latency can spike to 2–4s on long utterances; acceptable for now, will revisit when streaming STT is added.
+
+---
+
+## VOX-6 implementation notes
+
+Initial implementation in `src/voxtera/bot.py`. Key choices and where to change them:
+
+| Concern | Default | Where | Notes |
+|---|---|---|---|
+| LLM model | `claude-haiku-4-5-20251001` | `LLM_MODEL` constant in `bot.py` | Swap to `claude-sonnet-4-5` for higher quality at higher latency. |
+| STT model | `whisper-1` (OpenAI API) | `STT_MODEL` constant | Auto language detection; not streaming. |
+| TTS model | `tts-1` | `TTS_MODEL` constant | `tts-1-hd` is higher quality but slower. |
+| TTS voice | `nova` | `DEFAULT_TTS_VOICE` in `.env` | OpenAI TTS voices: `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`. |
+| VAD stop | 0.8s | `VAD_STOP_SECS` in `.env` | Lower = snappier turn-taking, more risk of cutting off. |
+| VAD min volume | 0.02 | `VAD_MIN_VOLUME` in `.env` | RMS floor for "speech vs silence". Tuned per-mic — a built-in MacBook mic is happy at 0.02. |
+| VAD confidence | 0.5 | `VAD_CONFIDENCE` in `.env` | Silero model confidence threshold for "this is voice". Drop toward 0.2 if VAD doesn't fire on real speech; raise toward 0.7 if it triggers on noise. |
+| Greeting language | `auto` | `GREETING_LANGUAGE` in `.env` | `auto` detects from OS locale; explicit code (`en`, `fr`, `ja`, `ro`, etc.) overrides. Supported codes: en, fr, es, it, de, pt, nl, ja, zh, ko, ar, ru. |
+| **Input mode** | `hybrid` | `INPUT_MODE` in `.env` | `voice` = mic only, `text` = keyboard only (mic disabled — useful in libraries / quiet places), `hybrid` = both. Bot reply always plays through speakers/headphones. |
+| Bot transcript log | Logs full bot reply per turn | `PipelineTracer` in `bot.py` | The `[voxtera] bot replied (thought Xms): '...'` line is built from accumulated `LLMTextFrame` chunks. |
+| Latency timing | `total latency Xms` per turn | `PipelineTracer` in `bot.py` | Measured from `VADUserStoppedSpeakingFrame` (or keyboard Enter) to `BotStartedSpeakingFrame`. Compare against the ~3s VOX-6 acceptance criterion. |
+
+### Likely first-run snags
+
+- **Mic permission (macOS)**: System Settings → Privacy & Security → Microphone → tick your terminal. May need a full quit + relaunch.
+- **PortAudio missing**: `brew install portaudio` on macOS, `apt install portaudio19-dev` on Ubuntu.
+- **Pipecat import errors**: Pipecat is pre-1.0 and import paths shift between versions. If `make run` errors with `ImportError: cannot import name 'X' from 'pipecat...'`, that's the version. Either pin a working version in `pyproject.toml` or update the import paths to match installed Pipecat.
+- **Language drift mid-conversation**: the system prompt currently instructs Claude to reply in the language of the **most recent** user turn (overriding any earlier conversation language). If the bot still drifts, the next escalation is per-turn explicit detection (e.g. `langdetect` on the transcript) plus a forcing prefix in the LLM context, or upgrading from Haiku to Sonnet which follows nuanced instructions more reliably.
