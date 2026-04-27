@@ -261,7 +261,7 @@ The five open questions below have been resolved for the POC. This is the scope 
 | **Source formats** | PDF, Excel/CSV, Markdown/plain text. DB ingestion deferred to Phase 2. |
 | **Freshness** | Manual `voxtera ingest` re-run on demand. No watchers, no cron, no webhooks. |
 | **Source language** | English documents only in the POC. |
-| **Test guest languages** | English, French, Japanese, Romanian (10-question eval set per language). |
+| **Test guest languages** | English, Russian, Turkish, Azerbaijani, Romanian (10-question eval set per language; 50 total). Chosen to validate the first client (tabia.az: en/ru/tr/az) plus the team's working language (ro). |
 | **Hosting model** | Same process as the bot. SQLite file + in-process NumPy retrieval. |
 | **Operator UI** | CLI only (`voxtera ingest`, `voxtera list-chunks`, `voxtera search`, `voxtera delete`). Web admin deferred. |
 | **Vector store** | SQLite (single `chunks` table). Move to pgvector / Qdrant in Phase 2. |
@@ -315,9 +315,9 @@ All five questions have answers for the POC. Each one is recorded here with the 
 
 ### Q3 — Multilingual quality. **RESOLVED**
 
-**Decision:** Option A (single multilingual index using `text-embedding-3-small`). Source documents in English only for POC. Test in English, French, Japanese, Romanian.
+**Decision:** Option A (single multilingual index using `text-embedding-3-small`). Source documents in English only for POC. Test in English, Russian, Turkish, Azerbaijani, Romanian (5 languages × 10 questions = 50 questions).
 
-**Reasoning:** Romance and major Asian languages perform well with `text-embedding-3-small` cross-lingually; one index is the simplest design that could possibly work. Romanian is included as a deliberate test of a smaller-resource language so we know early if Option B becomes necessary.
+**Reasoning:** The first client (tabia.az) operates in Azerbaijan and serves an audience that mixes English / Russian / Turkish / Azerbaijani — those four are the realistic production scenarios. Romanian is added as the team's working language and a deliberate test of a smaller-resource Romance language. Together they stress-test cross-lingual retrieval (Cyrillic + Turkic + Romance + English) without committing to per-language indexes.
 
 **Deferred to Phase 2:** Per-language indexes (Option B) for any language where the eval set shows quality below 85%.
 

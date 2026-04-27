@@ -75,7 +75,7 @@ Update this table after each step finishes.
 | 9    | CLI commands (ingest / list / search / delete) | pending     |       |       |
 | 10   | RAGContextInjector + bot wiring                | pending     |       |       |
 | 11   | Demo hotel content                             | pending     |       |       |
-| 12   | Eval set (40 questions × 4 languages)          | pending     |       |       |
+| 12   | Eval set (50 questions × 5 languages)          | pending     |       |       |
 | 13   | Run eval, document results                     | pending     |       |       |
 
 ---
@@ -785,15 +785,15 @@ voxtera search --hotel demo "my TV is not working"
 
 ---
 
-## Step 12 — Eval set (40 questions × 4 languages)
+## Step 12 — Eval set (50 questions × 5 languages)
 
 **Status:** pending
 **Depends on:** Step 11 (need the content to write questions about)
-**Estimated effort:** ~1.5 hours
+**Estimated effort:** ~2 hours
 
 ### Goal
 
-Create a structured evaluation set of 40 questions (10 each in English, French, Japanese, Romanian), each tied to expected source chunk and expected answer keywords.
+Create a structured evaluation set of **50 questions** — 10 each in **English, Russian, Turkish, Azerbaijani, Romanian** — each tied to expected source chunk and expected answer keywords. The five languages were chosen to validate the actual production scenarios for the first client (tabia.az: en, ru, tr, az) plus the team's working language (ro).
 
 ### Files to create
 
@@ -809,29 +809,52 @@ Create a structured evaluation set of 40 questions (10 each in English, French, 
     question: "What time is breakfast served?"
     expected_keywords: ["7", "10", "breakfast", "until"]    # any 2 of these in the bot's answer = pass
     expected_source_doc: "policies"
-  - id: fr-001
-    language: fr
-    question: "À quelle heure est servi le petit-déjeuner ?"
-    expected_keywords: ["7", "10", "petit-déjeuner"]
+  - id: ru-001
+    language: ru
+    question: "Во сколько подают завтрак?"
+    expected_keywords: ["7", "10", "завтрак"]
+    expected_source_doc: "policies"
+  - id: tr-001
+    language: tr
+    question: "Kahvaltı saat kaçta servis ediliyor?"
+    expected_keywords: ["7", "10", "kahvaltı"]
+    expected_source_doc: "policies"
+  - id: az-001
+    language: az
+    question: "Səhər yeməyi neçə də verilir?"
+    expected_keywords: ["7", "10", "səhər yeməyi"]
+    expected_source_doc: "policies"
+  - id: ro-001
+    language: ro
+    question: "La ce oră se servește micul dejun?"
+    expected_keywords: ["7", "10", "mic dejun"]
     expected_source_doc: "policies"
   ...
   ```
 
 - Cover the five content categories (menu, spa, policies, troubleshooting, welcome-guide) roughly evenly within each language.
 - Keep questions varied: factoid ("what time is breakfast"), procedural ("how do I connect to wifi"), recommendation ("any good museums nearby"), troubleshooting ("my TV isn't working").
-- Translations should be natural (use a translation tool or check with a native speaker if possible; this is the POC so approximate is fine).
+- Translations should be natural (use a translation tool or check with a native speaker if possible; this is the POC so approximate is fine for ru/tr/az; ro can be authored directly by the team).
 
 ### Acceptance criteria
 
-- [ ] File exists with exactly 40 entries (10 per language × 4 languages).
+- [ ] File exists with exactly 50 entries (10 per language × 5 languages: en, ru, tr, az, ro).
 - [ ] Every entry has `id`, `language`, `question`, `expected_keywords`, `expected_source_doc`.
+- [ ] Every `language` value is one of: `en`, `ru`, `tr`, `az`, `ro`.
 - [ ] Every `expected_source_doc` value is one of: `menu`, `spa`, `policies`, `troubleshooting`, `welcome-guide`.
 - [ ] YAML is parseable (`python -c "import yaml; yaml.safe_load(open('tests/rag/eval/questions.yaml'))"`).
 
 ### Verify
 
 ```bash
-python -c "import yaml; data = yaml.safe_load(open('tests/rag/eval/questions.yaml')); assert len(data) == 40; print('OK')"
+python -c "
+import yaml
+data = yaml.safe_load(open('tests/rag/eval/questions.yaml'))
+assert len(data) == 50, f'expected 50 questions, got {len(data)}'
+langs = {r['language'] for r in data}
+assert langs == {'en', 'ru', 'tr', 'az', 'ro'}, f'got {langs}'
+print('OK')
+"
 ```
 
 ### Notes
@@ -859,7 +882,7 @@ Build the eval harness, run it end-to-end, capture the numbers in `docs/user-sto
 ### Implementation notes
 
 - Eval harness behaviour:
-  1. Load `tests/rag/eval/questions.yaml`.
+  1. Load `tests/rag/eval/questions.yaml` (50 questions across 5 languages).
   2. For each question:
      - Compose an LLM call directly (without TTS): `Anthropic` client, system prompt = our system prompt + the retrieved chunks (same logic as `RAGContextInjector` would produce).
      - Capture `bot_reply`, `retrieval_latency_ms`, `total_latency_ms`, `retrieved_chunk_doc_ids`.
@@ -873,13 +896,13 @@ Build the eval harness, run it end-to-end, capture the numbers in `docs/user-sto
 
 ### Acceptance criteria
 
-- [ ] `python scripts/run-rag-eval.py` runs all 40 questions and prints a summary table.
+- [ ] `python scripts/run-rag-eval.py` runs all 50 questions and prints a summary table.
 - [ ] `eval-results.csv` is produced with one row per question.
 - [ ] `docs/user-stories.md` has a new "VOX-E5 POC results" section with:
   - Date and command used.
-  - Summary table per language: `% pass`, `P50 latency`, `P95 latency`.
+  - Summary table per language (en, ru, tr, az, ro): `% pass`, `P50 latency`, `P95 latency`.
   - Notes on any language that fell below 85% (and why, if known).
-- [ ] If any language is below 85%, document it as a follow-up (do NOT attempt to fix here — that's Phase 2).
+- [ ] If any language is below 85%, document it as a follow-up (do NOT attempt to fix here — that's Phase 2). Particular candidates to watch: Azerbaijani (lower-resource embedding) and Romanian (smaller training corpus than the European majors).
 
 ### Verify
 

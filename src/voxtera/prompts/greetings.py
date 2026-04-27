@@ -55,6 +55,10 @@ GREETINGS: dict[str, str] = {
         "Salam, mən Voxtera, sizin səyahət köməkçinizəm. "
         "Səyahətiniz haqqında istədiyiniz hər şeyi soruşa bilərsiniz."
     ),
+    "tr": (
+        "Merhaba, ben Voxtera, seyahat asistanınızım. "
+        "Yolculuğunuz hakkında her şeyi bana sorabilirsiniz."
+    ),
 }
 
 DEFAULT_LANGUAGE = "en"
