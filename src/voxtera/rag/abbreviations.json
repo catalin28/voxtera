@@ -1,0 +1,32 @@
+{
+  "english": [
+    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "ave", "blvd",
+    "inc", "corp", "ltd", "co", "vs", "etc", "approx", "dept", "est",
+    "vol", "no", "nos", "fig", "figs", "ref", "refs", "pg", "pgs", "ed",
+    "eds", "govt", "natl", "intl", "assoc", "sgt", "cpl", "pvt", "spc",
+    "cpt", "maj", "gen", "adm", "rev", "gov", "pres", "amb", "sen", "rep"
+  ],
+  "spanish": [
+    "sra", "srta", "ud", "uds", "vd", "vds", "dra", "lic", "ing",
+    "arq", "av", "avda", "cra", "nro", "tel", "pág", "núm", "aprox"
+  ],
+  "french": [
+    "mme", "mlle", "mgr", "cie", "ste", "av", "bd", "pl", "tél",
+    "réf", "env", "arr", "appt", "éd"
+  ],
+  "german": [
+    "hr", "fr", "nr", "str", "bzgl", "bzw", "usw", "inkl", "evtl",
+    "ggf", "ca", "tel", "abs", "abt", "bes"
+  ],
+  "italian": [
+    "sig", "sig.ra", "dott", "dott.ssa", "avv", "geom", "rag",
+    "spett", "preg", "egr", "ill", "chiar"
+  ],
+  "portuguese": [
+    "sra", "srta", "exmo", "exma", "ilmo", "ilma", "eng",
+    "av", "tel", "pág", "nº", "aprox"
+  ],
+  "common": [
+    "km", "kg", "min", "max", "apt", "hab", "pers"
+  ]
+}

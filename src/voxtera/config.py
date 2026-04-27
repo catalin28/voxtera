@@ -41,6 +41,9 @@ class Settings:
     # hybrid = both. In all modes the bot speaks its reply via TTS so
     # you can wear headphones in any setting.
     input_mode: str = "hybrid"
+    # RAG: inject hotel knowledge into LLM context before each turn.
+    rag_enabled: bool = False
+    hotel_id: str = "demo"
 
 
 def _require(name: str) -> str:
@@ -67,8 +70,10 @@ def load_settings() -> Settings:
         default_tts_voice=os.environ.get("DEFAULT_TTS_VOICE", "nova"),
         vad_stop_secs=float(os.environ.get("VAD_STOP_SECS", "0.8")),
         vad_start_secs=float(os.environ.get("VAD_START_SECS", "0.2")),
-        vad_min_volume=float(os.environ.get("VAD_MIN_VOLUME", "0.3")),
+        vad_min_volume=float(os.environ.get("VAD_MIN_VOLUME", "0.02")),
         vad_confidence=float(os.environ.get("VAD_CONFIDENCE", "0.5")),
         greeting_language=os.environ.get("GREETING_LANGUAGE", "auto"),
         input_mode=os.environ.get("INPUT_MODE", "hybrid").lower(),
+        rag_enabled=os.environ.get("RAG_ENABLED", "false").lower() in ("1", "true", "yes"),
+        hotel_id=os.environ.get("HOTEL_ID", "demo"),
     )

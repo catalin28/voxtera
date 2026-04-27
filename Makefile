@@ -15,7 +15,7 @@ install:
 	uv run pre-commit install
 
 run:
-	uv run python -m voxtera.bot
+	uv run voxtera run
 
 test:
 	uv run pytest -v

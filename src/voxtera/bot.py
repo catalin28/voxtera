@@ -22,8 +22,10 @@ Tuning knobs all live in `.env` / `voxtera.config.Settings`:
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 from dotenv import load_dotenv
@@ -286,9 +288,26 @@ def build_pipeline(settings: Settings) -> tuple[PipelineTask, PipelineRunner]:
     processors: list = [transport.input()]
     if mic_enabled:
         processors.extend([AudioLevelMonitor(), vad_processor, stt])
+    processors.append(context_aggregator.user())
+
+    # RAG: optionally inject hotel knowledge before the LLM sees the context.
+    if settings.rag_enabled:
+        from voxtera.rag.injector import RAGContextInjector
+        from voxtera.rag.retriever import Retriever
+        from voxtera.rag.store import ChunksStore
+
+        default_db = str(Path.home() / ".voxtera" / "voxtera.db")
+        db_path = Path(os.environ.get("VOXTERA_DB_PATH", default_db))
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        store = ChunksStore(db_path)
+        store.init_schema()
+        retriever = Retriever(store, api_key=settings.openai_api_key)
+        rag_injector = RAGContextInjector(retriever, hotel_id=settings.hotel_id)
+        processors.append(rag_injector)
+        logger.info("[rag] enabled for hotel_id={!r}", settings.hotel_id)
+
     processors.extend(
         [
-            context_aggregator.user(),
             llm,
             tts,
             PipelineTracer("voxtera"),

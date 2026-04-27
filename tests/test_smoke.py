@@ -57,3 +57,21 @@ def test_load_settings_with_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.bot_name == "TestBot"
     assert settings.default_tts_voice == "alloy"
     assert settings.vad_stop_secs == 1.2
+    assert settings.vad_min_volume == 0.02
+    # RAG defaults when env vars are absent
+    assert settings.rag_enabled is False
+    assert settings.hotel_id == "demo"
+
+
+def test_load_settings_rag_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    from voxtera.config import load_settings
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
+    monkeypatch.setenv("RAG_ENABLED", "true")
+    monkeypatch.setenv("HOTEL_ID", "hilton-paris")
+
+    settings = load_settings()
+
+    assert settings.rag_enabled is True
+    assert settings.hotel_id == "hilton-paris"
