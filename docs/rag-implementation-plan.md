@@ -74,7 +74,7 @@ Update this table after each step finishes.
 | 8    | Retriever                                      | completed   |       |       |
 | 9    | CLI commands (ingest / list / search / delete) | completed     |       |       |
 | 10   | RAGContextInjector + bot wiring                | completed     |       |       |
-| 11   | Demo hotel content                             | pending     |       |       |
+| 11   | Demo hotel content                             | completed   |       | 8 files: 5 original + 3 operational (room-service, spa-booking, maintenance) |
 | 12   | Eval set (50 questions × 5 languages)          | pending     |       |       |
 | 13   | Run eval, document results                     | pending     |       |       |
 

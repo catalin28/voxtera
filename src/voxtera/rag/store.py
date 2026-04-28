@@ -13,8 +13,8 @@ from pathlib import Path
 
 import numpy as np
 
-# Dimension of text-embedding-3-small vectors.
-EMBEDDING_DIM = 1536
+# Dimension of intfloat/multilingual-e5-small vectors.
+EMBEDDING_DIM = 384
 
 _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS chunks (
@@ -94,9 +94,7 @@ class ChunksStore:
         )
         self._conn.commit()
 
-    def fetch_for_hotel(
-        self, *, hotel_id: str, language: str | None = None
-    ) -> list[StoredChunk]:
+    def fetch_for_hotel(self, *, hotel_id: str, language: str | None = None) -> list[StoredChunk]:
         """Return all chunks for a hotel, optionally filtered by language."""
         if language is not None:
             cursor = self._conn.execute(

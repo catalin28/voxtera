@@ -20,12 +20,14 @@ from loguru import logger
 from pipecat.frames.frames import Frame, LLMContextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
+from voxtera.conversation_logger import log_rag_context
 from voxtera.rag.retriever import Retriever
 
 _RAG_PREAMBLE = (
     "Here are relevant excerpts from the hotel's information. Use them when "
-    "answering, but only if they're relevant. If they don't answer the "
-    "question, ignore them."
+    "answering, but only if they're relevant to the user's most recent "
+    "question. If they don't answer that question, ignore them. Do not "
+    "answer earlier questions unless the user asks again."
 )
 
 
@@ -37,7 +39,7 @@ class RAGContextInjector(FrameProcessor):
         retriever: Retriever,
         *,
         hotel_id: str,
-        retrieval_timeout_ms: int = 500,
+        retrieval_timeout_ms: int = 5000,
     ) -> None:
         super().__init__()
         self._retriever = retriever
@@ -90,6 +92,21 @@ class RAGContextInjector(FrameProcessor):
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.info("[rag] retrieved {} chunks in {:.0f}ms", len(results), elapsed_ms)
 
+        # Structured log for audit / evaluation.
+        log_rag_context(
+            hotel_id=self._hotel_id,
+            user_query=user_text,
+            chunks=[
+                {
+                    "doc_id": r.doc_id,
+                    "score": round(r.score, 4),
+                    "text": r.text[:300],
+                }
+                for r in results
+            ],
+            elapsed_ms=elapsed_ms,
+        )
+
         if not results:
             return
 
@@ -104,7 +121,8 @@ class RAGContextInjector(FrameProcessor):
         # Remove any previously injected RAG message (from a prior turn) so we
         # don't accumulate stale context across the conversation.
         messages[:] = [
-            m for m in messages
+            m
+            for m in messages
             if not (isinstance(m, dict) and _RAG_PREAMBLE in str(m.get("content", "")))
         ]
 

@@ -58,9 +58,15 @@ def test_load_settings_with_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.default_tts_voice == "alloy"
     assert settings.vad_stop_secs == 1.2
     assert settings.vad_min_volume == 0.02
-    # RAG defaults when env vars are absent
+    assert settings.transport_mode == "local"
+    # Feature toggles default when env vars are absent.
+    assert settings.rnnoise_enabled is False
+    assert settings.allow_interruptions is False
     assert settings.rag_enabled is False
     assert settings.hotel_id == "demo"
+    assert settings.daily_api_key is None
+    assert settings.daily_domain is None
+    assert settings.daily_room_name is None
 
 
 def test_load_settings_rag_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -68,10 +74,32 @@ def test_load_settings_rag_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
+    monkeypatch.setenv("RNNOISE_ENABLED", "true")
+    monkeypatch.setenv("ALLOW_INTERRUPTIONS", "true")
     monkeypatch.setenv("RAG_ENABLED", "true")
     monkeypatch.setenv("HOTEL_ID", "hilton-paris")
 
     settings = load_settings()
 
+    assert settings.rnnoise_enabled is True
+    assert settings.allow_interruptions is True
     assert settings.rag_enabled is True
     assert settings.hotel_id == "hilton-paris"
+
+
+def test_load_settings_daily_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    from voxtera.config import load_settings
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
+    monkeypatch.setenv("DAILY_API_KEY", "daily-test-key")
+    monkeypatch.setenv("DAILY_DOMAIN", "voxtera.daily.co")
+    monkeypatch.setenv("DAILY_ROOM_NAME", "voxtera-demo")
+    monkeypatch.setenv("TRANSPORT_MODE", "daily")
+
+    settings = load_settings()
+
+    assert settings.transport_mode == "daily"
+    assert settings.daily_api_key == "daily-test-key"
+    assert settings.daily_domain == "voxtera.daily.co"
+    assert settings.daily_room_name == "voxtera-demo"

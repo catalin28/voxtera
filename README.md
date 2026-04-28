@@ -60,12 +60,18 @@ The bot supports three ways to provide input. Configure with `INPUT_MODE` in `.e
 Examples:
 
 ```bash
-make run                       # uses INPUT_MODE from .env (default: hybrid)
-INPUT_MODE=text make run       # one-off keyboard-only run
-INPUT_MODE=voice make run      # one-off mic-only run
+make run                              # uses INPUT_MODE from .env (default: hybrid)
+INPUT_MODE=text make run              # one-off keyboard-only run
+INPUT_MODE=voice make run             # one-off mic-only run
+RNNOISE_ENABLED=true make run         # one-off mic denoising for demo/noisy rooms
+INPUT_MODE=hybrid RNNOISE_ENABLED=true make run
 ```
 
 In text or hybrid mode, type a question and press Enter. Type `quit`, `exit`, or `bye` to end the session cleanly. The bot's reply always plays through your speakers/headphones regardless of mode.
+
+### RNNoise (demo denoiser)
+
+Set `RNNOISE_ENABLED=true` to denoise microphone input before VAD and STT. This helps with fan/ambient noise during demos while preserving interruption behavior.
 
 ## Test & lint
 

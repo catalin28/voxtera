@@ -80,9 +80,7 @@ class TestOverlap:
             prev_tail_words = chunks[i - 1].text.split()[-10:]
             cur_head_words = chunks[i].text.split()[:30]
             shared = set(prev_tail_words) & set(cur_head_words)
-            assert len(shared) > 0, (
-                f"Chunks {i - 1} and {i} have no overlapping words"
-            )
+            assert len(shared) > 0, f"Chunks {i - 1} and {i} have no overlapping words"
 
     def test_no_overlap_on_first_chunk(self) -> None:
         text = _sentence_block(60)
@@ -103,9 +101,9 @@ class TestOverlap:
             # Overlap (start of chunk 2) should begin with an uppercase letter,
             # indicating a sentence start.
             second = chunks[1].text.lstrip()
-            assert second[0].isupper(), (
-                f"Overlap doesn't start at sentence boundary: {second[:40]!r}"
-            )
+            assert second[
+                0
+            ].isupper(), f"Overlap doesn't start at sentence boundary: {second[:40]!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -148,12 +146,12 @@ class TestHeadingContext:
         body_chunks = [c for c in chunks if "Mediterranean" in c.text]
         assert body_chunks, "No chunk contains 'Mediterranean'"
         ctx_chunk = body_chunks[0]
-        assert "Hotel Info" in ctx_chunk.text, (
-            f"Missing ancestor heading 'Hotel Info' in: {ctx_chunk.text!r}"
-        )
-        assert "Restaurant" in ctx_chunk.text, (
-            f"Missing heading 'Restaurant' in: {ctx_chunk.text!r}"
-        )
+        assert (
+            "Hotel Info" in ctx_chunk.text
+        ), f"Missing ancestor heading 'Hotel Info' in: {ctx_chunk.text!r}"
+        assert (
+            "Restaurant" in ctx_chunk.text
+        ), f"Missing heading 'Restaurant' in: {ctx_chunk.text!r}"
 
     def test_heading_hierarchy_resets_on_same_level(self) -> None:
         """When a heading at level 2 appears, previous level-2 is replaced."""
@@ -170,16 +168,17 @@ class TestHeadingContext:
         spa_chunk = spa_chunks[0]
         # Should have Hotel > Spa context, NOT Hotel > Pool > Spa.
         assert "Spa" in spa_chunk.text
-        assert "Pool" not in spa_chunk.text, (
-            f"Stale heading 'Pool' found in spa chunk: {spa_chunk.text!r}"
-        )
+        assert (
+            "Pool" not in spa_chunk.text
+        ), f"Stale heading 'Pool' found in spa chunk: {spa_chunk.text!r}"
 
     def test_previous_section_gets_correct_heading_context(self) -> None:
         """Content flushed when a new heading appears must keep the OLD context."""
         text = (
             "# Hotel\n\n"
             "## Restaurant\n\n"
-            "Italian cuisine.\n\n"
+            "Italian cuisine with fresh pasta, wood-fired pizza, "
+            "and regional wines served daily.\n\n"
             "## Spa\n\n"
             "Deep tissue massage."
         )
@@ -187,12 +186,12 @@ class TestHeadingContext:
         rest_chunks = [c for c in chunks if "Italian" in c.text]
         assert rest_chunks, "No chunk contains 'Italian'"
         rest_chunk = rest_chunks[0]
-        assert "Restaurant" in rest_chunk.text, (
-            f"Missing 'Restaurant' in restaurant chunk: {rest_chunk.text!r}"
-        )
-        assert "Spa" not in rest_chunk.text, (
-            f"Spa heading leaked into restaurant chunk: {rest_chunk.text!r}"
-        )
+        assert (
+            "Restaurant" in rest_chunk.text
+        ), f"Missing 'Restaurant' in restaurant chunk: {rest_chunk.text!r}"
+        assert (
+            "Spa" not in rest_chunk.text
+        ), f"Spa heading leaked into restaurant chunk: {rest_chunk.text!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -345,25 +344,29 @@ class TestTableAwareChunking:
         rows = "\n".join(f"| Feature {i} | Description of feature {i} |" for i in range(30))
         table = header + "\n" + rows
         chunks = chunk_text(
-            table, target_tokens=40, max_tokens=80, overlap_tokens=0,
+            table,
+            target_tokens=40,
+            max_tokens=80,
+            overlap_tokens=0,
         )
         assert len(chunks) >= 2
         # Every chunk must contain the header.
         for c in chunks:
-            assert "Feature" in c.text and "Details" in c.text, (
-                f"Missing header in table chunk: {c.text[:80]!r}"
-            )
+            assert (
+                "Feature" in c.text and "Details" in c.text
+            ), f"Missing header in table chunk: {c.text[:80]!r}"
             assert "---|" in c.text, f"Missing separator in table chunk: {c.text[:80]!r}"
 
     def test_table_rows_not_split_mid_row(self) -> None:
         """No chunk should contain a partial row (pipe without closing pipe)."""
         header = "| Col A | Col B | Col C |\n|-------|-------|-------|"
-        rows = "\n".join(
-            f"| Alpha {i} | Beta {i} | Gamma {i} |" for i in range(20)
-        )
+        rows = "\n".join(f"| Alpha {i} | Beta {i} | Gamma {i} |" for i in range(20))
         table = header + "\n" + rows
         chunks = chunk_text(
-            table, target_tokens=30, max_tokens=80, overlap_tokens=0,
+            table,
+            target_tokens=30,
+            max_tokens=80,
+            overlap_tokens=0,
         )
         for c in chunks:
             for line in c.text.strip().split("\n"):
@@ -389,24 +392,21 @@ class TestFAQPairDetection:
         chunks = chunk_text(text, target_tokens=200, max_tokens=300, overlap_tokens=0)
         for c in chunks:
             if "Q:" in c.text:
-                assert "A:" in c.text, (
-                    f"Question without answer in chunk: {c.text!r}"
-                )
+                assert "A:" in c.text, f"Question without answer in chunk: {c.text!r}"
 
     def test_multiple_faq_pairs(self) -> None:
         """Each Q+A pair is an atomic unit; pairs can be in different chunks."""
         pairs = "\n\n".join(
-            f"Q: Question number {i}?\n\nA: Answer to question {i} with details."
-            for i in range(6)
+            f"Q: Question number {i}?\n\nA: Answer to question {i} with details." for i in range(6)
         )
         chunks = chunk_text(pairs, target_tokens=30, max_tokens=80, overlap_tokens=0)
         # Every chunk that has a Q must have the matching A.
         for c in chunks:
             q_count = c.text.count("Q:")
             a_count = c.text.count("A:")
-            assert q_count == a_count, (
-                f"Mismatched Q/A: {q_count} Q vs {a_count} A in: {c.text[:100]!r}"
-            )
+            assert (
+                q_count == a_count
+            ), f"Mismatched Q/A: {q_count} Q vs {a_count} A in: {c.text[:100]!r}"
 
     def test_question_answer_variant(self) -> None:
         """Question: / Answer: long-form patterns also work."""
@@ -421,10 +421,7 @@ class TestFAQPairDetection:
 
     def test_faq_hyphen_separator(self) -> None:
         """Q- / A- separator style should also be detected as FAQ pair."""
-        text = (
-            "Q- What time is breakfast?\n\n"
-            "A- Breakfast is served from 7 to 10 AM."
-        )
+        text = "Q- What time is breakfast?\n\n" "A- Breakfast is served from 7 to 10 AM."
         chunks = chunk_text(text, target_tokens=200, max_tokens=300, overlap_tokens=0)
         assert len(chunks) == 1
         assert "Q-" in chunks[0].text
@@ -455,13 +452,7 @@ class TestFencedBlockPreservation:
     def test_fenced_block_with_blank_lines(self) -> None:
         """Blank lines inside a fenced block should not cause paragraph splits."""
         text = (
-            "```\n"
-            "line one\n"
-            "\n"
-            "line two after blank\n"
-            "\n"
-            "line three after blank\n"
-            "```"
+            "```\n" "line one\n" "\n" "line two after blank\n" "\n" "line three after blank\n" "```"
         )
         chunks = chunk_text(text, target_tokens=200, max_tokens=300, overlap_tokens=0)
         assert len(chunks) == 1
@@ -470,13 +461,7 @@ class TestFencedBlockPreservation:
 
     def test_heading_inside_fence_not_split(self) -> None:
         """Lines like '# comment' inside a code block should not trigger splits."""
-        text = (
-            "```python\n"
-            "# This is a comment\n"
-            "def hello():\n"
-            "    pass\n"
-            "```"
-        )
+        text = "```python\n" "# This is a comment\n" "def hello():\n" "    pass\n" "```"
         chunks = chunk_text(text, target_tokens=200, max_tokens=300, overlap_tokens=0)
         assert len(chunks) == 1
         assert "# This is a comment" in chunks[0].text
@@ -508,15 +493,11 @@ class TestBlockquotePreservation:
         chunks = chunk_text(text, target_tokens=200, max_tokens=300, overlap_tokens=0)
         bq_chunks = [c for c in chunks if "policy notice" in c.text]
         assert bq_chunks
-        assert "No exceptions" in bq_chunks[0].text, (
-            "Blockquote was split across chunks"
-        )
+        assert "No exceptions" in bq_chunks[0].text, "Blockquote was split across chunks"
 
     def test_short_blockquote_not_split_by_sentences(self) -> None:
         """Blockquote should not be broken at sentence boundaries."""
-        text = (
-            "> First sentence. Second sentence. Third sentence."
-        )
+        text = "> First sentence. Second sentence. Third sentence."
         chunks = chunk_text(text, target_tokens=10, max_tokens=80, overlap_tokens=0)
         # Even with small target, the blockquote should be one chunk.
         assert len(chunks) == 1
@@ -531,13 +512,14 @@ class TestAdaptiveChunkSizing:
     def test_dense_content_produces_smaller_chunks(self) -> None:
         """Number-heavy content should produce more (smaller) chunks."""
         dense = " ".join(
-            f"Room {i}: ${100 + i * 10}/night, {20 + i}m², sleeps {1 + i % 4}."
-            for i in range(30)
+            f"Room {i}: ${100 + i * 10}/night, {20 + i}m², sleeps {1 + i % 4}." for i in range(30)
         )
-        normal_chunks = chunk_text(dense, target_tokens=100, max_tokens=200,
-                                   overlap_tokens=0, adaptive=False)
-        adaptive_chunks = chunk_text(dense, target_tokens=100, max_tokens=200,
-                                     overlap_tokens=0, adaptive=True)
+        normal_chunks = chunk_text(
+            dense, target_tokens=100, max_tokens=200, overlap_tokens=0, adaptive=False
+        )
+        adaptive_chunks = chunk_text(
+            dense, target_tokens=100, max_tokens=200, overlap_tokens=0, adaptive=True
+        )
         # Adaptive should produce at least as many chunks (smaller target).
         assert len(adaptive_chunks) >= len(normal_chunks)
 
@@ -551,10 +533,12 @@ class TestAdaptiveChunkSizing:
             "are meticulously maintained, featuring native plants and fragrant "
             "herbs that fill the air with delightful aromas throughout the year."
         )
-        normal_chunks = chunk_text(narrative, target_tokens=50, max_tokens=100,
-                                   overlap_tokens=0, adaptive=False)
-        adaptive_chunks = chunk_text(narrative, target_tokens=50, max_tokens=100,
-                                     overlap_tokens=0, adaptive=True)
+        normal_chunks = chunk_text(
+            narrative, target_tokens=50, max_tokens=100, overlap_tokens=0, adaptive=False
+        )
+        adaptive_chunks = chunk_text(
+            narrative, target_tokens=50, max_tokens=100, overlap_tokens=0, adaptive=True
+        )
         # Narrative: adaptive target is >= original, so same or fewer chunks.
         assert len(adaptive_chunks) <= len(normal_chunks)
 
@@ -569,20 +553,20 @@ class TestDeduplication:
         """Repeated identical paragraphs produce only one chunk."""
         paragraph = "The pool is open from 7 AM to 10 PM daily."
         text = "\n\n".join([paragraph] * 5)
-        chunks = chunk_text(text, target_tokens=200, max_tokens=300,
-                            overlap_tokens=0, deduplicate=True)
+        chunks = chunk_text(
+            text, target_tokens=200, max_tokens=300, overlap_tokens=0, deduplicate=True
+        )
         assert len(chunks) == 1
         assert "pool" in chunks[0].text
 
     def test_non_duplicates_preserved(self) -> None:
         """Distinct paragraphs are all kept."""
         text = (
-            "The pool is open daily.\n\n"
-            "The gym is on floor two.\n\n"
-            "The spa offers massages."
+            "The pool is open daily.\n\n" "The gym is on floor two.\n\n" "The spa offers massages."
         )
-        chunks = chunk_text(text, target_tokens=200, max_tokens=300,
-                            overlap_tokens=0, deduplicate=True)
+        chunks = chunk_text(
+            text, target_tokens=200, max_tokens=300, overlap_tokens=0, deduplicate=True
+        )
         all_text = " ".join(c.text for c in chunks)
         assert "pool" in all_text
         assert "gym" in all_text
@@ -591,6 +575,7 @@ class TestDeduplication:
     def test_whitespace_normalized_dedup(self) -> None:
         """Chunks that differ only in whitespace are treated as duplicates."""
         text = "Hello   world.\n\nHello world."
-        chunks = chunk_text(text, target_tokens=200, max_tokens=300,
-                            overlap_tokens=0, deduplicate=True)
+        chunks = chunk_text(
+            text, target_tokens=200, max_tokens=300, overlap_tokens=0, deduplicate=True
+        )
         assert len(chunks) == 1

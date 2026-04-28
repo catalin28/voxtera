@@ -36,7 +36,7 @@ from pathlib import Path
 
 import tiktoken
 
-_ENCODING = tiktoken.encoding_for_model("text-embedding-3-small")
+_ENCODING = tiktoken.get_encoding("cl100k_base")
 
 # ---------------------------------------------------------------------------
 # Heading detection
@@ -69,9 +69,9 @@ _ABBREVIATIONS = _load_abbreviations()
 # Sentence-end: .!? followed by whitespace and an uppercase letter or number,
 # but NOT preceded by a known abbreviation.
 _SENTENCE_END_RE = re.compile(
-    r"(?<=[.!?])"     # look-behind for sentence-ending punctuation
-    r"(?<![.][.])"     # exclude ellipsis (..)
-    r"\s+"             # one or more whitespace chars
+    r"(?<=[.!?])"  # look-behind for sentence-ending punctuation
+    r"(?<![.][.])"  # exclude ellipsis (..)
+    r"\s+"  # one or more whitespace chars
     r"(?=[A-Z0-9\"'¿¡(])"  # look-ahead: new sentence starts with upper/digit/quote
 )
 
@@ -320,10 +320,7 @@ def _split_fenced_and_rest(text: str) -> list[tuple[str, bool]]:
         else:
             current.append(line)
             # Closing fence: same char, at least as long, nothing else.
-            if (
-                len(stripped) >= fence_len
-                and all(c == fence_char for c in stripped)
-            ):
+            if len(stripped) >= fence_len and all(c == fence_char for c in stripped):
                 segments.append(("\n".join(current), True))
                 current = []
                 in_fence = False
@@ -539,9 +536,9 @@ def _sentence_boundary_overlap(text: str, tokens_budget: int) -> str:
 def chunk_text(
     text: str,
     *,
-    target_tokens: int = 200,
-    max_tokens: int = 300,
-    overlap_tokens: int = 20,
+    target_tokens: int = 400,
+    max_tokens: int = 600,
+    overlap_tokens: int = 40,
     adaptive: bool = False,
     deduplicate: bool = False,
 ) -> list[Chunk]:
@@ -607,9 +604,7 @@ def chunk_text(
             budget = max(0, max_tokens - content_tokens - 1)
             effective_overlap = min(overlap_tokens, budget)
             if effective_overlap > 0:
-                overlap = _sentence_boundary_overlap(
-                    chunks[-1].text, effective_overlap
-                )
+                overlap = _sentence_boundary_overlap(chunks[-1].text, effective_overlap)
                 if overlap:
                     chunk_body = overlap + " " + chunk_body
 
@@ -621,9 +616,13 @@ def chunk_text(
 
         # Track heading ancestry.
         if _is_heading(piece):
-            # Headings always start a new chunk.  Flush BEFORE pushing
-            # so the previous content gets the correct (old) heading context.
-            if current_parts:
+            # Only flush on a heading when the current chunk already has
+            # meaningful content.  This lets small adjacent sections merge
+            # into one chunk so the embedding model gets enough context.
+            # Without this, a 40-token section like "## Pool & Thermal Area"
+            # would become its own chunk and score poorly for queries.
+            _MIN_FLUSH = target_tokens // 3  # noqa: N806
+            if current_parts and current_tokens >= _MIN_FLUSH:
                 _flush()
                 current_parts = []
                 current_tokens = 0
