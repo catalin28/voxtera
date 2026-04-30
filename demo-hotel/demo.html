@@ -32,8 +32,27 @@
   .model-picker label { font-size: 14px; color: #aaa; }
   .model-picker select { background: #1a1a2e; color: #e8e8f0; border: 1px solid #555; border-radius: 6px; padding: 8px 12px; font-size: 14px; min-width: 180px; cursor: pointer; }
   .model-picker select option { background: #1a1a2e; }
+  .mode-picker { margin-top: 10px; display: flex; justify-content: center; }
+  .mode-picker label { display: inline-flex; align-items: center; gap: 8px; color: #d7d7de; font-size: 14px; }
+  .mode-picker input { width: 16px; height: 16px; accent-color: #c9a84c; }
   #error-box { background: #3a1a1a; color: #ff8787; padding: 12px; margin: 12px; border-radius: 6px; font-family: monospace; font-size: 12px; display: none; max-height: 150px; overflow-y: auto; }
   #error-box.show { display: block; }
+
+  /* --- Audio test buttons --- */
+  .audio-tests { display: flex; gap: 24px; margin-top: 18px; flex-wrap: wrap; justify-content: center; }
+  .audio-test { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .audio-test button { background: #2a2a40; color: #e8e8f0; border: 1px solid #555; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+  .audio-test button:hover { border-color: #c9a84c; background: #33334d; }
+  .audio-test button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .audio-test button.active { border-color: #4caf50; background: #1e3a1e; }
+
+  .sound-indicator { display: flex; align-items: center; gap: 6px; height: 20px; min-width: 120px; justify-content: center; }
+  .sound-indicator .label { font-size: 12px; color: #888; }
+  .sound-indicator .bars { display: flex; align-items: flex-end; gap: 2px; height: 18px; }
+  .sound-indicator .bar { width: 4px; background: #555; border-radius: 2px; transition: height 0.08s, background 0.08s; min-height: 3px; }
+  .sound-indicator .bar.active { background: #4caf50; }
+  .sound-indicator .bar.hot { background: #ff9800; }
+  .sound-indicator.idle .bar { height: 3px; background: #555; }
 </style>
 </head>
 <body>
@@ -101,7 +120,9 @@
     <div class="model-picker">
       <label for="llm-select">🤖 LLM model</label>
       <select id="llm-select">
-        <option value="claude-haiku-4-5-20251001" selected>Claude Haiku 4.5 (fast)</option>
+        <option value="gpt-4o-mini" selected>GPT-4o mini (fast)</option>
+        <option value="gpt-4o">GPT-4o (quality)</option>
+        <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (fast)</option>
         <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (quality)</option>
         <option value="claude-opus-4-7">Claude Opus 4.7 (best)</option>
       </select>
@@ -128,6 +149,42 @@
         <option value="sage">Sage</option>
         <option value="verse">Verse</option>
       </select>
+    </div>
+  </div>
+
+  <div class="mode-picker">
+    <label for="use-chat">
+      <input id="use-chat" type="checkbox">
+      Use chat (type questions, hear voice answers)
+    </label>
+  </div>
+
+  <div class="audio-tests">
+    <div class="audio-test">
+      <button id="btn-test-speaker" type="button">🔊 Test Speaker</button>
+      <div class="sound-indicator idle" id="speaker-indicator">
+        <div class="bars" id="speaker-bars">
+          <div class="bar" style="height:3px"></div>
+          <div class="bar" style="height:3px"></div>
+          <div class="bar" style="height:3px"></div>
+          <div class="bar" style="height:3px"></div>
+          <div class="bar" style="height:3px"></div>
+        </div>
+        <span class="label" id="speaker-label">Idle</span>
+      </div>
+    </div>
+    <div class="audio-test">
+      <button id="btn-test-mic" type="button">🎤 Test Microphone</button>
+      <div class="sound-indicator idle" id="mic-indicator">
+        <div class="bars" id="mic-bars">
+          <div class="bar" style="height:3px"></div>
+          <div class="bar" style="height:3px"></div>
+          <div class="bar" style="height:3px"></div>
+          <div class="bar" style="height:3px"></div>
+          <div class="bar" style="height:3px"></div>
+        </div>
+        <span class="label" id="mic-label">Idle</span>
+      </div>
     </div>
   </div>
 </div>
@@ -169,6 +226,18 @@ document.getElementById('btn-start').onclick = function() {
   var btn = this;
   btn.disabled = true;
   btn.textContent = 'Connecting...';
+
+  if (document.getElementById('use-chat').checked) {
+    var params = new URLSearchParams({
+      language: document.getElementById('lang-select').value,
+      llm: document.getElementById('llm-select').value,
+      stt: document.getElementById('stt-select').value,
+      ttsProvider: document.getElementById('tts-provider-select').value,
+      voice: document.getElementById('voice-select').value
+    });
+    window.location.href = 'chat.html?' + params.toString();
+    return;
+  }
 
   if (!window.DailyIframe) {
     err('Daily SDK not available');
@@ -532,6 +601,184 @@ document.getElementById('voice-select').addEventListener('change', function() {
     callObject.sendAppMessage({ type: 'voxtera-voice', voice: this.value }, '*');
   }
 });
+
+// ========== Audio Test: Speaker ==========
+var speakerTestActive = false;
+var speakerAnimFrame = null;
+var speakerAudio = null;
+
+function setSpeakerBars(levels) {
+  var bars = document.getElementById('speaker-bars').children;
+  for (var i = 0; i < bars.length; i++) {
+    var h = Math.max(3, (levels[i] || 0) * 18);
+    bars[i].style.height = h + 'px';
+    bars[i].className = 'bar' + (levels[i] > 0.2 ? (levels[i] > 0.7 ? ' hot' : ' active') : '');
+  }
+}
+
+function resetSpeakerIndicator() {
+  speakerTestActive = false;
+  if (speakerAnimFrame) { cancelAnimationFrame(speakerAnimFrame); speakerAnimFrame = null; }
+  if (speakerAudio) { speakerAudio.pause(); speakerAudio = null; }
+  document.getElementById('speaker-indicator').className = 'sound-indicator idle';
+  document.getElementById('speaker-label').textContent = 'Idle';
+  setSpeakerBars([0, 0, 0, 0, 0]);
+  var btn = document.getElementById('btn-test-speaker');
+  btn.classList.remove('active');
+  btn.disabled = false;
+  btn.textContent = '🔊 Test Speaker';
+}
+
+function animateSpeakerBars() {
+  if (!speakerTestActive) return;
+  var levels = [];
+  for (var i = 0; i < 5; i++) levels.push(0.3 + Math.random() * 0.7);
+  setSpeakerBars(levels);
+  speakerAnimFrame = requestAnimationFrame(function() {
+    setTimeout(function() { animateSpeakerBars(); }, 80);
+  });
+}
+
+document.getElementById('btn-test-speaker').onclick = function() {
+  if (speakerTestActive) {
+    resetSpeakerIndicator();
+    return;
+  }
+  var btn = this;
+  btn.disabled = true;
+  btn.classList.add('active');
+  btn.textContent = '⏳ Loading...';
+  speakerTestActive = true;
+  document.getElementById('speaker-indicator').className = 'sound-indicator';
+  document.getElementById('speaker-label').textContent = 'Generating...';
+
+  var provider = document.getElementById('tts-provider-select').value;
+  var voice = document.getElementById('voice-select').value;
+  var lang = document.getElementById('lang-select').value;
+  var model = document.getElementById('llm-select').value;
+
+  fetch('/api/tts-test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider: provider, voice: voice, language: lang, model: model })
+  })
+  .then(function(resp) {
+    if (!resp.ok) return resp.json().then(function(e) { throw new Error(e.error || 'TTS failed'); });
+    return resp.blob();
+  })
+  .then(function(blob) {
+    if (!speakerTestActive) return;
+    var url = URL.createObjectURL(blob);
+    speakerAudio = new Audio(url);
+    speakerAudio.onplay = function() {
+      btn.textContent = '⏹ Stop';
+      btn.disabled = false;
+      document.getElementById('speaker-label').textContent = 'Playing...';
+      animateSpeakerBars();
+    };
+    speakerAudio.onended = function() {
+      URL.revokeObjectURL(url);
+      resetSpeakerIndicator();
+    };
+    speakerAudio.onerror = function() {
+      URL.revokeObjectURL(url);
+      err('Audio playback failed');
+      resetSpeakerIndicator();
+    };
+    speakerAudio.play().catch(function(e) {
+      err('Playback blocked: ' + e.message);
+      resetSpeakerIndicator();
+    });
+  })
+  .catch(function(e) {
+    err('TTS test failed: ' + e.message);
+    resetSpeakerIndicator();
+  });
+};
+
+// ========== Audio Test: Microphone ==========
+var micTestActive = false;
+var micStream = null;
+var micAnalyser = null;
+var micAnimFrame = null;
+var micAudioCtx = null;
+
+function setMicBars(levels) {
+  var bars = document.getElementById('mic-bars').children;
+  for (var i = 0; i < bars.length; i++) {
+    var h = Math.max(3, (levels[i] || 0) * 18);
+    bars[i].style.height = h + 'px';
+    bars[i].className = 'bar' + (levels[i] > 0.2 ? (levels[i] > 0.7 ? ' hot' : ' active') : '');
+  }
+}
+
+function resetMicIndicator() {
+  micTestActive = false;
+  if (micAnimFrame) { cancelAnimationFrame(micAnimFrame); micAnimFrame = null; }
+  if (micStream) { micStream.getTracks().forEach(function(t) { t.stop(); }); micStream = null; }
+  if (micAudioCtx) { micAudioCtx.close(); micAudioCtx = null; }
+  micAnalyser = null;
+  document.getElementById('mic-indicator').className = 'sound-indicator idle';
+  document.getElementById('mic-label').textContent = 'Idle';
+  setMicBars([0, 0, 0, 0, 0]);
+  var btn = document.getElementById('btn-test-mic');
+  btn.classList.remove('active');
+  btn.disabled = false;
+  btn.textContent = '🎤 Test Microphone';
+}
+
+function animateMicBars() {
+  if (!micTestActive || !micAnalyser) return;
+  var data = new Uint8Array(micAnalyser.frequencyBinCount);
+  micAnalyser.getByteFrequencyData(data);
+  // Sample 5 bands across the frequency spectrum
+  var step = Math.floor(data.length / 5);
+  var levels = [];
+  for (var i = 0; i < 5; i++) {
+    var sum = 0;
+    for (var j = 0; j < step; j++) sum += data[i * step + j];
+    levels.push((sum / step) / 255);
+  }
+  setMicBars(levels);
+
+  var maxLevel = Math.max.apply(null, levels);
+  document.getElementById('mic-label').textContent = maxLevel > 0.05 ? 'Receiving...' : 'Listening...';
+
+  micAnimFrame = requestAnimationFrame(animateMicBars);
+}
+
+document.getElementById('btn-test-mic').onclick = function() {
+  if (micTestActive) {
+    resetMicIndicator();
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    err('Microphone access not available. Try Chrome/Edge/Safari on HTTPS or localhost.');
+    return;
+  }
+  var btn = this;
+  btn.disabled = true;
+
+  navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(function(stream) {
+    micStream = stream;
+    micTestActive = true;
+    btn.classList.add('active');
+    btn.disabled = false;
+    btn.textContent = '⏹ Stop';
+    document.getElementById('mic-indicator').className = 'sound-indicator';
+    document.getElementById('mic-label').textContent = 'Listening...';
+
+    micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var source = micAudioCtx.createMediaStreamSource(stream);
+    micAnalyser = micAudioCtx.createAnalyser();
+    micAnalyser.fftSize = 256;
+    source.connect(micAnalyser);
+    animateMicBars();
+  }).catch(function(e) {
+    err('Microphone permission denied: ' + e.message);
+    btn.disabled = false;
+  });
+};
 
 log('Ready');
 </script>

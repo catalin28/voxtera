@@ -35,7 +35,11 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.services.anthropic.llm import AnthropicLLMService
-from pipecat.transports.daily.transport import DailyParams, DailyTransport
+try:
+    from pipecat.transports.daily.transport import DailyParams, DailyTransport
+except Exception:  # daily-python not available on Windows
+    DailyParams = None  # type: ignore[assignment,misc]
+    DailyTransport = None  # type: ignore[assignment,misc]
 from pipecat.transports.local.audio import LocalAudioTransport, LocalAudioTransportParams
 
 from voxtera.audio import (
@@ -52,6 +56,7 @@ except Exception:  # pragma: no cover - optional dependency at runtime
     _RNNoise = None
 from voxtera.config import Settings
 from voxtera.controllers import (
+    BrowserTextInputController,
     LLM_MODEL,
     AutoTTSLanguageSwitcher,
     GreetingController,
@@ -123,6 +128,13 @@ def build_pipeline(settings: Settings) -> tuple[PipelineTask, PipelineRunner]:
 
     if settings.transport_mode not in {"local", "daily"}:
         raise RuntimeError("TRANSPORT_MODE must be either 'local' or 'daily'.")
+
+    if settings.transport_mode == "daily" and DailyTransport is None:
+        raise RuntimeError(
+            "TRANSPORT_MODE=daily requires the 'daily-python' package, "
+            "which is not available on Windows. Use TRANSPORT_MODE=local "
+            "or run the bot on Linux/macOS."
+        )
 
     # In Pipecat 1.0 the transport's vad_* params are dead code. VAD must be
     # an explicit pipeline step (VADProcessor) that emits
@@ -360,6 +372,8 @@ def build_pipeline(settings: Settings) -> tuple[PipelineTask, PipelineRunner]:
             processors.append(UserTranscriptBroadcaster())
     processors.append(context_aggregator.user())
     processors.append(LLMRunGuard())
+    if settings.transport_mode == "daily":
+        processors.append(BrowserTextInputController())
 
     # RAG: optionally inject hotel knowledge before the LLM sees the context.
     if settings.rag_enabled:

@@ -2,7 +2,168 @@
 
 **Audience:** Engineering — planning document, not an implementation spec.
 **Project:** Voxtera — multilingual real-time voice agent for tourism.
-**Status:** Pre-implementation. No code yet.
+**Status:** Phases 1–3 code written. Phase 3 wired and tested via HTTP chat endpoint (OpenAI function calling + LoggingSink). Pipecat pipeline wiring pending (needs daily-python + valid Anthropic key).
+
+**Last updated:** 2026-04-30
+
+---
+
+## Current Implementation Status
+
+### What exists and works today
+
+| Component | File(s) | Status |
+|---|---|---|
+| `Ticket` dataclass + `Category` enum | `src/voxtera/actions/ticket.py` | ✅ Done |
+| `TicketSink` ABC | `src/voxtera/actions/sink.py` | ✅ Done |
+| `TelegramSink` (aiohttp) | `src/voxtera/actions/telegram_sink.py` | ✅ Done (needs `TELEGRAM_BOT_TOKEN` in `.env` to test) |
+| `LoggingSink` (console dummy) | `src/voxtera/actions/logging_sink.py` | ✅ Done — prints ticket to terminal, no Telegram needed |
+| `HotelConfig` + YAML loader | `src/voxtera/actions/hotel_config.py`, `config/hotels/demo.yaml` | ✅ Done |
+| `build_create_ticket_tool()` (Pipecat schema) | `src/voxtera/actions/tool.py` | ✅ Done |
+| `make_create_ticket_handler()` (Pipecat handler) | `src/voxtera/actions/handler.py` | ✅ Done |
+| `build_actions_prompt_fragment()` + `compose_system_prompt()` | `src/voxtera/actions/prompt.py` | ✅ Done |
+| `wire_actions()` (Pipecat integration helper) | `src/voxtera/actions/integration.py` | ✅ Done (but NOT called from pipeline.py yet) |
+| OpenAI function-calling wiring in HTTP chat | `demo-hotel/serve.py` | ✅ Done — uses `build_openai_tools()` from `src/voxtera/actions/tool.py` and handles tool calls via `LoggingSink` |
+| Tool schema single source + JSON extensibility | `src/voxtera/actions/tool.py`, `config/tools/create_ticket.json` | ✅ Done — built-in schema in code, optional JSON overrides via `$allowed_categories` and `$official_language` |
+| `InteractiveTelegramSink` (inline buttons) | `src/voxtera/actions/interactive_sink.py` | ✅ Code written (needs Telegram token to test) |
+| `TelegramListener` (long-polling getUpdates) | `src/voxtera/actions/listener.py` | ✅ Code written (needs Telegram token to test) |
+| `ActionRegistry` + button handlers | `src/voxtera/actions/button_actions.py` | ✅ Code written (mock staff list hardcoded) |
+| `TicketStateStore` (in-memory) | `src/voxtera/actions/state.py` | ✅ Code written |
+| Test scripts | `scripts/test_telegram_sink.py`, `scripts/test_actions_handler.py`, `scripts/demo_interactive_buttons.py` | ✅ Written (need Telegram token) |
+| Unit tests | `tests/test_actions.py` | ✅ 26 tests |
+
+### What was verified end-to-end on 2026-04-30
+
+Using the HTTP chat endpoint (`demo-hotel/serve.py`) with OpenAI GPT-4o-mini + `LoggingSink`:
+
+1. **French maintenance complaint** — Guest said "La climatisation ne marche pas dans ma chambre 412". Bot asked for confirmation in French. Guest said "Oui". Bot called `create_ticket` with `category=Maintenance`, `summary="AC not working in room 412"` (in English = staff language), `original_quote` in French, `language_detected=French`. LoggingSink printed the ticket. Bot confirmed in French.
+2. **Spanish lost & found** — Guest said "Perdí mi reloj en el restaurante anoche, estoy en la habitación 208". Bot followed the confirmation flow in Spanish.
+
+The full flow works: **RAG retrieval → system prompt with actions fragment → OpenAI function calling → tool execution → second LLM call for spoken confirmation**.
+
+### What does NOT work yet
+
+| Item | Why | What's needed |
+|---|---|---|
+| `wire_actions()` in Pipecat pipeline | `pipeline.py` not modified; daily-python unavailable on Windows; Anthropic key is placeholder | Apply the patch from `docs/PHASE3_READY.md` to `pipeline.py`, add `actions_enabled` to `Settings`, run on Linux/Mac with valid keys |
+| Telegram posting | `TELEGRAM_BOT_TOKEN` not in `.env` on current machine | Add token from BotFather to `.env` (channel ID already in `config/hotels/demo.yaml`) |
+| Interactive buttons demo | Depends on Telegram token | Set token, run `scripts/demo_interactive_buttons.py` |
+| Session state (`guest_info`) | Phase 4 not started | Add `guest_info` dict to session context, update prompt |
+| `staff.yaml` | Hardcoded mock list in `button_actions.py` | Create `config/hotels/demo/staff.yaml` |
+
+---
+
+### How to continue in a new session
+
+**To test the HTTP chat endpoint (works on Windows now):**
+```bash
+cd demo-hotel
+uv run python serve.py
+# Open http://localhost:8080/chat.html — use "Use chat" checkbox from demo.html
+```
+
+**To wire Telegram (when you have the bot token):**
+1. Add `TELEGRAM_BOT_TOKEN=your-token` to `.env`
+2. In `serve.py`, replace `LoggingSink()` with `TelegramSink.from_env()` (one-line change)
+3. Restart server — tickets will post to Telegram channel `-1003718824790`
+
+**To wire into the Pipecat voice pipeline (Linux/Mac with valid keys):**
+
+The Pipecat pipeline (`pipeline.py`, started by `make run`) uses a **different mechanism** than `serve.py`. Pipecat manages tools via `LLMService.register_function()` + `LLMContext.set_tools()`, not raw OpenAI JSON. The integration is already built in `src/voxtera/actions/integration.py` → `wire_actions()`. No duplication of `serve.py` logic needed.
+
+**Steps:**
+1. Add `actions_enabled: bool = False` to `Settings` in `config.py`
+2. Set `ACTIONS_ENABLED=true` in `.env`
+3. In `pipeline.py`, after the existing `context = LLMContext(messages)` line (~line 318), add:
+
+```python
+from voxtera.actions import load_hotel_config, compose_system_prompt
+from voxtera.actions.logging_sink import LoggingSink  # or TelegramSink.from_env()
+from voxtera.actions.integration import wire_actions
+
+hotel_config = load_hotel_config("demo")
+messages[0]["content"] = compose_system_prompt(SYSTEM_PROMPT, hotel_config)
+wire_actions(llm=llm, context=context, hotel_config=hotel_config, sink=LoggingSink())
+```
+
+That's it — `wire_actions()` handles building the Pipecat tool schema, creating the handler callback, and registering both on the LLM service + context. The business logic (categories, tickets, sinks) is shared from `src/voxtera/actions/`.
+
+**Why two different wiring approaches?**
+
+| Entry point | Tool mechanism | When to use |
+|---|---|---|
+| `serve.py` (HTTP) | Raw OpenAI `tools` JSON param + manual `_handle_tool_call` dispatch | Chat UI, Windows dev, no Daily/Pipecat needed |
+| `pipeline.py` (Pipecat) | `LLMService.register_function()` + `LLMContext.set_tools()` via `wire_actions()` | Real-time voice calls via WebRTC (Linux/Mac, needs daily-python + Anthropic key) |
+
+Both share the same `src/voxtera/actions/` package (Ticket, Category, sinks, hotel config, prompt fragments).
+
+**To add a new tool (example: `book_restaurant`):**
+
+**Step 1 — Create `config/tools/book_restaurant.json`:**
+
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "book_restaurant",
+    "description": "Book a table at the hotel restaurant.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "date":        { "type": "string",  "description": "Date in YYYY-MM-DD format." },
+        "time":        { "type": "string",  "description": "Time in HH:MM format." },
+        "guests":      { "type": "integer", "description": "Number of guests." },
+        "room_number": { "type": "string",  "description": "Guest room number." }
+      },
+      "required": ["date", "time", "guests", "room_number"]
+    }
+  }
+}
+```
+
+No code change needed for loading — `build_openai_tools()` in `src/voxtera/actions/tool.py` loads built-in tools and merges any `config/tools/*.json` overrides at startup.
+
+**Step 2 — Add a handler + register it in the tool registry (`serve.py`):**
+
+`serve.py` now uses a registry pattern (`_TOOL_HANDLERS`) instead of an `if/elif` chain. Add a handler function and register it by tool name:
+
+```python
+def _handle_tool_call(tool_call, session_id: str) -> str:
+    """Dispatch tool calls by function name."""
+    name = tool_call.function.name
+    args = json.loads(tool_call.function.arguments)
+    print(f"[actions] LLM called {name} with: {args}")
+
+  handler = _TOOL_HANDLERS.get(name)
+  if handler is None:
+    return json.dumps({"status": "error", "reason": f"Unknown tool: {name}"})
+
+  return handler(args, session_id)
+
+
+def _handle_create_ticket(args: dict, session_id: str) -> str:
+    """Existing ticket logic — extract from the current _handle_tool_call body."""
+    ...
+
+
+def _handle_book_restaurant(args: dict, session_id: str) -> str:
+    """New handler — dummy for now, wire to real booking API later."""
+    print(f"[restaurant] Booking: {args['date']} {args['time']} "
+          f"for {args['guests']} guests, room {args['room_number']}")
+    return json.dumps({
+        "status": "booked",
+        "date": args["date"],
+        "time": args["time"],
+    })
+
+
+_TOOL_HANDLERS = {
+  "create_ticket": _handle_create_ticket,
+  "book_restaurant": _handle_book_restaurant,
+}
+```
+
+**Step 3 — Restart server.** The new tool appears in the OpenAI `tools` parameter automatically. The LLM will call `book_restaurant` when appropriate, and the dispatcher routes to your handler.
 
 ---
 
@@ -124,7 +285,7 @@ Session state lives in Pipecat's context, augmented with a Voxtera-specific `gue
 
 The work is broken into seven phases. Each phase is independently testable and produces something demoable.
 
-### Phase 1 — Telegram plumbing
+### Phase 1 — Telegram plumbing ✅ CODE DONE (needs token to test live)
 
 Goal: prove we can post a ticket to Telegram from a Python script, end-to-end.
 
@@ -141,7 +302,7 @@ Steps:
 
 **Done when:** running the test script causes a correctly formatted message to appear in the Telegram channel.
 
-### Phase 2 — Hotel config
+### Phase 2 — Hotel config ✅ DONE
 
 Goal: introduce the multi-tenant config layer so the bot knows which hotel it's serving.
 
@@ -154,9 +315,11 @@ Steps:
 
 **Done when:** the bot prints the loaded hotel config at startup and uses the official language as the target language for ticket messages.
 
-### Phase 3 — Tool definition and prompt update
+### Phase 3 — Tool definition and prompt update ✅ DONE (HTTP endpoint wired; Pipecat pipeline pending)
 
 Goal: register `create_ticket` as a Pipecat function, and update the system prompt so Claude uses it correctly.
+
+> **Implementation note (2026-04-30):** `src/voxtera/actions/tool.py` is now the single source for tool schemas. It builds `create_ticket` once and renders it for both Pipecat (`FunctionSchema`) and OpenAI (`tools` JSON). `serve.py` now calls `build_openai_tools()` from that module, which also supports no-code JSON overrides from `config/tools/*.json` with placeholder interpolation (`$allowed_categories`, `$official_language`). The Pipecat-side `wire_actions()` helper exists but is not called from `pipeline.py` yet — it needs `daily-python` (Linux/Mac) and a valid Anthropic key. The HTTP chat endpoint uses OpenAI function calling directly and works on Windows.
 
 Steps:
 
@@ -175,7 +338,7 @@ Steps:
 
 **Done when:** in a manual test call, the bot can recognize a maintenance complaint, ask for room number, summarize, ask for confirmation, and on yes, post a correctly formatted Telegram message.
 
-### Phase 4 — Session state for guest info
+### Phase 4 — Session state for guest info ❌ NOT STARTED
 
 Goal: make the bot remember room number and guest name across multiple tickets in one call.
 
@@ -188,7 +351,7 @@ Steps:
 
 **Done when:** in a single call, a guest opens a maintenance ticket (bot asks room number once), then opens a reservation ticket — bot does not re-ask the room number, but the summary-back utterance still mentions it so the guest can correct it.
 
-### Phase 5 — UX polish: latency-fillers and confirmation copy
+### Phase 5 — UX polish: latency-fillers and confirmation copy ❌ NOT STARTED
 
 Goal: make the action turns feel natural, not robotic.
 
@@ -201,9 +364,11 @@ Steps:
 
 **Done when:** action turns sound conversational in all five demo languages.
 
-### Phase 6 — Testing
+### Phase 6 — Testing ⚠️ PARTIAL
 
 Goal: verify the feature behaves correctly across realistic scenarios.
+
+> **Status (2026-04-30):** 26 unit tests pass. French and Spanish end-to-end chat tests verified via HTTP endpoint. Full voice-loop and Telegram-live tests pending.
 
 Manual test scenarios:
 
@@ -217,7 +382,7 @@ Manual test scenarios:
 
 **Done when:** all seven scenarios pass without code changes, just by talking to the bot.
 
-### Phase 7 — Demo readiness
+### Phase 7 — Demo readiness ❌ NOT STARTED
 
 Goal: make it look good when shown to clients.
 
@@ -230,9 +395,11 @@ Steps:
 
 **Done when:** sales team can run the demo end-to-end without engineering support.
 
-### Phase 8 — Interactive staff actions (Telegram inline buttons)
+### Phase 8 — Interactive staff actions (Telegram inline buttons) ✅ CODE DONE (needs token to test live)
 
-Goal: turn the staff channel from a passive feed into an interactive workspace. Staff click buttons under each ticket to acknowledge, claim, escalate, or resolve, and the bot reflects the new state in real time. This is the demo moment that turns "the AI files a ticket" into "the AI runs an operations loop".
+Goal: turn the staff channel from a passive feed into an interactive workspace.
+
+> **Status (2026-04-30):** All code written — `InteractiveTelegramSink`, `TelegramListener`, `ActionRegistry`, `TicketStateStore`, button handlers (`acknowledge`, `find_available`, `resolve`). Demo script at `scripts/demo_interactive_buttons.py`. Staff list is hardcoded in `button_actions.py` (should move to `staff.yaml`). Needs `TELEGRAM_BOT_TOKEN` in `.env` to test live. Staff click buttons under each ticket to acknowledge, claim, escalate, or resolve, and the bot reflects the new state in real time. This is the demo moment that turns "the AI files a ticket" into "the AI runs an operations loop".
 
 #### 8.1 Why this matters
 

@@ -1,17 +1,18 @@
-"""Pipecat ``FunctionSchema`` for the ``create_ticket`` LLM tool.
+"""Shared tool schema builders for Pipecat and OpenAI function calling.
 
-This module is intentionally pure — it builds and returns a schema based on a
-:class:`~voxtera.actions.hotel_config.HotelConfig`. It does not register the
-tool, does not import ``bot.py``, and has no side effects. The caller (the
-bot startup wiring in Phase 3) owns registration.
+``create_ticket`` is defined once here and can be rendered to:
 
-The schema's ``category`` enum is restricted to the hotel's
-``allowed_categories``, so Claude cannot file a ticket in a category the
-hotel hasn't opted into.
+- Pipecat ``FunctionSchema`` (voice pipeline path)
+- OpenAI ``tools`` JSON (HTTP demo path)
+
+This module also supports no-code JSON extensibility for OpenAI tools via
+``config/tools/*.json`` with placeholder interpolation.
 """
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Final
 
 from pipecat.adapters.schemas.function_schema import FunctionSchema
@@ -21,6 +22,89 @@ from voxtera.actions.hotel_config import HotelConfig
 # The function name Claude will call. Keep this stable — changing it would
 # require coordinating prompt updates and any logs/dashboards keyed on it.
 CREATE_TICKET_FUNCTION_NAME: Final[str] = "create_ticket"
+_DEFAULT_TOOLS_DIR: Final[Path] = Path(__file__).resolve().parents[3] / "config" / "tools"
+
+
+def _build_create_ticket_spec(hotel_config: HotelConfig) -> dict:
+    """Build neutral JSON-schema spec for ``create_ticket`` from template JSON."""
+    tool = _load_tool_from_json_template(
+        hotel_config=hotel_config,
+        file_path=_DEFAULT_TOOLS_DIR / "create_ticket.json",
+    )
+    function = tool.get("function") or {}
+    if function.get("name") != CREATE_TICKET_FUNCTION_NAME:
+        raise RuntimeError(
+            "config/tools/create_ticket.json must define function.name='create_ticket'"
+        )
+    return function
+
+
+def _to_pipecat_schema(spec: dict) -> FunctionSchema:
+    """Convert a neutral spec to a Pipecat ``FunctionSchema``."""
+    params = spec.get("parameters") or {}
+    return FunctionSchema(
+        name=spec["name"],
+        description=spec.get("description", ""),
+        properties=params.get("properties", {}),
+        required=params.get("required", []),
+    )
+
+
+def _to_openai_tool(spec: dict) -> dict:
+    """Convert a neutral spec to OpenAI ``tools`` item format."""
+    return {"type": "function", "function": spec}
+
+
+def _load_tool_from_json_template(*, hotel_config: HotelConfig, file_path: Path) -> dict:
+    """Load one OpenAI tool JSON file and interpolate hotel placeholders."""
+    allowed = [c.value for c in hotel_config.allowed_categories]
+    raw = file_path.read_text(encoding="utf-8")
+    raw = raw.replace('"$allowed_categories"', json.dumps(allowed))
+    raw = raw.replace("$official_language", hotel_config.official_language)
+    return json.loads(raw)
+
+
+def _load_openai_tools_from_json(hotel_config: HotelConfig, tools_dir: Path) -> list[dict]:
+    """Load OpenAI tool definitions from ``*.json`` with placeholder expansion."""
+    tools: list[dict] = []
+    for fp in sorted(tools_dir.glob("*.json")):
+        tools.append(_load_tool_from_json_template(hotel_config=hotel_config, file_path=fp))
+    return tools
+
+
+def _build_builtin_tool_specs(hotel_config: HotelConfig) -> dict[str, dict]:
+    """Build built-in neutral tool specs keyed by function name."""
+    builders: dict[str, callable] = {
+        CREATE_TICKET_FUNCTION_NAME: _build_create_ticket_spec,
+    }
+    specs: dict[str, dict] = {}
+    for name, builder in builders.items():
+        spec = builder(hotel_config)
+        if isinstance(spec, dict):
+            specs[name] = spec
+    return specs
+
+
+def build_openai_tools(hotel_config: HotelConfig, tools_dir: Path | None = None) -> list[dict]:
+    """Build OpenAI ``tools`` from one source with optional JSON overrides.
+
+    Built-ins come from this module. Files in ``config/tools/*.json`` are then
+    merged by function name and override built-ins with the same name.
+    """
+    merged: dict[str, dict] = {
+        name: _to_openai_tool(spec)
+        for name, spec in _build_builtin_tool_specs(hotel_config).items()
+    }
+
+    directory = tools_dir or _DEFAULT_TOOLS_DIR
+    if directory.exists():
+        for tool in _load_openai_tools_from_json(hotel_config, directory):
+            fn = tool.get("function") or {}
+            name = fn.get("name")
+            if isinstance(name, str) and name:
+                merged[name] = tool
+
+    return [merged[name] for name in sorted(merged)]
 
 
 def build_create_ticket_tool(hotel_config: HotelConfig) -> FunctionSchema:
@@ -31,64 +115,4 @@ def build_create_ticket_tool(hotel_config: HotelConfig) -> FunctionSchema:
     file an underspecified ticket — the system prompt instructs Claude to
     gather missing info from the guest before calling the tool.
     """
-    allowed = [c.value for c in hotel_config.allowed_categories]
-    properties = {
-        "category": {
-            "type": "string",
-            "enum": allowed,
-            "description": (
-                "The kind of request being filed. Choose the closest match from the "
-                "allowed list. Use 'Other' only if no other category fits."
-            ),
-        },
-        "summary": {
-            "type": "string",
-            "description": (
-                "A one-line description of the request, written in the hotel's staff "
-                f"language ({hotel_config.official_language}), for hotel staff to read. "
-                "State the issue plainly. Do NOT include the room number here (that goes "
-                "in `room_number`). Do NOT include the original guest quote (that goes in "
-                "`original_quote`). Aim for under 120 characters."
-            ),
-            "maxLength": 500,
-        },
-        "room_number": {
-            "type": "string",
-            "description": (
-                "The guest's room number, as they stated it. If the guest has not yet "
-                "provided one, ASK THEM before calling this tool — do not call the tool "
-                "with a placeholder or empty value."
-            ),
-        },
-        "original_quote": {
-            "type": "string",
-            "description": (
-                "The guest's verbatim words describing the issue, in their own language. "
-                "Do not translate. Pick the single most representative phrase if the "
-                "guest spoke at length."
-            ),
-            "maxLength": 1000,
-        },
-        "language_detected": {
-            "type": "string",
-            "description": (
-                "The language the guest spoke in, as a human-readable label "
-                "(e.g. 'French', 'Japanese', 'Spanish'). Use this even if the bot's "
-                "audio output language was already locked — it describes the guest's "
-                "side of the conversation."
-            ),
-        },
-    }
-    description = (
-        "File a ticket with hotel staff for a guest request, complaint, or booking. "
-        "ONLY call this tool AFTER you have summarized the request to the guest in their "
-        "own language and they have confirmed (e.g. 'yes', 'oui', 'sì'). If the guest "
-        "declines or hesitates, do NOT call this tool. The tool posts a single, "
-        "non-revocable message to the staff channel."
-    )
-    return FunctionSchema(
-        name=CREATE_TICKET_FUNCTION_NAME,
-        description=description,
-        properties=properties,
-        required=["category", "summary", "room_number", "original_quote", "language_detected"],
-    )
+    return _to_pipecat_schema(_build_create_ticket_spec(hotel_config))

@@ -1,0 +1,34 @@
+{
+  "type": "function",
+  "function": {
+    "name": "create_ticket",
+    "description": "File a guest request ticket with hotel staff. Use for complaints, maintenance, reservations, housekeeping, etc. Do NOT use for plain informational questions.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": "$allowed_categories",
+          "description": "The kind of request being filed."
+        },
+        "summary": {
+          "type": "string",
+          "description": "One-line description in $official_language for staff. Under 120 chars."
+        },
+        "room_number": {
+          "type": "string",
+          "description": "The guest's room number."
+        },
+        "original_quote": {
+          "type": "string",
+          "description": "Verbatim guest words in their own language."
+        },
+        "language_detected": {
+          "type": "string",
+          "description": "Guest's language as a label (e.g. 'French')."
+        }
+      },
+      "required": ["category", "summary", "room_number", "original_quote", "language_detected"]
+    }
+  }
+}

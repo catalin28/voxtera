@@ -33,7 +33,11 @@ from voxtera.actions.state import (
 )
 from voxtera.actions.telegram_sink import TelegramSink
 from voxtera.actions.ticket import Category, Ticket
-from voxtera.actions.tool import CREATE_TICKET_FUNCTION_NAME, build_create_ticket_tool
+from voxtera.actions.tool import (
+    CREATE_TICKET_FUNCTION_NAME,
+    build_create_ticket_tool,
+    build_openai_tools,
+)
 
 __all__ = [
     "CREATE_TICKET_FUNCTION_NAME",
@@ -52,6 +56,7 @@ __all__ = [
     "TicketStatus",
     "build_actions_prompt_fragment",
     "build_create_ticket_tool",
+    "build_openai_tools",
     "compose_system_prompt",
     "load_hotel_config",
     "wire_actions",

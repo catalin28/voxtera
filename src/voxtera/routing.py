@@ -34,7 +34,11 @@ from pipecat.frames.frames import (
     VADUserStoppedSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
-from pipecat.transports.daily.transport import DailyInputTransportMessageFrame
+
+try:
+    from pipecat.transports.daily.transport import DailyInputTransportMessageFrame
+except Exception:  # daily-python not available on Windows
+    DailyInputTransportMessageFrame = None  # type: ignore[assignment,misc]
 
 from voxtera.stt import _STT_BUILDERS
 from voxtera.tts import _TTS_BUILDERS

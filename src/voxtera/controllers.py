@@ -35,7 +35,11 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.openai.tts import OpenAITTSService
-from pipecat.transports.daily.transport import DailyInputTransportMessageFrame
+
+try:
+    from pipecat.transports.daily.transport import DailyInputTransportMessageFrame
+except Exception:  # daily-python not available on Windows
+    DailyInputTransportMessageFrame = None  # type: ignore[assignment,misc]
 
 from voxtera.routing import STTRouter, TTSRouter
 from voxtera.stt import _VALID_STT_LANGUAGES, _google_languages_for_selection
@@ -105,6 +109,41 @@ class LLMRunGuard(FrameProcessor):
             self._last_run_sent_at = now
             await self.push_frame(frame, direction)
             return
+
+        await self.push_frame(frame, direction)
+
+
+class BrowserTextInputController(FrameProcessor):
+    """Handles typed chat messages from the browser Daily data channel.
+
+    Consumes app-messages shaped like:
+
+        {"type": "voxtera-user-text", "text": "..."}
+
+    and converts them into a normal user turn by appending the user message
+    to LLM context and triggering a single :class:`LLMRunFrame`.
+    """
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, DailyInputTransportMessageFrame):
+            msg = frame.message
+            if isinstance(msg, dict) and msg.get("type") == "voxtera-user-text":
+                text = msg.get("text")
+                if not isinstance(text, str):
+                    logger.warning("[text-input] ignored non-string payload")
+                else:
+                    text = text.strip()
+                    if not text:
+                        logger.warning("[text-input] ignored empty typed message")
+                    else:
+                        logger.info("[text-input] received typed user message")
+                        await self.push_frame(
+                            LLMMessagesAppendFrame([{"role": "user", "content": text}]),
+                            FrameDirection.DOWNSTREAM,
+                        )
+                        await self.push_frame(LLMRunFrame(), FrameDirection.DOWNSTREAM)
 
         await self.push_frame(frame, direction)
 
