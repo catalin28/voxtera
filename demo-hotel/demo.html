@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Grand Hôtel Lumière — Virtual Concierge</title>
+<link rel="icon" href="data:,">
 <style>
   body { font-family: system-ui; background: #0f0f1a; color: #e8e8f0; height: 100vh; display: flex; flex-direction: column; }
   header { background: #1a1a2e; border-bottom: 1px solid #a08030; padding: 16px; display: flex; gap: 16px; }
@@ -26,6 +27,11 @@
   #lang-picker label { font-size: 14px; color: #aaa; }
   #lang-select { background: #1a1a2e; color: #e8e8f0; border: 1px solid #c9a84c; border-radius: 6px; padding: 8px 12px; font-size: 15px; min-width: 220px; cursor: pointer; }
   #lang-select option { background: #1a1a2e; }
+  .model-pickers { display: flex; gap: 24px; margin-top: 12px; flex-wrap: wrap; justify-content: center; }
+  .model-picker { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .model-picker label { font-size: 14px; color: #aaa; }
+  .model-picker select { background: #1a1a2e; color: #e8e8f0; border: 1px solid #555; border-radius: 6px; padding: 8px 12px; font-size: 14px; min-width: 180px; cursor: pointer; }
+  .model-picker select option { background: #1a1a2e; }
   #error-box { background: #3a1a1a; color: #ff8787; padding: 12px; margin: 12px; border-radius: 6px; font-family: monospace; font-size: 12px; display: none; max-height: 150px; overflow-y: auto; }
   #error-box.show { display: block; }
 </style>
@@ -51,7 +57,7 @@
   <div id="lang-picker">
     <label for="lang-select">🌐 Choose your language</label>
     <select id="lang-select">
-      <option value="multi">Auto-detect (EN/ES/FR/DE/HI/RU/PT/JA/IT/NL)</option>
+      <option value="multi">Auto-detect (EN/ES/FR)</option>
       <option value="en">English</option>
       <option value="fr">French / Français</option>
       <option value="es">Spanish / Español</option>
@@ -83,6 +89,47 @@
       <option value="vi">Vietnamese / Tiếng Việt</option>
     </select>
   </div>
+  <div class="model-pickers">
+    <div class="model-picker">
+      <label for="stt-select">🎤 STT model</label>
+      <select id="stt-select">
+        <option value="whisper" selected>Whisper (OpenAI)</option>
+        <option value="deepgram">Deepgram Nova-3</option>
+        <option value="google">Google STT</option>
+      </select>
+    </div>
+    <div class="model-picker">
+      <label for="llm-select">🤖 LLM model</label>
+      <select id="llm-select">
+        <option value="claude-haiku-4-5-20251001" selected>Claude Haiku 4.5 (fast)</option>
+        <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (quality)</option>
+        <option value="claude-opus-4-7">Claude Opus 4.7 (best)</option>
+      </select>
+    </div>
+    <div class="model-picker">
+      <label for="tts-provider-select">🔊 TTS provider</label>
+      <select id="tts-provider-select">
+        <option value="openai" selected>OpenAI tts-1</option>
+        <option value="google">Google Chirp 3 HD</option>
+      </select>
+    </div>
+    <div class="model-picker">
+      <label for="voice-select">🔊 TTS voice</label>
+      <select id="voice-select">
+        <!-- Populated by setVoiceOptions(provider) below; defaults to OpenAI voices. -->
+        <option value="nova" selected>Nova</option>
+        <option value="alloy">Alloy</option>
+        <option value="echo">Echo</option>
+        <option value="fable">Fable</option>
+        <option value="onyx">Onyx</option>
+        <option value="shimmer">Shimmer</option>
+        <option value="ash">Ash</option>
+        <option value="coral">Coral</option>
+        <option value="sage">Sage</option>
+        <option value="verse">Verse</option>
+      </select>
+    </div>
+  </div>
 </div>
 
 <div id="transcript" style="display:none"></div>
@@ -93,11 +140,17 @@
   <button id="btn-end">End</button>
 </div>
 
+<audio id="remote-audio" autoplay playsinline style="display:none"></audio>
+
 <script src="https://unpkg.com/@daily-co/daily-js"></script>
 <script>
 var ROOM_URL = 'https://voxtera.daily.co/voxtera-demo';
 var callObject = null;
 var isMuted = false;
+var remoteAudioEl = document.getElementById('remote-audio');
+var audioCtx = null;
+var activeSource = null;
+var attachedTrackId = null;
 
 function log(msg) { console.log('[voxtera] ' + msg); }
 function err(msg) {
@@ -125,10 +178,21 @@ document.getElementById('btn-start').onclick = function() {
   }
 
   try {
+    if (!window.isSecureContext) {
+      err('Microphone access requires a secure origin. Open this page via HTTPS or from http://localhost.');
+      btn.disabled = false;
+      btn.textContent = '🎙️ Start';
+      return;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      err('This browser does not expose mediaDevices.getUserMedia. Try Chrome/Edge/Safari on HTTPS or localhost.');
+      btn.disabled = false;
+      btn.textContent = '🎙️ Start';
+      return;
+    }
+
     // --- Audio output via Web Audio API (more reliable than <audio> element) ---
-    var audioCtx = null;
-    var activeSource = null;
-    var attachedTrackId = null;
 
     function ensureAudioContext() {
       if (!audioCtx) {
@@ -150,20 +214,36 @@ document.getElementById('btn-start').onclick = function() {
         return;
       }
       if (attachedTrackId === track.id) {
-        log('Track already attached (id=' + track.id + ')');
+        log('Track already attached (id=' + track.id + ') — skipping duplicate attach from ' + source);
         return;
       }
-      // Disconnect previous source.
+      // Disconnect previous WebAudio source if any (defensive — older builds
+      // routed the stream through ctx.destination AND the <audio> element at
+      // the same time, which produced overlapping playback that sounded like
+      // a heavy echo. Now we only use the <audio> element.).
       if (activeSource) {
         try { activeSource.disconnect(); } catch(e) {}
         activeSource = null;
       }
-      var ctx = ensureAudioContext();
       var stream = new MediaStream([track]);
-      activeSource = ctx.createMediaStreamSource(stream);
-      activeSource.connect(ctx.destination);
-      attachedTrackId = track.id;
-      log('Attached audio via WebAudio from ' + source + ' (id=' + track.id + ', enabled=' + track.enabled + ', readyState=' + track.readyState + ')');
+
+      // Single playback path: HTML <audio> element only. Do NOT also pipe the
+      // same stream into ctx.createMediaStreamSource(...).connect(ctx.destination)
+      // — that causes the bot voice to play twice with a small inter-path
+      // latency offset and is heard as an echo/reverb.
+      try {
+        remoteAudioEl.srcObject = stream;
+        remoteAudioEl.muted = false;
+        remoteAudioEl.volume = 1.0;
+        remoteAudioEl.play().then(function() {
+          attachedTrackId = track.id;
+          log('Attached audio via <audio> element from ' + source + ' (id=' + track.id + ')');
+        }).catch(function(e) {
+          err('Audio element play blocked: ' + e.message);
+        });
+      } catch (e) {
+        err('Audio element attach failed: ' + e.message);
+      }
     }
 
     // Explicitly request mic permission BEFORE creating call object so the
@@ -233,6 +313,7 @@ document.getElementById('btn-start').onclick = function() {
       } else if (msg.event === 'bot-speaking') {
         setStatus('speaking', '🔊 Speaking...');
         ensureAudioContext();
+        remoteAudioEl.play().catch(function() {});
         // Last-chance attach if not connected yet.
         if (!attachedTrackId) scanParticipantsForAudio();
       } else if (msg.event === 'bot-done-speaking') {
@@ -276,10 +357,20 @@ document.getElementById('btn-start').onclick = function() {
     log('Joining: ' + ROOM_URL);
     callObject.join({ url: ROOM_URL, userName: 'Guest' }).then(function() {
       log('Joined successfully');
-      // Send selected language to the bot via app-message.
+      // Send selected language, LLM model and TTS voice to the bot.
       var lang = document.getElementById('lang-select').value;
+      var llmModel = document.getElementById('llm-select').value;
+      var ttsProvider = document.getElementById('tts-provider-select').value;
+      var ttsVoice = document.getElementById('voice-select').value;
+      var sttProvider = document.getElementById('stt-select').value;
+      log('STT: ' + sttProvider + ' | LLM: ' + llmModel + ' | TTS: ' + ttsProvider + '/' + ttsVoice);
+      callObject.sendAppMessage({ type: 'voxtera-stt', provider: sttProvider }, '*');
       log('Sending language preference: ' + lang);
       callObject.sendAppMessage({ type: 'voxtera-language', language: lang }, '*');
+      callObject.sendAppMessage({ type: 'voxtera-model', model: llmModel }, '*');
+      callObject.sendAppMessage({ type: 'voxtera-tts-provider', provider: ttsProvider }, '*');
+      callObject.sendAppMessage({ type: 'voxtera-voice', voice: ttsVoice }, '*');
+      callObject.sendAppMessage({ type: 'voxtera-ready' }, '*');
       document.getElementById('welcome').style.display = 'none';
       document.getElementById('transcript').style.display = 'flex';
       document.getElementById('status-bar').style.display = 'flex';
@@ -302,13 +393,21 @@ document.getElementById('btn-start').onclick = function() {
 
 document.getElementById('btn-end').onclick = function() {
   if (activeSource) { try { activeSource.disconnect(); } catch(e) {} activeSource = null; }
+  if (remoteAudioEl) {
+    remoteAudioEl.pause();
+    remoteAudioEl.srcObject = null;
+  }
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
   attachedTrackId = null;
   if (callObject) {
     callObject.leave().then(function() {
       callObject.destroy();
+      callObject = null;
       resetUI();
-    }).catch(resetUI);
+    }).catch(function() {
+      callObject = null;
+      resetUI();
+    });
   } else {
     resetUI();
   }
@@ -334,7 +433,14 @@ function addBubble(role, text) {
   document.getElementById('transcript').scrollTop = 999999;
 }
 
+function clearConversationView() {
+  var transcript = document.getElementById('transcript');
+  transcript.innerHTML = '';
+  transcript.scrollTop = 0;
+}
+
 function resetUI() {
+  clearConversationView();
   document.getElementById('welcome').style.display = 'flex';
   document.getElementById('transcript').style.display = 'none';
   document.getElementById('status-bar').style.display = 'none';
@@ -343,7 +449,89 @@ function resetUI() {
   document.getElementById('btn-start').textContent = '🎙️ Start';
   document.getElementById('btn-end').style.display = 'none';
   document.getElementById('btn-mute').style.display = 'none';
+  document.getElementById('btn-mute').textContent = '🔇 Mute';
+  isMuted = false;
 }
+
+// STT selector: re-send language when STT provider changes.
+document.getElementById('stt-select').addEventListener('change', function() {
+  if (callObject) {
+    log('Switching STT provider to: ' + this.value);
+    callObject.sendAppMessage({ type: 'voxtera-stt', provider: this.value }, '*');
+    // Always re-send the language hint so the new STT branch is configured.
+    var lang = document.getElementById('lang-select').value;
+    callObject.sendAppMessage({ type: 'voxtera-language', language: lang }, '*');
+  }
+});
+document.getElementById('lang-select').addEventListener('change', function() {
+  if (callObject) {
+    log('Switching STT language to: ' + this.value);
+    callObject.sendAppMessage({ type: 'voxtera-language', language: this.value }, '*');
+  }
+});
+document.getElementById('llm-select').addEventListener('change', function() {
+  if (callObject) {
+    log('Switching LLM model to: ' + this.value);
+    callObject.sendAppMessage({ type: 'voxtera-model', model: this.value }, '*');
+  }
+});
+// Language picker is always visible — it provides a hint even for Whisper.
+
+// TTS provider <-> voice list coupling. The voice IDs are provider-specific
+// (OpenAI uses short names like "nova"; Google Chirp 3 HD uses IDs like
+// "en-US-Chirp3-HD-Charon"), so changing the provider must repopulate the
+// voice dropdown.
+var TTS_VOICES = {
+  openai: [
+    ['nova', 'Nova'],
+    ['alloy', 'Alloy'],
+    ['echo', 'Echo'],
+    ['fable', 'Fable'],
+    ['onyx', 'Onyx'],
+    ['shimmer', 'Shimmer'],
+    ['ash', 'Ash'],
+    ['coral', 'Coral'],
+    ['sage', 'Sage'],
+    ['verse', 'Verse']
+  ],
+  google: [
+    ['en-US-Chirp3-HD-Charon', 'Charon (en-US)'],
+    ['en-US-Chirp3-HD-Aoede', 'Aoede (en-US)'],
+    ['en-US-Chirp3-HD-Kore', 'Kore (en-US)'],
+    ['en-US-Chirp3-HD-Leda', 'Leda (en-US)'],
+    ['en-US-Chirp3-HD-Orus', 'Orus (en-US)'],
+    ['en-US-Chirp3-HD-Puck', 'Puck (en-US)'],
+    ['en-US-Chirp3-HD-Zephyr', 'Zephyr (en-US)']
+  ]
+};
+function setVoiceOptions(provider) {
+  var sel = document.getElementById('voice-select');
+  sel.innerHTML = '';
+  (TTS_VOICES[provider] || TTS_VOICES.openai).forEach(function(pair, idx) {
+    var opt = document.createElement('option');
+    opt.value = pair[0];
+    opt.textContent = pair[1];
+    if (idx === 0) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+document.getElementById('tts-provider-select').addEventListener('change', function() {
+  var provider = this.value;
+  setVoiceOptions(provider);
+  if (callObject) {
+    log('Switching TTS provider to: ' + provider);
+    callObject.sendAppMessage({ type: 'voxtera-tts-provider', provider: provider }, '*');
+    // Send the new default voice for this provider too.
+    var voice = document.getElementById('voice-select').value;
+    callObject.sendAppMessage({ type: 'voxtera-voice', voice: voice }, '*');
+  }
+});
+document.getElementById('voice-select').addEventListener('change', function() {
+  if (callObject) {
+    log('Switching TTS voice to: ' + this.value);
+    callObject.sendAppMessage({ type: 'voxtera-voice', voice: this.value }, '*');
+  }
+});
 
 log('Ready');
 </script>

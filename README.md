@@ -111,6 +111,24 @@ voxtera/
 - See [`docs/handoff.md`](docs/handoff.md) for setup steps (push, CI, GitHub Issues bootstrap, local install).
 - Bootstrap script: [`scripts/setup-github-issues.sh`](scripts/setup-github-issues.sh).
 
+## Deploy to DigitalOcean
+
+Use the deployment helper script to push code, install deps, ingest RAG data,
+restart services, and run basic health checks.
+
+```bash
+scripts/deploy-droplet.sh
+```
+
+Common options:
+
+```bash
+scripts/deploy-droplet.sh --skip-ingest
+scripts/deploy-droplet.sh --host voxtera --hotel-id demo
+```
+
+The script is located at [`scripts/deploy-droplet.sh`](scripts/deploy-droplet.sh).
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).

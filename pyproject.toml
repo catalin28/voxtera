@@ -9,7 +9,7 @@ authors = [
     { name = "Voxtera Team" },
 ]
 dependencies = [
-    "pipecat-ai[anthropic,openai,deepgram,silero,local,daily]>=0.0.85",
+    "pipecat-ai[anthropic,openai,deepgram,google,silero,local,daily]>=0.0.85",
     "loguru>=0.7.2",
     "openai>=1.0",
     "python-dotenv>=1.0.1",

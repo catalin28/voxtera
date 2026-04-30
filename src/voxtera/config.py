@@ -54,21 +54,35 @@ class Settings:
     # RAG: inject hotel knowledge into LLM context before each turn.
     rag_enabled: bool = False
     hotel_id: str = "demo"
-    # STT provider selection: whisper | deepgram
+    # STT provider selection: whisper | deepgram | google
     stt_provider: str = "whisper"
+    # TTS provider selection: openai | google
+    # When transport_mode=daily and Google credentials are configured, both
+    # providers are built and the active one is selected at runtime via the
+    # browser UI (voxtera-tts-provider message). This field only sets the
+    # initial selection.
+    tts_provider: str = "openai"
+    # Set to False to skip building the Google Chirp 3 HD TTS branch entirely
+    # (e.g. when the Cloud Text-to-Speech API is not yet enabled in your GCP
+    # project). When False, only OpenAI TTS is available regardless of
+    # GOOGLE_APPLICATION_CREDENTIALS.
+    google_tts_enabled: bool = True
     # Deepgram API key (required when stt_provider=deepgram).
     deepgram_api_key: str | None = field(default=None, repr=False)
+    # Google credentials file path (required when stt_provider=google or
+    # tts_provider=google).
+    google_application_credentials: str | None = None
     # Daily WebRTC config for browser-based transport.
     daily_api_key: str | None = field(default=None, repr=False)
     daily_domain: str | None = None
     daily_room_name: str | None = None
     # STT prompt for language detection and transcription hints.
-    # Provides hotel context vocabulary so Whisper disambiguates better, but
-    # avoids full sentences that could be echoed verbatim. Override via
-    # STT_PROMPT env var.
-    # NOTE: Do NOT list multiple languages here — it removes Whisper's
-    # language prior and causes frequent mis-detection on short utterances.
-    # Instead, provide domain vocabulary in the expected primary language.
+    # Disabled by default: the English prompt biases Whisper toward English
+    # even when the user speaks another language, causing garbled transcripts.
+    # Enable via STT_PROMPT_ENABLED=true only if you need English hotel vocab
+    # disambiguation and your users exclusively speak English.
+    # Override the prompt text via STT_PROMPT env var.
+    stt_prompt_enabled: bool = False
     stt_prompt: str = (
         "Hotel concierge conversation. Guest asking about rooms, breakfast, "
         "spa treatments, pool hours, restaurant menu, dishes, check-in, "
@@ -118,16 +132,22 @@ def load_settings() -> Settings:
         rag_enabled=os.environ.get("RAG_ENABLED", "false").lower() in ("1", "true", "yes"),
         hotel_id=os.environ.get("HOTEL_ID", "demo"),
         stt_provider=os.environ.get("STT_PROVIDER", "whisper").lower(),
+        tts_provider=os.environ.get("TTS_PROVIDER", "openai").lower(),
+        google_tts_enabled=os.environ.get("GOOGLE_TTS_ENABLED", "true").lower()
+        not in ("0", "false", "no"),
         deepgram_api_key=os.environ.get("DEEPGRAM_API_KEY"),
+        google_application_credentials=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
         daily_api_key=os.environ.get("DAILY_API_KEY"),
         daily_domain=os.environ.get("DAILY_DOMAIN"),
         daily_room_name=os.environ.get("DAILY_ROOM_NAME"),
+        stt_prompt_enabled=os.environ.get("STT_PROMPT_ENABLED", "false").lower()
+        in ("1", "true", "yes"),
         stt_prompt=os.environ.get(
             "STT_PROMPT",
             (
-                "Hotel concierge conversation. Topics: rooms, breakfast, spa, pool, "
-                "restaurant, check-in, check-out, wifi, taxi, museum, Paris, Louvre. "
-                "Languages: English, Romanian, French, Spanish, Italian, German."
+                "Hotel concierge conversation. Guest asking about rooms, breakfast, "
+                "spa treatments, pool hours, restaurant menu, dishes, check-in, "
+                "check-out, wifi password, taxi, museum, airport, Paris, Louvre."
             ),
         ),
     )
