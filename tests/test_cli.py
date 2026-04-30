@@ -61,14 +61,12 @@ class TestParser:
     def test_search_defaults(self) -> None:
         parser = _build_parser()
         args = parser.parse_args(["search", "--hotel", "h1", "breakfast"])
-        assert args.top_k == 3
+        assert args.top_k == 5
         assert args.language is None
 
     def test_delete_with_yes(self) -> None:
         parser = _build_parser()
-        args = parser.parse_args(
-            ["delete", "--hotel", "h1", "--doc-id", "abc123", "-y"]
-        )
+        args = parser.parse_args(["delete", "--hotel", "h1", "--doc-id", "abc123", "-y"])
         assert args.command == "delete"
         assert args.hotel == "h1"
         assert args.doc_id == "abc123"
@@ -108,7 +106,7 @@ class TestIngest:
 
         fake_doc = MagicMock(doc_id="info.md", text="# Hotel\nBreakfast at 7am.")
         fake_chunks = [MagicMock(text="Breakfast at 7am.")]
-        fake_vectors = [[0.1] * 1536]
+        fake_vectors = [[0.1] * 384]
 
         with (
             patch("voxtera.cli.load_dotenv"),
@@ -116,7 +114,6 @@ class TestIngest:
             patch("voxtera.cli.load_document", return_value=fake_doc) as mock_load,
             patch("voxtera.cli.chunk_text", return_value=fake_chunks) as mock_chunk,
             patch("voxtera.cli.embed", return_value=fake_vectors) as mock_embed,
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             mock_store = MagicMock()
             mock_store_fn.return_value = mock_store
@@ -144,7 +141,7 @@ class TestIngest:
 
         fake_doc = MagicMock(doc_id="x", text="content")
         fake_chunks = [MagicMock(text="chunk")]
-        fake_vectors = [[0.1] * 1536]
+        fake_vectors = [[0.1] * 384]
 
         with (
             patch("voxtera.cli.load_dotenv"),
@@ -152,7 +149,6 @@ class TestIngest:
             patch("voxtera.cli.load_document", return_value=fake_doc),
             patch("voxtera.cli.chunk_text", return_value=fake_chunks),
             patch("voxtera.cli.embed", return_value=fake_vectors),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             mock_store = MagicMock()
             mock_store_fn.return_value = mock_store
@@ -162,27 +158,10 @@ class TestIngest:
 
             assert mock_store.upsert_chunk.call_count == 2
 
-    def test_ingest_missing_api_key(self, tmp_path: Path) -> None:
-        md_file = tmp_path / "info.md"
-        md_file.write_text("hello", encoding="utf-8")
-
-        with (
-            patch("voxtera.cli.load_dotenv"),
-            patch("voxtera.cli._open_store") as mock_store_fn,
-            patch.dict("os.environ", {}, clear=True),
-            pytest.raises(SystemExit) as exc,
-        ):
-            sys.argv = ["voxtera", "ingest", "--hotel", "h1", str(md_file)]
-            main()
-
-        assert exc.value.code == 1
-        mock_store_fn.assert_not_called()
-
     def test_ingest_missing_path(self) -> None:
         with (
             patch("voxtera.cli.load_dotenv"),
             patch("voxtera.cli._open_store") as mock_store_fn,
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
             pytest.raises(SystemExit) as exc,
         ):
             sys.argv = ["voxtera", "ingest", "--hotel", "h1", "/no/such/file.md"]
@@ -199,7 +178,7 @@ class TestIngest:
 
         fake_doc = MagicMock(doc_id="readme.md", text="OK")
         fake_chunks = [MagicMock(text="OK")]
-        fake_vectors = [[0.1] * 1536]
+        fake_vectors = [[0.1] * 384]
 
         with (
             patch("voxtera.cli.load_dotenv"),
@@ -214,7 +193,6 @@ class TestIngest:
             ),
             patch("voxtera.cli.chunk_text", return_value=fake_chunks),
             patch("voxtera.cli.embed", return_value=fake_vectors),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             mock_store = MagicMock()
             mock_store_fn.return_value = mock_store
@@ -239,7 +217,6 @@ class TestIngest:
                 "voxtera.cli.load_document",
                 side_effect=OSError("Permission denied"),
             ),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             mock_store = MagicMock()
             mock_store_fn.return_value = mock_store
@@ -265,7 +242,6 @@ class TestIngest:
             patch("voxtera.cli.load_document", return_value=fake_doc),
             patch("voxtera.cli.chunk_text", return_value=fake_chunks),
             patch("voxtera.cli.embed", side_effect=RuntimeError("API down")),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             mock_store = MagicMock()
             mock_store_fn.return_value = mock_store
@@ -278,16 +254,13 @@ class TestIngest:
         out = capsys.readouterr().out
         assert "ingested" not in out
 
-    def test_ingest_empty_folder(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_ingest_empty_folder(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
 
         with (
             patch("voxtera.cli.load_dotenv"),
             patch("voxtera.cli._open_store"),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             sys.argv = ["voxtera", "ingest", "--hotel", "h1", str(empty_dir)]
             main()
@@ -302,7 +275,7 @@ class TestIngest:
 
         fake_doc = MagicMock(doc_id="menu.md", text="Breakfast 7am.")
         fake_chunks = [MagicMock(text="Breakfast 7am.")]
-        fake_vectors = [[0.1] * 1536]
+        fake_vectors = [[0.1] * 384]
 
         with (
             patch("voxtera.cli.load_dotenv"),
@@ -310,7 +283,6 @@ class TestIngest:
             patch("voxtera.cli.load_document", return_value=fake_doc),
             patch("voxtera.cli.chunk_text", return_value=fake_chunks),
             patch("voxtera.cli.embed", return_value=fake_vectors),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             mock_store = MagicMock()
             mock_store_fn.return_value = mock_store
@@ -340,7 +312,7 @@ class TestIngest:
             return MagicMock(doc_id=p.name, text=p.read_text(encoding="utf-8"))
 
         fake_chunks = [MagicMock(text="x")]
-        fake_vectors = [[0.1] * 1536]
+        fake_vectors = [[0.1] * 384]
 
         with (
             patch("voxtera.cli.load_dotenv"),
@@ -348,7 +320,6 @@ class TestIngest:
             patch("voxtera.cli.load_document", side_effect=_load),
             patch("voxtera.cli.chunk_text", return_value=fake_chunks),
             patch("voxtera.cli.embed", return_value=fake_vectors),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             mock_store = MagicMock()
             mock_store_fn.return_value = mock_store
@@ -357,8 +328,7 @@ class TestIngest:
             main()
 
         categories_seen = {
-            call.kwargs["category"]
-            for call in mock_store.upsert_chunk.call_args_list
+            call.kwargs["category"] for call in mock_store.upsert_chunk.call_args_list
         }
         assert categories_seen == {"menu", "spa"}
 
@@ -371,7 +341,7 @@ class TestIngest:
 
         fake_doc = MagicMock(doc_id="menu.md", text="New shorter version.")
         fake_chunks = [MagicMock(text="chunk-1"), MagicMock(text="chunk-2")]
-        fake_vectors = [[0.1] * 1536, [0.2] * 1536]
+        fake_vectors = [[0.1] * 384, [0.2] * 384]
 
         with (
             patch("voxtera.cli.load_dotenv"),
@@ -379,7 +349,6 @@ class TestIngest:
             patch("voxtera.cli.load_document", return_value=fake_doc),
             patch("voxtera.cli.chunk_text", return_value=fake_chunks),
             patch("voxtera.cli.embed", return_value=fake_vectors),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             mock_store = MagicMock()
             # Track call order across delete_doc and upsert_chunk so we can
@@ -407,7 +376,6 @@ class TestIngest:
             patch("voxtera.cli.load_dotenv"),
             patch("voxtera.cli._open_store") as mock_store_fn,
             patch("voxtera.cli.load_document", side_effect=ValueError("Unsupported")),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             mock_store = MagicMock()
             mock_store_fn.return_value = mock_store
@@ -433,7 +401,6 @@ class TestIngest:
             patch("voxtera.cli.load_document", return_value=fake_doc),
             patch("voxtera.cli.chunk_text", return_value=fake_chunks),
             patch("voxtera.cli.embed", side_effect=RuntimeError("API down")),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             mock_store = MagicMock()
             mock_store_fn.return_value = mock_store
@@ -515,25 +482,11 @@ class TestListChunks:
 class TestSearch:
     """Tests for the search subcommand."""
 
-    def test_search_missing_api_key(self) -> None:
-        with (
-            patch("voxtera.cli.load_dotenv"),
-            patch("voxtera.cli._open_store") as mock_store_fn,
-            patch.dict("os.environ", {}, clear=True),
-            pytest.raises(SystemExit) as exc,
-        ):
-            sys.argv = ["voxtera", "search", "--hotel", "h1", "pool"]
-            main()
-
-        assert exc.value.code == 1
-        mock_store_fn.assert_not_called()
-
     def test_search_no_results(self, capsys: pytest.CaptureFixture[str]) -> None:
         with (
             patch("voxtera.cli.load_dotenv"),
             patch("voxtera.cli._open_store") as mock_store_fn,
             patch("voxtera.rag.retriever.Retriever.retrieve", return_value=[]),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             mock_store_fn.return_value = MagicMock()
 
@@ -550,7 +503,6 @@ class TestSearch:
             patch("voxtera.cli.load_dotenv"),
             patch("voxtera.cli._open_store") as mock_store_fn,
             patch("voxtera.rag.retriever.Retriever.retrieve", return_value=[result]),
-            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
         ):
             mock_store_fn.return_value = MagicMock()
 

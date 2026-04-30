@@ -28,18 +28,16 @@ class RetrievedChunk:
 
 
 class Retriever:
-    """Async cosine-similarity retriever backed by ChunksStore + OpenAI embeddings."""
+    """Async cosine-similarity retriever backed by ChunksStore + local embeddings."""
 
     def __init__(
         self,
         store: ChunksStore,
         *,
-        api_key: str,
-        top_k: int = 3,
-        min_score: float = 0.4,
+        top_k: int = 5,
+        min_score: float = 0.25,
     ) -> None:
         self._store = store
-        self._api_key = api_key
         self._top_k = top_k
         self._min_score = min_score
 
@@ -61,7 +59,7 @@ class Retriever:
             return []
 
         try:
-            query_vectors = await embed([query], api_key=self._api_key)
+            query_vectors = await embed([query])
         except Exception:
             logger.opt(exception=True).warning("Embedding API error — returning no results")
             return []
@@ -77,9 +75,7 @@ class Retriever:
         query_vec /= query_norm
 
         # Stack all candidate embeddings into a matrix for vectorised cosine similarity.
-        matrix = np.array(
-            [c.embedding for c in candidates], dtype=np.float32
-        )
+        matrix = np.array([c.embedding for c in candidates], dtype=np.float32)
         norms = np.linalg.norm(matrix, axis=1, keepdims=True)
         # Avoid division by zero for any zero-norm stored embeddings.
         norms = np.where(norms == 0, 1.0, norms)

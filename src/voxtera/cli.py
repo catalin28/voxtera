@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from loguru import logger
 
 from voxtera.rag.chunker import chunk_text
-from voxtera.rag.embeddings import embed
+from voxtera.rag.embeddings import PREFIX_PASSAGE, embed
 from voxtera.rag.loaders import load_document
 from voxtera.rag.store import ChunksStore
 
@@ -56,7 +56,6 @@ async def _ingest_file(
     hotel_id: str,
     language: str,
     category: str | None,
-    api_key: str,
 ) -> None:
     """Load, chunk, embed, and store a single file."""
     try:
@@ -71,7 +70,7 @@ async def _ingest_file(
         return
 
     try:
-        vectors = await embed([c.text for c in chunks], api_key=api_key)
+        vectors = await embed([c.text for c in chunks], prefix=PREFIX_PASSAGE)
     except Exception:
         logger.opt(exception=True).warning("Embed failed for {}, skipping", file_path.name)
         return
@@ -104,11 +103,6 @@ async def _ingest_file(
 
 
 def _cmd_ingest(args: argparse.Namespace) -> None:
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    if not api_key:
-        print("Error: OPENAI_API_KEY is not set.", file=sys.stderr)
-        sys.exit(1)
-
     target = Path(args.path)
     if not target.exists():
         print(f"Error: path not found: {target}", file=sys.stderr)
@@ -130,7 +124,6 @@ def _cmd_ingest(args: argparse.Namespace) -> None:
                 hotel_id=args.hotel,
                 language=args.language,
                 category=args.category,
-                api_key=api_key,
             )
 
     asyncio.run(_run())
@@ -160,20 +153,13 @@ def _cmd_list_chunks(args: argparse.Namespace) -> None:
 def _cmd_search(args: argparse.Namespace) -> None:
     from voxtera.rag.retriever import Retriever
 
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    if not api_key:
-        print("Error: OPENAI_API_KEY is not set.", file=sys.stderr)
-        sys.exit(1)
-
     store = _open_store()
 
     # min_score uses the Retriever default (0.5) so CLI search and the live
     # bot apply the same relevance threshold.
-    retriever = Retriever(store, api_key=api_key, top_k=args.top_k)
+    retriever = Retriever(store, top_k=args.top_k)
     results = asyncio.run(
-        retriever.retrieve(
-            hotel_id=args.hotel, query=args.query, language=args.language
-        )
+        retriever.retrieve(hotel_id=args.hotel, query=args.query, language=args.language)
     )
 
     if not results:
@@ -192,8 +178,7 @@ def _cmd_delete(args: argparse.Namespace) -> None:
 
     if not args.yes:
         answer = input(
-            f"Delete all chunks for doc_id={args.doc_id!r} "
-            f"in hotel={args.hotel!r}? [y/N] "
+            f"Delete all chunks for doc_id={args.doc_id!r} " f"in hotel={args.hotel!r}? [y/N] "
         )
         if answer.lower() != "y":
             print("Aborted.")
@@ -240,7 +225,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_search = sub.add_parser("search", help="Semantic search over stored chunks")
     p_search.add_argument("--hotel", required=True, help="Hotel ID")
     p_search.add_argument("--language", default=None, help="Filter by language")
-    p_search.add_argument("--top-k", type=int, default=3, dest="top_k", help="Max results")
+    p_search.add_argument("--top-k", type=int, default=5, dest="top_k", help="Max results")
     p_search.add_argument("query", help="Search query")
 
     # -- delete --------------------------------------------------------

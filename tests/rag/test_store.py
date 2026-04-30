@@ -8,7 +8,7 @@ from voxtera.rag.store import EMBEDDING_DIM, ChunksStore, StoredChunk
 
 
 def _fake_embedding(seed: float = 0.0) -> list[float]:
-    """Return a deterministic 1536-dim vector for testing."""
+    """Return a deterministic embedding vector for testing."""
     return [seed + i * 0.001 for i in range(EMBEDDING_DIM)]
 
 
@@ -67,7 +67,7 @@ class TestUpsertChunk:
         assert store.count(hotel_id="h1") == 3
 
     def test_rejects_wrong_embedding_dimension(self, store: ChunksStore) -> None:
-        with pytest.raises(ValueError, match="expected 1536, got 512"):
+        with pytest.raises(ValueError, match=f"expected {EMBEDDING_DIM}, got 512"):
             store.upsert_chunk(
                 hotel_id="h1",
                 doc_id="d1",

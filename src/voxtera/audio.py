@@ -1,0 +1,703 @@
+"""Mic-side audio processors.
+
+All ``FrameProcessor`` subclasses that touch mic audio or shape transcripts
+on their way to the LLM:
+
+- :class:`RNNoiseDenoiser` — optional pre-VAD denoiser (env knob
+  ``RNNOISE_ENABLED``).
+- :class:`PlaybackLeakageGuard` — silences mic energy while the bot is
+  speaking so VAD doesn't barge in on the bot's own voice.
+- :class:`BotActiveUserFrameSuppressor` — drops user-turn frames during bot
+  speech in the strict (no-interruptions) configuration.
+- :class:`AudioLevelMonitor` — quiet diagnostic; logs mic RMS at DEBUG only.
+- :class:`TranscriptionNoiseFilter` — generic structural + semantic filter
+  for STT output (no hardcoded phrase lists).
+"""
+
+from __future__ import annotations
+
+import re
+import time
+from difflib import SequenceMatcher
+
+import numpy as np
+from loguru import logger
+
+try:
+    from pyrnnoise import RNNoise
+except Exception:  # pragma: no cover - optional dependency at runtime
+    RNNoise = None
+from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
+    InputAudioRawFrame,
+    InterimTranscriptionFrame,
+    LLMFullResponseEndFrame,
+    LLMFullResponseStartFrame,
+    STTUpdateSettingsFrame,
+    TranscriptionFrame,
+    TTSStartedFrame,
+    TTSStoppedFrame,
+    VADUserStartedSpeakingFrame,
+    VADUserStoppedSpeakingFrame,
+)
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+
+from voxtera.prompts import SYSTEM_PROMPT
+
+
+def _tokenize(text: str) -> list[str]:
+    return re.findall(r"[a-zA-Z0-9']+", text.lower())
+
+
+def _repetition_ratio(tokens: list[str]) -> float:
+    if not tokens:
+        return 0.0
+    unique = len(set(tokens))
+    return 1.0 - (unique / len(tokens))
+
+
+def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    denom = float(np.linalg.norm(a) * np.linalg.norm(b))
+    if denom <= 1e-12:
+        return 0.0
+    return float(np.dot(a, b) / denom)
+
+
+# Known multilingual Whisper hallucinations on silent / unclear audio.
+# These appear verbatim in Whisper's training data (YouTube/podcast outros)
+# and Whisper "transcribes" them when there's nothing else to latch onto.
+# Compared as exact, lower-cased, punctuation-stripped strings.
+_WHISPER_HALLUCINATION_EXACT: frozenset[str] = frozenset(
+    {
+        # English
+        "thank you",
+        "thanks for watching",
+        "thank you for watching",
+        "thanks for listening",
+        "thank you so much",
+        "subscribe to my channel",
+        "like and subscribe",
+        "you",
+        "bye",
+        "okay",
+        "ok",
+        # Prompt-echo: Whisper sometimes regurgitates its own prompt
+        # when audio is too short or unclear.
+        "do not paraphrase or invent words",
+        "transcribe exactly what the user says",
+        "detect the language automatically",
+        "hotel guest speaking",
+        "multiple languages possible",
+        "hotel concierge conversation",
+        # Romanian (observed in the wild — see VOX-* logs).
+        "poți să vă abonați și să vă lăsați un like",
+        "poti sa va abonati si sa va lasati un like",
+        "abonațivă și lăsați un like",
+        "abonati va si lasati un like",
+        "mulțumesc pentru vizionare",
+        "multumesc pentru vizionare",
+        # French
+        "abonnez vous",
+        "abonnez vous à ma chaîne",
+        "merci d avoir regardé",
+        "n oubliez pas de vous abonner",
+        # Spanish
+        "suscríbete a mi canal",
+        "suscribete a mi canal",
+        "dale like y suscríbete",
+        "dale like y suscribete",
+        "gracias por ver",
+        # Italian
+        "iscriviti al mio canale",
+        "grazie per aver guardato",
+        # German
+        "abonniert meinen kanal",
+        "danke fürs zuschauen",
+        "danke fuers zuschauen",
+        # Portuguese
+        "se inscreva no canal",
+        "obrigado por assistir",
+    }
+)
+
+# Multilingual keyword set for the "subscribe + like" YouTube-outro pattern.
+# Whisper produces this in countless surface forms; rather than enumerate
+# every variant, we scan the normalized transcription for ANY of these
+# language-specific tokens. If two of them co-occur in a short utterance
+# the message is almost certainly a YouTube hallucination, regardless of
+# the exact wording.
+_SUBSCRIBE_TOKENS: frozenset[str] = frozenset(
+    {
+        # English
+        "subscribe",
+        # Romanian
+        "abonati",
+        "abonați",
+        "abonează",
+        "aboneaza",
+        "abonatie",
+        "abonatii",
+        # French
+        "abonner",
+        "abonnez",
+        "abonnement",
+        # Spanish
+        "suscríbete",
+        "suscribete",
+        "suscribirse",
+        "suscribir",
+        # Italian
+        "iscriviti",
+        "iscrivetevi",
+        # German
+        "abonniert",
+        "abonniere",
+        # Portuguese
+        "inscreva",
+        "inscrever",
+    }
+)
+_LIKE_TOKENS: frozenset[str] = frozenset(
+    {
+        # English
+        "like",
+        # Romanian
+        "lăsați",
+        "lasati",
+        "apreciați",
+        "apreciati",
+        # French
+        "aimer",
+        "pouce",
+        # Spanish
+        "manita",
+        # German / Italian / Portuguese borrow English "like" too.
+    }
+)
+
+
+def _is_known_whisper_hallucination(normalized: str) -> bool:
+    """Return True if the normalized text matches a known multilingual hallucination.
+
+    `normalized` should already be lower-cased and punctuation-stripped.
+
+    Two checks:
+    1. Exact match against :data:`_WHISPER_HALLUCINATION_EXACT`.
+    2. Co-occurrence of a "subscribe" token and a "like" token in a short
+       utterance — catches every YouTube-outro hallucination Whisper
+       produces, in any language, without needing to enumerate variants.
+    """
+    if normalized in _WHISPER_HALLUCINATION_EXACT:
+        return True
+    tokens = set(normalized.split())
+    if not tokens:
+        return False
+    has_subscribe = bool(tokens & _SUBSCRIBE_TOKENS)
+    has_like = bool(tokens & _LIKE_TOKENS)
+    return has_subscribe and has_like and len(tokens) <= 20
+
+
+class TranscriptionNoiseFilter(FrameProcessor):
+    """Generic transcription filter with no hardcoded phrase/domain lists.
+
+    Uses structural text signals + semantic similarity to the system prompt
+    embedding. This avoids brittle word/phrase allow/deny lists.
+    """
+
+    def __init__(self, stt: FrameProcessor | None = None) -> None:
+        super().__init__()
+        self._stt = stt
+        self._domain_vec: np.ndarray | None = None
+        self._embed_sync = None
+        self._last_text = ""
+        self._last_text_at = 0.0
+        # Language consistency tracking: detect suspicious switches on short
+        # utterances which are almost always Whisper hallucinations.
+        self._prev_language: str | None = None
+        self._consistent_lang_turns: int = 0
+
+        try:
+            from voxtera.rag.embeddings import embed_sync
+
+            self._embed_sync = embed_sync
+            vec = np.asarray(embed_sync([SYSTEM_PROMPT])[0], dtype=np.float32)
+            self._domain_vec = vec
+            logger.info("[stt-filter] semantic mode enabled")
+        except Exception as exc:
+            logger.warning("[stt-filter] semantic mode unavailable (fallback heuristics): {}", exc)
+
+    def _is_low_signal_noise(self, text: str) -> bool:
+        t = text.strip()
+        if not t:
+            return True
+
+        tokens = _tokenize(t)
+        n_tokens = len(tokens)
+        if n_tokens == 0:
+            return True
+
+        sentence_like = t.count(".") + t.count("?") + t.count("!")
+        punct_density = sentence_like / max(n_tokens, 1)
+        rep = _repetition_ratio(tokens)
+
+        # Generic noisy-narration profile (no phrase list): long + repetitive + sentence-heavy.
+        if n_tokens >= 30 and rep >= 0.35:
+            return True
+        return sentence_like >= 3 and n_tokens >= 18 and punct_density >= 0.10 and rep >= 0.25
+
+    def _is_semantically_relevant(self, text: str) -> float | None:
+        if self._domain_vec is None or self._embed_sync is None:
+            return None
+        try:
+            v = np.asarray(self._embed_sync([text])[0], dtype=np.float32)
+            return _cosine_similarity(v, self._domain_vec)
+        except Exception:
+            return None
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, STTUpdateSettingsFrame):
+            # User explicitly switched language — reset language tracking so
+            # the very next utterance in the new language is not blocked by
+            # the consistency guard.
+            self._prev_language = None
+            self._consistent_lang_turns = 0
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, TranscriptionFrame):
+            text = (frame.text or "").strip()
+            if not text:
+                return
+
+            logger.debug("[stt-filter] raw transcription: {!r}", text)
+
+            # Whisper has well-known hallucinations from YouTube/podcast training
+            # data that appear on silent/unclear audio. Drop them unconditionally.
+            #
+            # We use TWO checks: an exact-match set for common single phrases,
+            # and a substring/keyword scan for the universal "subscribe and
+            # like" YouTube-outro pattern, which Whisper produces in every
+            # language it knows (Romanian "abonați", French "abonner",
+            # Spanish "suscríbete", etc.).
+            normalized = re.sub(r"[^\w\s]", "", text.lower()).strip()
+            if _is_known_whisper_hallucination(normalized):
+                logger.warning("[stt-filter] dropped known Whisper hallucination: {!r}", text)
+                return
+
+            # Deduplicate transcript bursts often produced by noisy overlaps.
+            now = time.monotonic()
+            if self._last_text:
+                similarity = SequenceMatcher(None, self._last_text, text).ratio()
+                if similarity >= 0.92 and (now - self._last_text_at) <= 2.0:
+                    logger.debug("[stt-filter] dropped near-duplicate transcription")
+                    return
+
+            if self._is_low_signal_noise(text):
+                logger.warning("[stt-filter] dropped low-signal transcription")
+                return
+
+            sim = self._is_semantically_relevant(text)
+            if sim is not None:
+                token_count = len(_tokenize(text))
+                rep = _repetition_ratio(_tokenize(text))
+                # Short hallucinations (1-2 words) with low relevance — classic
+                # Whisper artifacts from noise bursts ("SHINY!", "Love that.").
+                # 3-4 token phrases can be valid user questions ("Can you hear me?").
+                if sim < 0.25 and token_count <= 2:
+                    logger.warning(
+                        "[stt-filter] dropped short hallucination (sim={:.3f}): {!r}",
+                        sim,
+                        text,
+                    )
+                    return
+                # Very low semantic relevance + narration shape => likely background media.
+                if sim < 0.10 and token_count >= 8:
+                    logger.warning(
+                        "[stt-filter] dropped low-relevance transcription (sim={:.3f})",
+                        sim,
+                    )
+                    return
+                if sim < 0.14 and rep >= 0.40 and token_count >= 6:
+                    logger.warning("[stt-filter] dropped repetitive low-relevance transcription")
+                    return
+
+            # Language consistency guard: if the user has been speaking one
+            # language for several turns and the STT suddenly detects a
+            # different language on a short utterance (≤5 words), it's almost
+            # certainly a mis-detection. Drop the frame.
+            detected_lang = (
+                getattr(self._stt, "last_detected_language", None) if self._stt else None
+            )
+            if detected_lang:
+                token_count_lang = len(_tokenize(text))
+                if self._prev_language and detected_lang != self._prev_language:
+                    if token_count_lang <= 2 and self._consistent_lang_turns >= 3:
+                        logger.warning(
+                            "[stt-filter] dropped likely language mis-detection: "
+                            "prev={}, detected={}, text={!r} ({} tokens, {} consistent turns)",
+                            self._prev_language,
+                            detected_lang,
+                            text,
+                            token_count_lang,
+                            self._consistent_lang_turns,
+                        )
+                        return
+                    # Longer utterance or not enough history — accept the switch.
+                    self._prev_language = detected_lang
+                    self._consistent_lang_turns = 1
+                else:
+                    self._prev_language = detected_lang
+                    self._consistent_lang_turns += 1
+
+            self._last_text = text
+            self._last_text_at = now
+        await self.push_frame(frame, direction)
+
+
+class AudioLevelMonitor(FrameProcessor):
+    """Diagnostic processor that logs mic RMS at DEBUG level only.
+
+    Quiet by default — when LOG_LEVEL=INFO this contributes zero output.
+    Flip to DEBUG when troubleshooting "why isn't the bot hearing me?".
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._frame_count = 0
+        self._peak = 0.0
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        if isinstance(frame, InputAudioRawFrame) and frame.audio:
+            samples = np.frombuffer(frame.audio, dtype=np.int16)
+            if samples.size:
+                rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2))) / 32768.0
+                self._peak = max(self._peak, rms)
+                self._frame_count += 1
+                # Roughly once every 5s of audio at 50 frames/sec.
+                if self._frame_count % 250 == 0:
+                    logger.debug(
+                        "[audio] RMS={:.4f} peak={:.4f}",
+                        rms,
+                        self._peak,
+                    )
+        await self.push_frame(frame, direction)
+
+
+class PlaybackLeakageGuard(FrameProcessor):
+    """Reduce mic audio while bot is speaking to avoid false barge-in.
+
+    In noisy rooms (or with speaker leakage), VAD can trigger while TTS is
+    playing, which interrupts the bot mid-answer. This processor ducks mic
+    energy during bot speech so accidental interruptions are less likely,
+    without requiring environment-specific tuning.
+    """
+
+    def __init__(self, allow_interruptions: bool = False) -> None:
+        super().__init__()
+        self._allow_interruptions = allow_interruptions
+        self._bot_speaking = False
+        self._bot_thinking = False
+        self._cooldown_until = 0.0
+        self._barge_in_open = False
+        self._barge_in_frames = 0
+
+        # Adaptive baseline for ambient/noise leakage level.
+        self._noise_floor = 0.005
+        self._noise_floor_alpha = 0.02
+
+        # Auto-tuned gate settings (no env knobs required).
+        self._open_ratio = 3.5
+        # Built-in laptop mics often peak around 0.05-0.07 RMS for speech.
+        # Keep threshold below that so intentional barge-in can open.
+        self._min_open_rms = 0.045
+        self._required_open_frames = 8  # ~160ms at 20ms frames
+        self._post_tts_cooldown_secs = 0.25
+
+    @staticmethod
+    def _clone_audio_frame(frame: InputAudioRawFrame, audio_bytes: bytes) -> InputAudioRawFrame:
+        output = InputAudioRawFrame(
+            audio=audio_bytes,
+            sample_rate=frame.sample_rate,
+            num_channels=frame.num_channels,
+        )
+        output.pts = frame.pts
+        output.metadata = dict(frame.metadata)
+        output.transport_source = frame.transport_source
+        output.transport_destination = frame.transport_destination
+        output.broadcast_sibling_id = frame.broadcast_sibling_id
+        return output
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        now = time.monotonic()
+
+        if isinstance(frame, BotStartedSpeakingFrame):
+            self._bot_speaking = True
+            self._barge_in_open = False
+            self._barge_in_frames = 0
+            logger.debug("[leakage-guard] BotStartedSpeaking → bot_speaking=True")
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, BotStoppedSpeakingFrame):
+            self._bot_speaking = False
+            self._barge_in_open = False
+            self._barge_in_frames = 0
+            self._cooldown_until = now + self._post_tts_cooldown_secs
+            logger.debug("[leakage-guard] BotStoppedSpeaking → bot_speaking=False")
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, LLMFullResponseStartFrame):
+            # Treat thinking as bot-active for leakage suppression; otherwise
+            # background speech can cancel the in-flight reply and yield <empty>.
+            self._bot_thinking = True
+            self._barge_in_open = False
+            self._barge_in_frames = 0
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, LLMFullResponseEndFrame):
+            self._bot_thinking = False
+            await self.push_frame(frame, direction)
+            return
+
+        # Some transports/services emit TTS lifecycle more reliably than bot
+        # speaking frames. Handle both so state never gets stuck.
+        if isinstance(frame, TTSStartedFrame):
+            self._bot_speaking = True
+            self._barge_in_open = False
+            self._barge_in_frames = 0
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, TTSStoppedFrame):
+            self._bot_speaking = False
+            self._barge_in_open = False
+            self._barge_in_frames = 0
+            self._cooldown_until = now + self._post_tts_cooldown_secs
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, InputAudioRawFrame) and frame.audio:
+            samples = np.frombuffer(frame.audio, dtype=np.int16)
+            if not samples.size:
+                await self.push_frame(frame, direction)
+                return
+
+            rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2))) / 32768.0
+            bot_active = self._bot_speaking or self._bot_thinking
+
+            # Track ambient baseline when the bot is not speaking.
+            if not bot_active and now >= self._cooldown_until:
+                if rms < 0.12:
+                    self._noise_floor = (
+                        1.0 - self._noise_floor_alpha
+                    ) * self._noise_floor + self._noise_floor_alpha * rms
+                await self.push_frame(frame, direction)
+                return
+
+            # Gate audio to suppress TTS playback echo reaching VAD/STT.
+            # Strict mode (no interruptions): always suppress.
+            # Interruptions enabled: use the RMS barge-in gate so genuine
+            # near-field speech opens the gate while speaker echo stays closed.
+            open_threshold = max(self._noise_floor * self._open_ratio, self._min_open_rms)
+
+            if not self._allow_interruptions:
+                # Never open while bot is active.
+                silent = np.zeros_like(samples, dtype=np.int16)
+                output = self._clone_audio_frame(frame, silent.tobytes())
+                await self.push_frame(output, direction)
+                return
+
+            if rms >= open_threshold:
+                self._barge_in_frames += 1
+            else:
+                self._barge_in_frames = max(0, self._barge_in_frames - 1)
+
+            if self._barge_in_frames >= self._required_open_frames:
+                if not self._barge_in_open:
+                    logger.info(
+                        "[barge-in] opened gate (rms={:.4f}, floor={:.4f}, threshold={:.4f})",
+                        rms,
+                        self._noise_floor,
+                        open_threshold,
+                    )
+                self._barge_in_open = True
+
+            if self._barge_in_open:
+                await self.push_frame(frame, direction)
+                return
+
+            # Suppress TTS playback leakage before it reaches VAD.
+            silent = np.zeros_like(samples, dtype=np.int16)
+            output = self._clone_audio_frame(frame, silent.tobytes())
+            await self.push_frame(output, direction)
+            return
+
+        await self.push_frame(frame, direction)
+
+
+class BotActiveUserFrameSuppressor(FrameProcessor):
+    """Drop user-turn frames while bot is generating/speaking.
+
+    In noisy environments, residual VAD/STT events can still appear while a
+    bot response is in flight. If interruptions are disabled, these frames
+    should not create/cancel turns; swallow them until the bot is idle.
+    """
+
+    def __init__(self, allow_interruptions: bool = False) -> None:
+        super().__init__()
+        self._allow_interruptions = allow_interruptions
+        self._bot_active = False
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, LLMFullResponseStartFrame | BotStartedSpeakingFrame | TTSStartedFrame):
+            self._bot_active = True
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, LLMFullResponseEndFrame | BotStoppedSpeakingFrame | TTSStoppedFrame):
+            self._bot_active = False
+            await self.push_frame(frame, direction)
+            return
+
+        if self._allow_interruptions:
+            await self.push_frame(frame, direction)
+            return
+
+        if self._bot_active and isinstance(
+            frame,
+            VADUserStartedSpeakingFrame
+            | VADUserStoppedSpeakingFrame
+            | InterimTranscriptionFrame
+            | TranscriptionFrame,
+        ):
+            logger.debug(
+                "[barge-in] dropped user frame while bot active: {}",
+                frame.__class__.__name__,
+            )
+            return
+
+        await self.push_frame(frame, direction)
+
+
+class RNNoiseDenoiser(FrameProcessor):
+    """Apply RNNoise denoising on mic audio before VAD/STT."""
+
+    def __init__(self, sample_rate: int = 16000) -> None:
+        super().__init__()
+        if RNNoise is None:
+            raise RuntimeError(
+                "RNNoise requested but 'pyrnnoise' is not installed. Run `uv sync` first."
+            )
+        self._sample_rate = sample_rate
+        self._denoiser = RNNoise(sample_rate=sample_rate)
+        self._disabled = False
+        # Keep speech intelligibility first: if RNNoise output collapses
+        # compared with the original frame, bypass denoising for that frame.
+        self._min_input_rms_for_guard = 0.01
+        self._suppression_guard_ratio = 0.18
+        # Blend a little original signal back in to reduce metallic artifacts.
+        self._dry_mix = 0.35
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if self._disabled or not isinstance(frame, InputAudioRawFrame) or not frame.audio:
+            await self.push_frame(frame, direction)
+            return
+
+        if frame.sample_rate != self._sample_rate:
+            logger.warning(
+                "[rnnoise] bypassing frame: expected {}Hz, got {}Hz",
+                self._sample_rate,
+                frame.sample_rate,
+            )
+            await self.push_frame(frame, direction)
+            return
+
+        try:
+            samples = np.frombuffer(frame.audio, dtype=np.int16)
+            if samples.size == 0:
+                await self.push_frame(frame, direction)
+                return
+
+            if frame.num_channels > 1:
+                channel_audio = samples.reshape(-1, frame.num_channels).T
+            else:
+                channel_audio = samples.reshape(1, -1)
+
+            input_rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2))) / 32768.0
+            denoised_chunks: list[np.ndarray] = []
+            for _, denoised in self._denoiser.denoise_chunk(channel_audio, partial=False):
+                denoised_np = np.asarray(denoised, dtype=np.int16)
+                if denoised_np.ndim == 1:
+                    denoised_chunks.append(denoised_np)
+                else:
+                    denoised_chunks.append(denoised_np.T.reshape(-1))
+
+            if not denoised_chunks:
+                await self.push_frame(frame, direction)
+                return
+
+            denoised_audio = np.concatenate(denoised_chunks).astype(np.int16, copy=False)
+
+            # Keep output length stable frame-to-frame to avoid timing drift.
+            if denoised_audio.size != samples.size:
+                if denoised_audio.size > samples.size:
+                    denoised_audio = denoised_audio[: samples.size]
+                else:
+                    denoised_audio = np.pad(
+                        denoised_audio,
+                        (0, samples.size - denoised_audio.size),
+                        mode="constant",
+                    )
+
+            denoised_rms = (
+                float(np.sqrt(np.mean(denoised_audio.astype(np.float32) ** 2))) / 32768.0
+                if denoised_audio.size
+                else 0.0
+            )
+
+            # Guardrail: if denoiser crushes energy on likely-speech frames,
+            # pass through original audio so STT doesn't lose words.
+            if (
+                input_rms >= self._min_input_rms_for_guard
+                and denoised_rms < input_rms * self._suppression_guard_ratio
+            ):
+                logger.debug(
+                    "[rnnoise] bypass frame: over-suppressed (in={:.4f}, out={:.4f})",
+                    input_rms,
+                    denoised_rms,
+                )
+                await self.push_frame(frame, direction)
+                return
+
+            # Wet/dry mix keeps consonants clearer while still lowering noise.
+            mixed = (1.0 - self._dry_mix) * denoised_audio.astype(
+                np.float32
+            ) + self._dry_mix * samples.astype(np.float32)
+            denoised_audio = np.clip(mixed, -32768.0, 32767.0).astype(np.int16)
+
+            output = InputAudioRawFrame(
+                audio=denoised_audio.tobytes(),
+                sample_rate=frame.sample_rate,
+                num_channels=frame.num_channels,
+            )
+            output.pts = frame.pts
+            output.metadata = dict(frame.metadata)
+            output.transport_source = frame.transport_source
+            output.transport_destination = frame.transport_destination
+            output.broadcast_sibling_id = frame.broadcast_sibling_id
+            await self.push_frame(output, direction)
+        except Exception as exc:
+            logger.warning("[rnnoise] disabling denoiser after processing error: {}", exc)
+            self._disabled = True
+            await self.push_frame(frame, direction)
