@@ -230,6 +230,123 @@ Steps:
 
 **Done when:** sales team can run the demo end-to-end without engineering support.
 
+### Phase 8 — Interactive staff actions (Telegram inline buttons)
+
+Goal: turn the staff channel from a passive feed into an interactive workspace. Staff click buttons under each ticket to acknowledge, claim, escalate, or resolve, and the bot reflects the new state in real time. This is the demo moment that turns "the AI files a ticket" into "the AI runs an operations loop".
+
+#### 8.1 Why this matters
+
+A ticket arriving in Telegram is good. A ticket arriving with `[🔍 Find available maintenance]` `[✅ I'm on it]` `[❌ Pass to next shift]` underneath is *visibly* a workflow — the kind of thing a hotel ops manager understands without an explanation. Adding this raises the demo's perceived value disproportionately to its build cost.
+
+#### 8.2 Architecture additions
+
+The bot is currently fire-and-forget — it sends, it does not listen. This phase adds an inbound channel from Telegram back into Voxtera.
+
+```
+Voxtera bot → Telegram API: sendMessage with inline_keyboard
+                                   ↓
+                              Telegram channel
+                                   ↓ (staff clicks button)
+                              Telegram API
+                                   ↓
+Voxtera bot ← long polling getUpdates ← TelegramListener
+                                   ↓
+                              ButtonAction registry → handler
+                                   ↓
+                              State update + editMessageText
+                                   ↓
+                              (optional) push event back into voice loop
+```
+
+Two channels of inbound events to consider:
+
+- **Long polling** — a background task polls Telegram's `getUpdates` endpoint. Simplest to set up, no public URL needed, fine for demo.
+- **Webhook** — Telegram posts to our public URL. More elegant, requires SSL endpoint (we already have nginx on the Droplet). Switch to this when we go to production.
+
+Phase 8 builds long polling first; webhook is a swap-in later.
+
+#### 8.3 New components
+
+1. **`TelegramListener`** — async background task running `getUpdates` with a 30s long-poll timeout. Emits a `ButtonClicked` event for each `callback_query`. Survives Telegram brief outages by retrying with exponential backoff.
+
+2. **`ButtonAction` interface** — abstract async callable: takes a `ButtonClicked` event, returns an `ActionResult` (new message text, optional new buttons, optional notification to push back to the voice bot).
+
+3. **`ActionRegistry`** — maps `action_id` → `ButtonAction`. Registered at startup, hotel-specific subset configurable via `HotelConfig`.
+
+4. **`TicketRecord`** — persistent state per ticket: `session_id`, `telegram_message_id`, `status` (one of `open`, `claimed`, `assigned`, `resolved`), `claimed_by`, `assigned_to`, action history. Stored in SQLite (small table, easy to inspect during demo).
+
+5. **`InteractiveTelegramSink`** — extends/replaces `TelegramSink`. On `send`, attaches an `inline_keyboard` derived from the ticket's category. Returns the Telegram `message_id` so we can later call `editMessageText` on the same post. Persists a `TicketRecord`.
+
+#### 8.4 Button catalogue (initial)
+
+Wired per category. Each button stores a compact `action_id|session_id` in `callback_data` (Telegram limit: 64 bytes — short IDs matter).
+
+| Category | Buttons |
+|---|---|
+| Maintenance | `🔍 Find available technician` · `✅ I'm on it` · `❌ Pass to next shift` · `✓ Resolved` |
+| Concierge | `📞 Call guest` · `✅ Handling` · `✓ Resolved` |
+| Restaurant | `📅 Add to reservations` · `✅ Confirmed` · `❌ Fully booked — apologise` |
+| Housekeeping | `✅ Sending now` · `✓ Done` |
+| Lost & Found | `🔍 Search inventory` · `✅ Found` · `❌ Not found yet` |
+| Emergency | `📞 Call guest` · `🚨 Notify manager` · `✓ Resolved` |
+| Complaint | `📞 Call guest` · `✅ Handling` · `📝 Request manager` |
+| Reservation | `✅ Booked` · `❌ Unavailable` |
+| Feedback | `👁 Acknowledged` |
+| Other | `✅ I'm on it` · `✓ Resolved` |
+
+#### 8.5 Demo data and mock actions
+
+For the demo, several actions need fake-but-credible data to act on:
+
+- **`Find available technician`** — pick from a YAML-configured list (`config/hotels/<hotel_id>/staff.yaml`) using a simple "least recently assigned" rule. Output: edit the ticket message to *"✅ Maintenance assigned: John Smith — ETA 5 min"*.
+- **`Call guest`** — generate a `tel:` URL with the room's PMS-on-file number (mocked for demo). Output: a follow-up message with a clickable phone link.
+- **`Add to reservations`** — for restaurant tickets, write to a per-hotel JSON file simulating the restaurant's ledger. Output: confirmation with the booking time.
+
+These are deliberately mock implementations. When real PMS / staff scheduling integrations land, only the action handlers change.
+
+#### 8.6 State machine
+
+A ticket moves through:
+
+```
+open  → claimed (one staff member tapped "I'm on it")
+      → assigned (auto-assigned by Find-available action)
+      → resolved (any staff tapped "Resolved" or category-specific equivalent)
+```
+
+Race condition handling: the first click wins. Subsequent clicks on a now-stale button receive an `answerCallbackQuery` toast: *"Already claimed by John Smith."* No state mutation.
+
+#### 8.7 Optional: feedback loop into the voice bot
+
+If the action loop completes within a few seconds (fast resolution), an optional notification can be pushed into the active voice call, so the bot tells the guest: *"Maintenance is on the way — they'll be at your room in five minutes."* This requires a side channel from the action layer to the active Pipecat task. Worth scoping separately; flag as Phase 9 if pursued.
+
+#### 8.8 Development steps
+
+1. Extend `Ticket` flow to retain `telegram_message_id` after send (currently discarded).
+2. Add `TicketRecord` table to a small SQLite database at `data/tickets.db`.
+3. Build `InteractiveTelegramSink` as a thin extension of `TelegramSink` that attaches `inline_keyboard` markup and persists the record.
+4. Build `TelegramListener` as a standalone async task. Start it from `bot.py` when `INTERACTIVE_ACTIONS_ENABLED=true`.
+5. Build `ActionRegistry` and an initial set of three or four actions (`acknowledge`, `find_available`, `resolve`, `call_guest`). Wire them via per-category button maps.
+6. Add `staff.yaml` per hotel with mock staff lists.
+7. Manual test: post a ticket, click each button, observe message edits and channel toasts.
+8. Add a small demo script (`scripts/test_interactive_buttons.py`) that posts a ticket and prints the listener's events for 30 seconds.
+
+#### 8.9 Risks and edge cases
+
+- **Callback data 64-byte limit.** Keep `action_id` short; consider hashing `session_id` to a 6-char prefix.
+- **Bot-must-be-admin (already true)** — same permission as Phase 1, no new setup.
+- **Listener crashes** — must restart cleanly without losing the polling offset. Persist offset to disk.
+- **Multiple bots in one channel** — irrelevant for demo, becomes relevant at scale; bot only handles its own callbacks (Telegram dispatches by `bot_id`).
+- **Reverting** — `INTERACTIVE_ACTIONS_ENABLED=false` falls back to plain `TelegramSink`. Tickets still arrive, just without buttons.
+
+#### 8.10 Done when
+
+- A staff member can click `I'm on it` on a maintenance ticket and the message updates with their name and timestamp.
+- A staff member can click `Find available technician` and a name is auto-assigned within 2 seconds.
+- A staff member can click `Resolved` and the ticket is visually marked done (struck through or prefixed with ✓).
+- Two staff members tapping the same button in the same second produce one update; the slower one sees a "already claimed" toast.
+- The whole loop survives killing and restarting the bot mid-demo without losing in-flight ticket state.
+
 ---
 
 ## 6. Out of scope (for now)
@@ -271,9 +388,10 @@ Rough engineering estimate, single developer:
 | 5. UX polish | 3 |
 | 6. Testing | 4 |
 | 7. Demo readiness | 2 |
-| **Total** | **~20–22 hours** |
+| 8. Interactive staff actions (Telegram buttons) | 5–7 |
+| **Total** | **~25–29 hours** |
 
-Most of the risk is in Phase 3 (prompt engineering — getting Claude to consistently confirm before filing across languages). Budget a buffer there.
+Most of the risk is in Phase 3 (prompt engineering — getting Claude to consistently confirm before filing across languages). Budget a buffer there. Phase 8 can be deferred until Phases 1–7 are demo-stable; it is independently valuable and slot-ins behind a feature flag.
 
 ---
 
@@ -285,3 +403,4 @@ The feature ships successfully when:
 2. In 20 test calls across 5 languages, the bot correctly files a ticket on every clear request and never files on a plain question or a "no" confirmation.
 3. The hotel config can be swapped in under 5 minutes per new demo hotel.
 4. Replacing `TelegramSink` with `FreshdeskSink` (when we get there) requires zero changes to the bot's conversation logic.
+5. (Phase 8) During the demo, an observer sees the bot file a ticket *and* sees a staff member click a button under it that triggers a visible state change — proving the loop is bidirectional, not just one-way notification.
