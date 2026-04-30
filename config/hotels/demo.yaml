@@ -1,0 +1,39 @@
+# Demo hotel config for Voxtera.
+# Loaded by `voxtera.actions.hotel_config.load_hotel_config("demo")`.
+# Matches the rag content in `demo-hotel/`.
+
+hotel_name: "Grand Hôtel Lumière"
+
+# Staff operate in English. The bot still speaks to guests in their detected
+# language, but ticket summaries land in the channel translated to English.
+official_language: "en"
+
+# `Voxtera Demo Tickets` channel. Bot must be admin with Post messages perm.
+# See docs/ACTIONS_FEATURE_PLAN.md Phase 1 for setup.
+telegram_channel_id: "-1003718824790"
+
+# Subset of categories this hotel accepts. The LLM tool will only choose
+# from this list. Trim if a hotel doesn't want a category (e.g. small
+# boutique hotels often won't have a separate Concierge desk).
+allowed_categories:
+  - Maintenance
+  - Reservation
+  - Concierge
+  - Restaurant
+  - Housekeeping
+  - Lost & Found
+  - Complaint
+  - Emergency
+  - Feedback
+  - Other
+
+# Hotel-specific facts the LLM should know. Used in Phase 3 when we update
+# the system prompt. Keep it short — every token costs latency.
+system_prompt_addendum: |
+  You are deployed at the Grand Hôtel Lumière, a 5-star property in Paris's
+  8th arrondissement near the Champs-Élysées. House amenities include
+  Diptyque bath products, Nespresso machines, rainfall showers in Deluxe
+  rooms and above, and a Hypnos mattress in every room. The hotel speaks
+  both English and French; reply to guests in their detected language, but
+  file all staff-facing tickets in English regardless of the guest's
+  language.
