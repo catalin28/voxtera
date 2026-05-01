@@ -36,6 +36,8 @@ from voxtera.actions import load_hotel_config
 from voxtera.actions.button_actions import ActionRegistry
 from voxtera.actions.interactive_sink import InteractiveTelegramSink
 from voxtera.actions.listener import TelegramListener
+from voxtera.actions.staff import StaffDirectory
+from voxtera.actions.staff_notifier import TelegramStaffNotifier
 from voxtera.actions.state import TicketStateStore
 from voxtera.actions.ticket import Category, Ticket
 
@@ -56,10 +58,14 @@ async def _run() -> int:
 
     # Shared state store between sink (writes records) and listener (reads + mutates them).
     store = TicketStateStore()
+    # Per-category staff list for the picker. Falls back to empty if the YAML
+    # is missing — handlers degrade to "no staff configured" toast.
+    directory = StaffDirectory.for_hotel(cfg.hotel_id)
     sink = InteractiveTelegramSink(
         bot_token=bot_token,
         channel_id=cfg.telegram_channel_id,
         store=store,
+        directory=directory,
     )
 
     # Sample ticket: a French guest reporting a broken AC. Same shape as
@@ -84,10 +90,15 @@ async def _run() -> int:
         os.getenv("VOXTERA_DEMO_SECS", str(_DEFAULT_DEMO_SECS)),
     )
 
+    # The notifier sends DMs to staff after assignment (when their
+    # telegram_chat_id is set in staff.yaml). Failures are logged, never
+    # raised, so the assignment flow continues even if a staff hasn't
+    # DM'd the bot yet.
+    notifier = TelegramStaffNotifier(bot_token=bot_token)
     listener = TelegramListener(
         bot_token=bot_token,
         store=store,
-        registry=ActionRegistry(),
+        registry=ActionRegistry(directory=directory, notifier=notifier),
     )
 
     duration = float(os.getenv("VOXTERA_DEMO_SECS", str(_DEFAULT_DEMO_SECS)))

@@ -25,7 +25,14 @@ from voxtera.actions.integration import wire_actions
 from voxtera.actions.interactive_sink import InteractiveTelegramSink
 from voxtera.actions.listener import TelegramListener
 from voxtera.actions.prompt import build_actions_prompt_fragment, compose_system_prompt
+from voxtera.actions.runtime import ActionRuntime, build_action_runtime
 from voxtera.actions.sink import TicketSink
+from voxtera.actions.staff import Staff, StaffDirectory
+from voxtera.actions.staff_notifier import (
+    NoopStaffNotifier,
+    StaffNotifier,
+    TelegramStaffNotifier,
+)
 from voxtera.actions.state import (
     TicketRecord,
     TicketStateStore,
@@ -46,14 +53,21 @@ __all__ = [
     "ButtonEvent",
     "Category",
     "HotelConfig",
+    "ActionRuntime",
     "InteractiveTelegramSink",
+    "NoopStaffNotifier",
+    "Staff",
+    "StaffDirectory",
+    "StaffNotifier",
     "TelegramListener",
+    "TelegramStaffNotifier",
     "TelegramSink",
     "Ticket",
     "TicketRecord",
     "TicketSink",
     "TicketStateStore",
     "TicketStatus",
+    "build_action_runtime",
     "build_actions_prompt_fragment",
     "build_create_ticket_tool",
     "build_openai_tools",

@@ -88,6 +88,11 @@ class Settings:
         "spa treatments, pool hours, restaurant menu, dishes, check-in, "
         "check-out, wifi password, taxi, museum, airport, Paris, Louvre."
     )
+    # Actions feature: register the `create_ticket` LLM tool, post tickets to
+    # the configured Telegram channel, and run the staff-button listener as
+    # a background task. Requires TELEGRAM_BOT_TOKEN. The Telegram channel
+    # ID is read from the per-hotel config in config/hotels/<hotel_id>.yaml.
+    actions_enabled: bool = False
 
 
 def _require(name: str) -> str:
@@ -150,4 +155,5 @@ def load_settings() -> Settings:
                 "check-out, wifi password, taxi, museum, airport, Paris, Louvre."
             ),
         ),
+        actions_enabled=os.environ.get("ACTIONS_ENABLED", "false").lower() in ("1", "true", "yes"),
     )

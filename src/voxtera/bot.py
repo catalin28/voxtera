@@ -103,7 +103,20 @@ async def _keyboard_input_loop(task, *, hotel_id: str | None = None) -> None:
 
 async def run_bot(settings: Settings) -> None:
     """Build and run the voice loop until interrupted."""
-    task, runner = build_pipeline(settings)
+    # Build the actions runtime up front (if the feature is enabled) so the
+    # same `sink`, `store`, and `directory` are shared by the pipeline AND
+    # the long-running button listener task.
+    action_runtime = None
+    if settings.actions_enabled:
+        from voxtera.actions import build_action_runtime
+
+        try:
+            action_runtime = build_action_runtime(settings.hotel_id)
+        except Exception as e:
+            logger.error("[actions] runtime build failed: {} — disabling actions", e)
+            action_runtime = None
+
+    task, runner = build_pipeline(settings, action_runtime=action_runtime)
 
     if settings.input_mode == "text":
         logger.info("Voxtera ready (text mode — mic disabled). Type to chat. Ctrl-C to quit.")
@@ -134,6 +147,14 @@ async def run_bot(settings: Settings) -> None:
             _keyboard_input_loop(task, hotel_id=settings.hotel_id if settings.rag_enabled else None)
         )
 
+    # Long-running listener for staff button taps in Telegram. Runs alongside
+    # the voice pipeline so a tap fires a handler instantly without blocking
+    # the audio loop. Uses the same store the pipeline writes tickets to.
+    listener_task: asyncio.Task | None = None
+    if action_runtime is not None:
+        listener_task = asyncio.create_task(action_runtime.listener.run())
+        logger.info("[actions] Telegram button listener started")
+
     try:
         await runner.run(task)
     except Exception:
@@ -142,6 +163,12 @@ async def run_bot(settings: Settings) -> None:
     finally:
         if keyboard_task is not None and not keyboard_task.done():
             keyboard_task.cancel()
+        if action_runtime is not None and listener_task is not None:
+            action_runtime.listener.stop()
+            try:
+                await asyncio.wait_for(listener_task, timeout=2.0)
+            except (TimeoutError, asyncio.CancelledError, Exception):
+                listener_task.cancel()
         await task.queue_frame(EndFrame())
 
 
@@ -173,7 +200,7 @@ def main() -> int:
     )
     logger.info(
         "VAD: stop={}s start={}s min_volume={} confidence={} | "
-        "RNNoise: {} | Interruptions: {} | Idle timeout: {} | TTS voice: {}",
+        "RNNoise: {} | Interruptions: {} | Idle timeout: {} | TTS voice: {} | Actions: {}",
         settings.vad_stop_secs,
         settings.vad_start_secs,
         settings.vad_min_volume,
@@ -184,6 +211,7 @@ def main() -> int:
         if settings.pipeline_idle_timeout_secs is None
         else f"{settings.pipeline_idle_timeout_secs}s",
         settings.default_tts_voice,
+        "enabled" if settings.actions_enabled else "disabled",
     )
 
     try:

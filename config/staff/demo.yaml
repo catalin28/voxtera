@@ -1,0 +1,78 @@
+# Per-category staff directory for the demo hotel.
+# Loaded by `voxtera.actions.staff.StaffDirectory.for_hotel("demo")`.
+#
+# Each top-level key is a Category value (must match the values in
+# `voxtera.actions.ticket.Category`). The list is staff available for
+# that category. Order matters — it's the order they appear in the
+# Telegram inline keyboard when "Find available technician" is tapped.
+#
+# Fields:
+#   name      — display name shown on the button and in the ticket history
+#   role      — short label, used for log lines
+#   eta_min   — typical response time in minutes; shown on the button
+#   skills    — optional list of tags. Future: filter by issue keywords
+#               (e.g. "hot water" → filter for plumbing skill).
+#
+# To enable a new category for a hotel, add a key here AND add the
+# Category to `allowed_categories` in `config/hotels/<hotel_id>.yaml`.
+
+Maintenance:
+  - name: John Smith
+    role: maintenance technician
+    eta_min: 5
+    skills: [hvac, electrical]
+    telegram_chat_id: 1543748981
+  - name: Maria Garcia
+    role: maintenance technician
+    eta_min: 7
+    skills: [plumbing, hvac]
+  - name: Akio Tanaka
+    role: maintenance technician
+    eta_min: 4
+    skills: [electrical, general]
+
+Concierge:
+  - name: Sofia Rossi
+    role: concierge
+    eta_min: 3
+    skills: [restaurants, transport, tickets]
+  - name: Hassan Al-Ahmed
+    role: concierge
+    eta_min: 5
+    skills: [restaurants, local_tours]
+
+Restaurant:
+  - name: Marc Dubois
+    role: restaurant manager
+    eta_min: 5
+    skills: [reservations, dietary]
+  - name: Elena Petrova
+    role: maitre d'
+    eta_min: 5
+    skills: [reservations, vip]
+
+Housekeeping:
+  - name: Anna Kowalski
+    role: housekeeping supervisor
+    eta_min: 10
+    skills: [room_service, linens]
+  - name: Priya Sharma
+    role: housekeeping
+    eta_min: 8
+    skills: [cleaning, linens]
+
+Lost & Found:
+  - name: David Chen
+    role: lost and found desk
+    eta_min: 5
+    skills: [search, logging]
+
+Emergency:
+  - name: Captain Khalid
+    role: security supervisor
+    eta_min: 2
+    skills: [medical, security]
+  - name: Dr. Lisa Wong
+    role: on-call duty doctor
+    eta_min: 15
+    skills: [medical]

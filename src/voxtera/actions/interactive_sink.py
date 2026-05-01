@@ -21,6 +21,7 @@ from typing import Final
 import aiohttp
 from loguru import logger
 
+from voxtera.actions.staff import StaffDirectory
 from voxtera.actions.state import (
     DEFAULT_BUTTON_LAYOUT,
     TicketRecord,
@@ -33,11 +34,18 @@ _TELEGRAM_API_BASE: Final[str] = "https://api.telegram.org"
 _REQUEST_TIMEOUT_SECS: Final[float] = 10.0
 
 
-def _build_keyboard(category: Category, session_id: str) -> list[list[dict]]:
+def _build_keyboard(
+    category: Category,
+    session_id: str,
+    *,
+    staff_available: bool,
+) -> list[list[dict]]:
     """Build the initial inline_keyboard rows for a ticket of ``category``.
 
-    Each row is a list of button dicts. We put one button per row for
-    readability on phone screens — Telegram packs them tightly otherwise.
+    The "Find available technician" button is only included when at least
+    one staff member is configured for that category in the
+    :class:`~voxtera.actions.staff.StaffDirectory`. Categories without
+    staff still get a Resolved button so the ticket is closeable.
     """
     layout = DEFAULT_BUTTON_LAYOUT.get(category)
     if layout is None:
@@ -45,39 +53,69 @@ def _build_keyboard(category: Category, session_id: str) -> list[list[dict]]:
         return [
             [{"text": "✓ Resolved", "callback_data": f"resolved|{session_id}"}],
         ]
-    return [
-        [{"text": label, "callback_data": f"{action_id}|{session_id}"}]
-        for action_id, label in layout
-    ]
+    rows: list[list[dict]] = []
+    for action_id, label in layout:
+        # Skip find_avail entirely if no staff configured — avoids showing
+        # a button that would just toast "no staff configured" on tap.
+        if action_id == "find_avail" and not staff_available:
+            continue
+        rows.append([{"text": label, "callback_data": f"{action_id}|{session_id}"}])
+    return rows
 
 
 class InteractiveTelegramSink(TelegramSink):
     """TelegramSink that attaches inline buttons and tracks message state."""
 
-    def __init__(self, bot_token: str, channel_id: str, store: TicketStateStore) -> None:
+    def __init__(
+        self,
+        bot_token: str,
+        channel_id: str,
+        store: TicketStateStore,
+        directory: StaffDirectory | None = None,
+    ) -> None:
         super().__init__(bot_token=bot_token, channel_id=channel_id)
         self._store = store
+        # If no directory is supplied, fall back to empty — the sink degrades
+        # to "no Find available button". Caller is expected to pass the same
+        # directory the ActionRegistry uses so the two stay in sync.
+        self._directory = directory or StaffDirectory.empty()
 
     @classmethod
     def from_env(  # type: ignore[override]
-        cls, store: TicketStateStore | None = None
+        cls,
+        store: TicketStateStore | None = None,
+        directory: StaffDirectory | None = None,
     ) -> InteractiveTelegramSink:
-        """Build from env vars; create an empty store if one is not supplied."""
+        """Build from env vars; create an empty store/directory if not supplied."""
         import os
 
         token = os.getenv("TELEGRAM_BOT_TOKEN", "")
         channel = os.getenv("TELEGRAM_CHANNEL_ID", "")
-        return cls(bot_token=token, channel_id=channel, store=store or TicketStateStore())
+        return cls(
+            bot_token=token,
+            channel_id=channel,
+            store=store or TicketStateStore(),
+            directory=directory or StaffDirectory.empty(),
+        )
 
     @property
     def store(self) -> TicketStateStore:
         """Expose the state store so the listener can share it."""
         return self._store
 
+    @property
+    def directory(self) -> StaffDirectory:
+        """Expose the staff directory so the listener / registry can share it."""
+        return self._directory
+
     async def send(self, ticket: Ticket) -> bool:  # type: ignore[override]
         """Post the ticket with buttons, then record the message_id for editing."""
         body = self._format_message(ticket)
-        keyboard = _build_keyboard(ticket.category, ticket.session_id)
+        keyboard = _build_keyboard(
+            ticket.category,
+            ticket.session_id,
+            staff_available=self._directory.has(ticket.category),
+        )
         payload = {
             "chat_id": self._channel_id,
             "text": body,

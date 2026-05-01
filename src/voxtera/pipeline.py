@@ -22,7 +22,11 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.request import Request, urlopen
+
+if TYPE_CHECKING:
+    from voxtera.actions import ActionRuntime
 
 from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
@@ -35,6 +39,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.services.anthropic.llm import AnthropicLLMService
+
 try:
     from pipecat.transports.daily.transport import DailyParams, DailyTransport
 except Exception:  # daily-python not available on Windows
@@ -56,9 +61,9 @@ except Exception:  # pragma: no cover - optional dependency at runtime
     _RNNoise = None
 from voxtera.config import Settings
 from voxtera.controllers import (
-    BrowserTextInputController,
     LLM_MODEL,
     AutoTTSLanguageSwitcher,
+    BrowserTextInputController,
     GreetingController,
     LanguageSwitcher,
     LLMRunGuard,
@@ -122,8 +127,17 @@ def _eject_stale_bots(settings: Settings) -> None:
         logger.debug("[daily] could not check for stale bots: {}", exc)
 
 
-def build_pipeline(settings: Settings) -> tuple[PipelineTask, PipelineRunner]:
-    """Construct the Pipecat pipeline and return a runnable task + runner."""
+def build_pipeline(
+    settings: Settings,
+    *,
+    action_runtime: ActionRuntime | None = None,
+) -> tuple[PipelineTask, PipelineRunner]:
+    """Construct the Pipecat pipeline and return a runnable task + runner.
+
+    When ``action_runtime`` is provided, the actions feature is wired in:
+    the system prompt is augmented with the per-hotel actions fragment,
+    and the ``create_ticket`` tool is registered on the LLM service.
+    """
     mic_enabled = settings.input_mode in ("voice", "hybrid")
 
     if settings.transport_mode not in {"local", "daily"}:
@@ -314,9 +328,33 @@ def build_pipeline(settings: Settings) -> tuple[PipelineTask, PipelineRunner]:
 
     # Conversation context. The system prompt does the heavy lifting on the
     # multilingual requirement — see src/voxtera/prompts/system_prompt.py.
-    messages: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # When the actions feature is enabled, the per-hotel actions fragment
+    # is appended (categories, confirmation rule, language split, etc.)
+    # before the prompt is handed to the LLM.
+    if action_runtime is not None:
+        from voxtera.actions import compose_system_prompt, wire_actions
+
+        system_text = compose_system_prompt(SYSTEM_PROMPT, action_runtime.hotel_config)
+    else:
+        system_text = SYSTEM_PROMPT
+    messages: list[dict[str, str]] = [{"role": "system", "content": system_text}]
     context = LLMContext(messages)
     context_aggregator = LLMContextAggregatorPair(context)
+
+    if action_runtime is not None:
+        # Register the create_ticket tool on the LLM service AND attach
+        # its schema to the LLMContext so Claude sees it in every turn.
+        wire_actions(
+            llm=llm,
+            context=context,
+            hotel_config=action_runtime.hotel_config,
+            sink=action_runtime.sink,
+        )
+        logger.info(
+            "[actions] enabled for hotel={!r} channel={}",
+            action_runtime.hotel_config.hotel_name,
+            action_runtime.hotel_config.telegram_channel_id,
+        )
 
     # Build the pipeline list. In text-only mode the mic-side processors
     # (audio level monitor, VAD, STT) are skipped entirely.
