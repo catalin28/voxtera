@@ -38,6 +38,21 @@
   #error-box { background: #3a1a1a; color: #ff8787; padding: 12px; margin: 12px; border-radius: 6px; font-family: monospace; font-size: 12px; display: none; max-height: 150px; overflow-y: auto; }
   #error-box.show { display: block; }
 
+  /* --- Orb visualizer --- */
+  #orb-container { display: none; flex-direction: column; align-items: center; justify-content: center; padding: 24px 0 8px; }
+  #orb-canvas { width: 180px; height: 180px; }
+  #orb-label { font-size: 13px; color: #888; margin-top: 8px; letter-spacing: 0.5px; transition: color 0.3s; }
+  #orb-label.speaking { color: #c9a84c; }
+  #orb-label.listening { color: #4caf50; }
+
+  /* --- Reconnect overlay --- */
+  #reconnect-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,15,26,0.92); z-index: 1000; align-items: center; justify-content: center; flex-direction: column; }
+  #reconnect-overlay.show { display: flex; }
+  #reconnect-overlay h2 { color: #e0e0e0; font-size: 22px; margin-bottom: 12px; }
+  #reconnect-overlay p { color: #999; font-size: 14px; margin-bottom: 24px; }
+  #btn-reconnect { background: #c9a84c; color: #1a1a2e; border: none; padding: 12px 32px; border-radius: 24px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+  #btn-reconnect:hover { background: #e0c060; }
+
   /* --- Audio test buttons --- */
   .audio-tests { display: flex; gap: 24px; margin-top: 18px; flex-wrap: wrap; justify-content: center; }
   .audio-test { display: flex; flex-direction: column; align-items: center; gap: 8px; }
@@ -63,6 +78,12 @@
 </header>
 
 <div id="error-box"></div>
+
+<div id="reconnect-overlay">
+  <h2>Session Disconnected</h2>
+  <p>The voice session has ended.</p>
+  <button id="btn-reconnect">🔄 Reconnect</button>
+</div>
 
 <div id="status-bar" style="display:none">
   <div id="status-dot"></div>
@@ -189,6 +210,11 @@
   </div>
 </div>
 
+<div id="orb-container">
+  <canvas id="orb-canvas" width="360" height="360"></canvas>
+  <div id="orb-label">Idle</div>
+</div>
+
 <div id="transcript" style="display:none"></div>
 
 <div id="controls">
@@ -204,6 +230,7 @@
 var ROOM_URL = 'https://voxtera.daily.co/voxtera-demo';
 var callObject = null;
 var isMuted = false;
+var userEndedSession = false;
 var remoteAudioEl = document.getElementById('remote-audio');
 var audioCtx = null;
 var activeSource = null;
@@ -307,6 +334,8 @@ document.getElementById('btn-start').onclick = function() {
         remoteAudioEl.play().then(function() {
           attachedTrackId = track.id;
           log('Attached audio via <audio> element from ' + source + ' (id=' + track.id + ')');
+          // Setup bot analyser for orb visualizer
+          if (!orbAnalyserBot) orbSetupBotAnalyser();
         }).catch(function(e) {
           err('Audio element play blocked: ' + e.message);
         });
@@ -314,18 +343,6 @@ document.getElementById('btn-start').onclick = function() {
         err('Audio element attach failed: ' + e.message);
       }
     }
-
-    // Explicitly request mic permission BEFORE creating call object so the
-    // browser permission prompt is tied to the user click gesture.
-    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      .then(function(stream) {
-        log('Microphone permission granted');
-        // Stop the temp stream; Daily will request its own.
-        stream.getTracks().forEach(function(t) { t.stop(); });
-      })
-      .catch(function(e) {
-        err('Microphone permission denied: ' + e.message);
-      });
 
     callObject = window.DailyIframe.createCallObject({
       audioSource: true,
@@ -339,6 +356,8 @@ document.getElementById('btn-start').onclick = function() {
         for (var key in participants) {
           var p = participants[key];
           if (p.local) continue;
+          // Only attach audio from the bot, not stale participants
+          if (p.user_name !== 'Voxtera') continue;
           var t = p.tracks && p.tracks.audio;
           if (t && t.state === 'playable' && t.persistentTrack) {
             attachRemoteAudio(t.persistentTrack, 'scan.persistent');
@@ -381,22 +400,29 @@ document.getElementById('btn-start').onclick = function() {
         addBubble('user', msg.data.text);
       } else if (msg.event === 'bot-speaking') {
         setStatus('speaking', '🔊 Speaking...');
+        orbSetState('speaking');
         ensureAudioContext();
         remoteAudioEl.play().catch(function() {});
         // Last-chance attach if not connected yet.
         if (!attachedTrackId) scanParticipantsForAudio();
+        // Setup bot analyser if not done yet
+        if (!orbAnalyserBot && remoteAudioEl.srcObject) orbSetupBotAnalyser();
       } else if (msg.event === 'bot-done-speaking') {
         setStatus('listening', '🟢 Listening...');
+        orbSetState('listening');
       }
     });
 
     callObject.on('participant-joined', function(evt) {
-      log('participant-joined: ' + (evt.participant && evt.participant.user_name));
+      var p = evt.participant;
+      log('participant-joined: ' + (p && p.user_name));
     });
 
     callObject.on('participant-updated', function(evt) {
       var p = evt.participant;
       if (!p || p.local) return;
+      // Only attach audio from the bot (Voxtera), not stale participants
+      if (p.user_name !== 'Voxtera') return;
       var t = p.tracks && p.tracks.audio;
       if (t && t.state === 'playable') {
         var track = t.persistentTrack || t.track;
@@ -407,6 +433,8 @@ document.getElementById('btn-start').onclick = function() {
     callObject.on('track-started', function(evt) {
       if (!evt.track || evt.track.kind !== 'audio') return;
       if (evt.participant && evt.participant.local) return;
+      // Only attach audio from the bot (Voxtera)
+      if (evt.participant && evt.participant.user_name !== 'Voxtera') return;
       attachRemoteAudio(evt.track, 'track-started');
     });
 
@@ -419,9 +447,17 @@ document.getElementById('btn-start').onclick = function() {
 
     callObject.on('error', function(e) {
       err('Daily error: ' + (e.errorMsg || 'unknown'));
+      showReconnectOverlay();
     });
 
-    callObject.on('left-meeting', resetUI);
+    callObject.on('left-meeting', function() {
+      if (userEndedSession) {
+        resetUI();
+      } else {
+        resetUI();
+        showReconnectOverlay();
+      }
+    });
 
     log('Joining: ' + ROOM_URL);
     callObject.join({ url: ROOM_URL, userName: 'Guest' }).then(function() {
@@ -447,6 +483,16 @@ document.getElementById('btn-start').onclick = function() {
       document.getElementById('btn-end').style.display = 'inline-block';
       document.getElementById('btn-mute').style.display = 'inline-block';
       setStatus('listening', '🟢 Listening...');
+      orbStart();
+      orbSetState('listening');
+      // Setup mic analyser for orb from the local mic track
+      try {
+        var localParticipant = callObject.participants().local;
+        var localAudioTrack = localParticipant && localParticipant.tracks && localParticipant.tracks.audio;
+        if (localAudioTrack && localAudioTrack.persistentTrack) {
+          orbSetupMicAnalyser(new MediaStream([localAudioTrack.persistentTrack]));
+        }
+      } catch(e) { log('Orb mic setup deferred: ' + e.message); }
     }).catch(function(e) {
       err('Join failed: ' + e.message);
       btn.disabled = false;
@@ -461,6 +507,7 @@ document.getElementById('btn-start').onclick = function() {
 };
 
 document.getElementById('btn-end').onclick = function() {
+  userEndedSession = true;
   if (activeSource) { try { activeSource.disconnect(); } catch(e) {} activeSource = null; }
   if (remoteAudioEl) {
     remoteAudioEl.pause();
@@ -509,6 +556,8 @@ function clearConversationView() {
 }
 
 function resetUI() {
+  orbStop();
+  userEndedSession = false;
   clearConversationView();
   document.getElementById('welcome').style.display = 'flex';
   document.getElementById('transcript').style.display = 'none';
@@ -781,6 +830,186 @@ document.getElementById('btn-test-mic').onclick = function() {
 };
 
 log('Ready');
+
+// ========== Reconnect Overlay ==========
+function showReconnectOverlay() {
+  document.getElementById('reconnect-overlay').classList.add('show');
+}
+
+function hideReconnectOverlay() {
+  document.getElementById('reconnect-overlay').classList.remove('show');
+}
+
+document.getElementById('btn-reconnect').onclick = function() {
+  hideReconnectOverlay();
+  // Trigger a fresh start by clicking the Start button
+  document.getElementById('btn-start').click();
+};
+
+// ========== Orb Visualizer ==========
+var orbCanvas = document.getElementById('orb-canvas');
+var orbCtx = orbCanvas.getContext('2d');
+var orbState = 'idle'; // 'idle' | 'listening' | 'speaking'
+var orbAmplitude = 0;
+var orbTargetAmplitude = 0;
+var orbAnalyserBot = null;
+var orbAnalyserMic = null;
+var orbAnimRunning = false;
+var orbMicSource = null;
+var orbBotSource = null;
+
+// Color palette
+var ORB_COLORS = {
+  idle:      { core: [30, 30, 60],    glow: [100, 100, 160], ring: [60, 60, 100] },
+  listening: { core: [20, 180, 120],  glow: [40, 220, 150],  ring: [30, 200, 130] },
+  speaking:  { core: [201, 168, 76],  glow: [230, 190, 80],  ring: [180, 150, 60] }
+};
+
+function lerpColor(a, b, t) {
+  return [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t
+  ];
+}
+
+var orbCurrentColors = ORB_COLORS.idle;
+var orbPrevTime = 0;
+
+function orbSetState(state) {
+  orbState = state;
+  var label = document.getElementById('orb-label');
+  label.textContent = state === 'speaking' ? 'Speaking...' : state === 'listening' ? 'Listening...' : 'Idle';
+  label.className = state;
+}
+
+function getOrbAmplitudeFromAnalyser(analyser) {
+  if (!analyser) return 0;
+  var data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteTimeDomainData(data);
+  var sum = 0;
+  for (var i = 0; i < data.length; i++) {
+    var v = (data[i] - 128) / 128;
+    sum += v * v;
+  }
+  return Math.sqrt(sum / data.length);
+}
+
+function drawOrb(timestamp) {
+  if (!orbAnimRunning) return;
+  requestAnimationFrame(drawOrb);
+
+  var dt = timestamp - orbPrevTime;
+  if (dt < 16) return; // cap at ~60fps
+  orbPrevTime = timestamp;
+
+  // Get amplitude from the correct source
+  var rawAmp = 0;
+  if (orbState === 'speaking' && orbAnalyserBot) {
+    rawAmp = getOrbAmplitudeFromAnalyser(orbAnalyserBot);
+  } else if (orbState === 'listening' && orbAnalyserMic) {
+    rawAmp = getOrbAmplitudeFromAnalyser(orbAnalyserMic);
+  }
+
+  // Smooth amplitude (ease toward target)
+  orbTargetAmplitude = Math.min(1, rawAmp * 4);
+  orbAmplitude += (orbTargetAmplitude - orbAmplitude) * 0.15;
+
+  var colors = ORB_COLORS[orbState] || ORB_COLORS.idle;
+  var w = orbCanvas.width;
+  var h = orbCanvas.height;
+  var cx = w / 2;
+  var cy = h / 2;
+  var baseRadius = 50;
+  var pulseRadius = baseRadius + orbAmplitude * 25;
+
+  orbCtx.clearRect(0, 0, w, h);
+
+  // Outer glow rings (concentric, fading out)
+  var rings = 4;
+  for (var i = rings; i >= 1; i--) {
+    var ringR = pulseRadius + i * 12 + Math.sin(timestamp * 0.002 + i) * 3 * orbAmplitude;
+    var alpha = (0.08 + orbAmplitude * 0.12) * (1 - i / (rings + 1));
+    orbCtx.beginPath();
+    orbCtx.arc(cx, cy, ringR, 0, Math.PI * 2);
+    orbCtx.strokeStyle = 'rgba(' + Math.round(colors.ring[0]) + ',' + Math.round(colors.ring[1]) + ',' + Math.round(colors.ring[2]) + ',' + alpha.toFixed(3) + ')';
+    orbCtx.lineWidth = 2 + orbAmplitude * 2;
+    orbCtx.stroke();
+  }
+
+  // Main glow (radial gradient)
+  var glowRadius = pulseRadius + 30 + orbAmplitude * 20;
+  var grad = orbCtx.createRadialGradient(cx, cy, pulseRadius * 0.3, cx, cy, glowRadius);
+  var coreAlpha = 0.6 + orbAmplitude * 0.4;
+  grad.addColorStop(0, 'rgba(' + Math.round(colors.core[0]) + ',' + Math.round(colors.core[1]) + ',' + Math.round(colors.core[2]) + ',' + coreAlpha.toFixed(2) + ')');
+  grad.addColorStop(0.5, 'rgba(' + Math.round(colors.glow[0]) + ',' + Math.round(colors.glow[1]) + ',' + Math.round(colors.glow[2]) + ',' + (coreAlpha * 0.4).toFixed(2) + ')');
+  grad.addColorStop(1, 'rgba(' + Math.round(colors.glow[0]) + ',' + Math.round(colors.glow[1]) + ',' + Math.round(colors.glow[2]) + ',0)');
+  orbCtx.beginPath();
+  orbCtx.arc(cx, cy, glowRadius, 0, Math.PI * 2);
+  orbCtx.fillStyle = grad;
+  orbCtx.fill();
+
+  // Core sphere (solid with inner highlight)
+  var coreGrad = orbCtx.createRadialGradient(cx - pulseRadius * 0.3, cy - pulseRadius * 0.3, 0, cx, cy, pulseRadius);
+  coreGrad.addColorStop(0, 'rgba(255,255,255,0.25)');
+  coreGrad.addColorStop(0.4, 'rgba(' + Math.round(colors.core[0]) + ',' + Math.round(colors.core[1]) + ',' + Math.round(colors.core[2]) + ',0.95)');
+  coreGrad.addColorStop(1, 'rgba(' + Math.round(colors.core[0] * 0.5) + ',' + Math.round(colors.core[1] * 0.5) + ',' + Math.round(colors.core[2] * 0.5) + ',1)');
+  orbCtx.beginPath();
+  orbCtx.arc(cx, cy, pulseRadius, 0, Math.PI * 2);
+  orbCtx.fillStyle = coreGrad;
+  orbCtx.fill();
+
+  // Breathing idle animation (subtle scale pulse even with no audio)
+  if (orbState === 'idle' || orbAmplitude < 0.01) {
+    var breath = 0.5 + 0.5 * Math.sin(timestamp * 0.001);
+    orbTargetAmplitude = Math.max(orbTargetAmplitude, breath * 0.08);
+  }
+}
+
+function orbStart() {
+  if (orbAnimRunning) return;
+  orbAnimRunning = true;
+  document.getElementById('orb-container').style.display = 'flex';
+  requestAnimationFrame(drawOrb);
+}
+
+function orbStop() {
+  orbAnimRunning = false;
+  document.getElementById('orb-container').style.display = 'none';
+  orbAmplitude = 0;
+  orbTargetAmplitude = 0;
+  orbState = 'idle';
+  if (orbMicSource) { try { orbMicSource.disconnect(); } catch(e) {} orbMicSource = null; }
+  if (orbBotSource) { try { orbBotSource.disconnect(); } catch(e) {} orbBotSource = null; }
+  orbAnalyserBot = null;
+  orbAnalyserMic = null;
+}
+
+function orbSetupMicAnalyser(stream) {
+  if (!audioCtx) return;
+  try {
+    orbAnalyserMic = audioCtx.createAnalyser();
+    orbAnalyserMic.fftSize = 256;
+    orbMicSource = audioCtx.createMediaStreamSource(stream);
+    orbMicSource.connect(orbAnalyserMic);
+    // Do NOT connect to destination — we don't want to hear ourselves.
+  } catch(e) {
+    log('Orb mic analyser setup failed: ' + e.message);
+  }
+}
+
+function orbSetupBotAnalyser() {
+  if (!audioCtx || !remoteAudioEl || !remoteAudioEl.srcObject) return;
+  try {
+    orbAnalyserBot = audioCtx.createAnalyser();
+    orbAnalyserBot.fftSize = 256;
+    orbBotSource = audioCtx.createMediaStreamSource(remoteAudioEl.srcObject);
+    orbBotSource.connect(orbAnalyserBot);
+    // Do NOT connect to destination — the <audio> element already plays it.
+  } catch(e) {
+    log('Orb bot analyser setup failed: ' + e.message);
+  }
+}
 </script>
 </body>
 </html>

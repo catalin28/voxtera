@@ -612,6 +612,7 @@ class GreetingController(FrameProcessor):
 
         if isinstance(frame, DailyInputTransportMessageFrame):
             msg = frame.message
+            logger.info("[greeting] received DailyInputTransportMessageFrame: {}", msg)
             if isinstance(msg, dict) and msg.get("type") == "voxtera-ready":
                 now = time.monotonic()
                 if (

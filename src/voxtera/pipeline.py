@@ -28,9 +28,26 @@ from urllib.request import Request, urlopen
 if TYPE_CHECKING:
     from voxtera.actions import ActionRuntime
 
+import time as _time
+
 from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
+from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
+    InputAudioRawFrame,
+    InterimTranscriptionFrame,
+    LLMFullResponseEndFrame,
+    LLMFullResponseStartFrame,
+    LLMTextFrame,
+    OutputAudioRawFrame,
+    TranscriptionFrame,
+    TTSStartedFrame,
+    TTSStoppedFrame,
+    VADUserStartedSpeakingFrame,
+    VADUserStoppedSpeakingFrame,
+)
 from pipecat.pipeline.parallel_pipeline import ParallelPipeline
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -38,7 +55,118 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.audio.vad_processor import VADProcessor
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.services.anthropic.llm import AnthropicLLMService
+
+
+class PipelineProbe(FrameProcessor):
+    """Diagnostic probe that logs significant frames passing through a point."""
+
+    # Only log these frame types to avoid flooding with every audio frame.
+    _INTERESTING = (
+        TranscriptionFrame,
+        InterimTranscriptionFrame,
+        LLMFullResponseStartFrame,
+        LLMFullResponseEndFrame,
+        LLMTextFrame,
+        TTSStartedFrame,
+        TTSStoppedFrame,
+        BotStartedSpeakingFrame,
+        BotStoppedSpeakingFrame,
+        VADUserStartedSpeakingFrame,
+        VADUserStoppedSpeakingFrame,
+    )
+
+    # Probes at these positions log RMS stats to diagnose audio level issues.
+    _RMS_PROBES = {"after_leakage_guard", "after_vad"}
+
+    def __init__(self, label: str) -> None:
+        super().__init__()
+        self._label = label
+        self._audio_in_count = 0
+        self._audio_out_count = 0
+        self._last_audio_log = 0.0
+        self._other_frame_count = 0
+        self._rms_peak = 0.0
+        self._rms_sum = 0.0
+        self._rms_frames = 0
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, InputAudioRawFrame):
+            self._audio_in_count += 1
+            # Track RMS at designated probes
+            if self._label in self._RMS_PROBES and frame.audio:
+                import numpy as _np
+
+                samples = _np.frombuffer(frame.audio, dtype=_np.int16)
+                if samples.size:
+                    rms = float(_np.sqrt(_np.mean(samples.astype(_np.float32) ** 2))) / 32768.0
+                    self._rms_peak = max(self._rms_peak, rms)
+                    self._rms_sum += rms
+                    self._rms_frames += 1
+            now = _time.monotonic()
+            # Log audio flow every 5 seconds to confirm it's passing
+            if now - self._last_audio_log >= 5.0:
+                if self._label in self._RMS_PROBES and self._rms_frames > 0:
+                    avg_rms = self._rms_sum / self._rms_frames
+                    logger.info(
+                        "[probe:{}] audio_in: {} frames/5s | RMS avg={:.4f} peak={:.4f}",
+                        self._label,
+                        self._audio_in_count,
+                        avg_rms,
+                        self._rms_peak,
+                    )
+                    self._rms_peak = 0.0
+                    self._rms_sum = 0.0
+                    self._rms_frames = 0
+                else:
+                    logger.info(
+                        "[probe:{}] audio_in flowing: {} frames in last 5s",
+                        self._label,
+                        self._audio_in_count,
+                    )
+                self._audio_in_count = 0
+                self._last_audio_log = now
+        elif isinstance(frame, OutputAudioRawFrame):
+            self._audio_out_count += 1
+            now = _time.monotonic()
+            if now - self._last_audio_log >= 5.0:
+                logger.info(
+                    "[probe:{}] audio_out flowing: {} frames in last 5s",
+                    self._label,
+                    self._audio_out_count,
+                )
+                self._audio_out_count = 0
+                self._last_audio_log = now
+        elif isinstance(frame, self._INTERESTING):
+            logger.info(
+                "[probe:{}] {} (dir={})",
+                self._label,
+                frame.__class__.__name__,
+                direction.name,
+            )
+        else:
+            # Log all other non-audio frames to catch DailyInputTransportMessageFrame etc.
+            self._other_frame_count += 1
+            fname = frame.__class__.__name__
+            if (
+                "Message" in fname
+                or "Start" in fname
+                or "End" in fname
+                or "Run" in fname
+                or "Transcription" in fname
+            ):
+                logger.info(
+                    "[probe:{}] OTHER: {} (dir={})",
+                    self._label,
+                    fname,
+                    direction.name,
+                )
+
+        await self.push_frame(frame, direction)
+
 
 try:
     from pipecat.transports.daily.transport import DailyParams, DailyTransport
@@ -54,6 +182,7 @@ from voxtera.audio import (
     RNNoiseDenoiser,
     TranscriptionNoiseFilter,
 )
+from voxtera.health import ActivityNotifier, TransportHealthMonitor
 
 try:
     from pyrnnoise import RNNoise as _RNNoise
@@ -81,15 +210,14 @@ from voxtera.tts import _TTS_BUILDERS
 
 
 def _eject_stale_bots(settings: Settings) -> None:
-    """Remove leftover bot participants from previous runs via the Daily REST API.
+    """Remove leftover participants from previous runs via the Daily REST API.
 
-    Only ejects participants whose ``userName`` matches the configured bot
-    name. Human guests (e.g. ``userName='Guest'``) are never touched, so
-    rebuilding the pipeline mid-session does not disconnect the user.
+    Ejects ALL participants in the room — both stale bots and zombie guest
+    sessions. This prevents echo caused by orphaned browser sessions whose
+    audio tracks linger on the SFU.
     """
     room_name = settings.daily_room_name
     api_key = settings.daily_api_key
-    bot_name = settings.bot_name
     base = "https://api.daily.co/v1"
     try:
         req = Request(
@@ -100,13 +228,12 @@ def _eject_stale_bots(settings: Settings) -> None:
             data = json.loads(resp.read())
 
         participants = data.get(room_name, [])
-        stale_ids = [p["id"] for p in participants if p.get("userName") == bot_name]
+        stale_ids = [p["id"] for p in participants]
         if not stale_ids:
             return
         logger.info(
-            "[daily] found {} stale bot participants ({}), ejecting",
+            "[daily] found {} stale participants, ejecting all",
             len(stale_ids),
-            bot_name,
         )
 
         ereq = Request(
@@ -122,9 +249,9 @@ def _eject_stale_bots(settings: Settings) -> None:
             result = json.loads(resp.read())
         ejected = result.get("ejectedIds", [])
         for pid in ejected:
-            logger.info("[daily] ejected stale bot {}", pid)
+            logger.info("[daily] ejected stale participant {}", pid)
     except Exception as exc:
-        logger.debug("[daily] could not check for stale bots: {}", exc)
+        logger.debug("[daily] could not check for stale participants: {}", exc)
 
 
 def build_pipeline(
@@ -189,7 +316,26 @@ def build_pipeline(
             ),
         )
         logger.info("[daily] transport enabled for room {}", room_url)
+
+        @transport.event_handler("on_app_message")
+        async def _on_app_message(transport, message, sender):
+            logger.info("[daily] app-message from {}: {}", sender, message)
+            # DEBUG: check input transport state
+            inp = transport.input()
+            logger.info(
+                "[daily] input._next={} input._started={}",
+                inp._next,
+                inp._FrameProcessor__started if hasattr(inp, "_FrameProcessor__started") else "N/A",
+            )
+
+        # Health monitor: exits the process when the room is empty for too
+        # long, preventing transport degradation from idle WebRTC sessions.
+        health_monitor: TransportHealthMonitor | None = TransportHealthMonitor(
+            bot_name=settings.bot_name
+        )
+        health_monitor.register(transport)
     else:
+        health_monitor = None
         transport = LocalAudioTransport(
             LocalAudioTransportParams(
                 audio_in_enabled=mic_enabled,
@@ -359,6 +505,10 @@ def build_pipeline(
     # Build the pipeline list. In text-only mode the mic-side processors
     # (audio level monitor, VAD, STT) are skipped entirely.
     processors: list = [transport.input()]
+    # --- Diagnostic probes ---
+    _probing = True
+    if _probing:
+        processors.append(PipelineProbe("after_transport_in"))
     if mic_enabled:
         if settings.rnnoise_enabled:
             if _RNNoise is None:
@@ -367,21 +517,33 @@ def build_pipeline(
                 )
             else:
                 processors.append(RNNoiseDenoiser(sample_rate=16000))
+                if _probing:
+                    processors.append(PipelineProbe("after_rnnoise"))
                 logger.info("[rnnoise] enabled")
 
         processors.extend(
             [
                 PlaybackLeakageGuard(allow_interruptions=settings.allow_interruptions),
-                AudioLevelMonitor(),
             ]
         )
+        if _probing:
+            processors.append(PipelineProbe("after_leakage_guard"))
+        processors.append(AudioLevelMonitor())
+        if _probing:
+            processors.append(PipelineProbe("after_audio_monitor"))
         if vad_processor:
             processors.append(vad_processor)
+            if _probing:
+                processors.append(PipelineProbe("after_vad"))
+            if health_monitor is not None:
+                processors.append(ActivityNotifier(health_monitor))
         if stt_router is not None:
             # Daily mode: parallel STT branches gated by the router. Each
             # branch is [input_gate, stt, noise_filter, output_gate]; only
             # the active branch's gates let frames through.
             processors.append(stt_router)
+            if _probing:
+                processors.append(PipelineProbe("after_stt_router"))
             processors.append(
                 ParallelPipeline(
                     *[
@@ -395,21 +557,43 @@ def build_pipeline(
                     ]
                 )
             )
+            if _probing:
+                processors.append(PipelineProbe("after_parallel_stt"))
             processors.append(
                 BotActiveUserFrameSuppressor(allow_interruptions=settings.allow_interruptions)
             )
+            if _probing:
+                processors.append(PipelineProbe("after_suppressor"))
         else:
             processors.extend(
                 [
                     stt,
+                ]
+            )
+            if _probing:
+                processors.append(PipelineProbe("after_stt"))
+            processors.extend(
+                [
                     TranscriptionNoiseFilter(stt=stt),
+                ]
+            )
+            if _probing:
+                processors.append(PipelineProbe("after_noise_filter"))
+            processors.extend(
+                [
                     BotActiveUserFrameSuppressor(allow_interruptions=settings.allow_interruptions),
                 ]
             )
+            if _probing:
+                processors.append(PipelineProbe("after_suppressor"))
         if settings.transport_mode == "daily":
             processors.append(UserTranscriptBroadcaster())
     processors.append(context_aggregator.user())
+    if _probing:
+        processors.append(PipelineProbe("after_ctx_user"))
     processors.append(LLMRunGuard())
+    if _probing:
+        processors.append(PipelineProbe("after_llm_guard"))
     if settings.transport_mode == "daily":
         processors.append(BrowserTextInputController())
 
@@ -432,13 +616,19 @@ def build_pipeline(
         retriever = Retriever(store)
         rag_injector = RAGContextInjector(retriever, hotel_id=settings.hotel_id)
         processors.append(rag_injector)
+        if _probing:
+            processors.append(PipelineProbe("after_rag"))
         logger.info("[rag] enabled for hotel_id={!r}", settings.hotel_id)
 
     processors.extend(
         [
             llm,
-            PipelineTracer("voxtera", hotel_id=settings.hotel_id if settings.rag_enabled else None),
         ]
+    )
+    if _probing:
+        processors.append(PipelineProbe("after_llm"))
+    processors.append(
+        PipelineTracer("voxtera", hotel_id=settings.hotel_id if settings.rag_enabled else None),
     )
     if settings.transport_mode == "daily":
         processors.append(DemoEventBroadcaster())
@@ -488,12 +678,16 @@ def build_pipeline(
         )
     else:
         processors.append(tts)
+        if _probing:
+            processors.append(PipelineProbe("after_tts"))
     processors.extend(
         [
             transport.output(),
-            context_aggregator.assistant(),
         ]
     )
+    if _probing:
+        processors.append(PipelineProbe("after_transport_out"))
+    processors.append(context_aggregator.assistant())
 
     pipeline = Pipeline(processors)
 
@@ -504,6 +698,7 @@ def build_pipeline(
             audio_in_sample_rate=16000,
             audio_out_sample_rate=24000,
         ),
+        enable_rtvi=False,
         cancel_on_idle_timeout=settings.pipeline_idle_timeout_secs is not None,
         idle_timeout_secs=settings.pipeline_idle_timeout_secs,
     )
