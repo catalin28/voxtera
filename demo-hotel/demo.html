@@ -235,7 +235,11 @@ var remoteAudioEl = document.getElementById('remote-audio');
 var audioCtx = null;
 var activeSource = null;
 var attachedTrackId = null;
-
+var attachedTrack = null;
+    // Safari has a tiny WebRTC jitter buffer that causes choppy audio with
+    // the <audio> element path. We use WebAudio directly on Safari and the
+    // <audio> element on Chromium-based browsers.
+var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 function log(msg) { console.log('[voxtera] ' + msg); }
 function err(msg) {
   var box = document.getElementById('error-box');
@@ -244,7 +248,9 @@ function err(msg) {
   console.error(msg);
 }
 
-log('Checking Daily SDK...');
+ log('UA: ' + navigator.userAgent.substring(0, 120));
+ log('isSafari=' + isSafari + ' — audio path: ' + (isSafari ? 'WebAudio (ctx.destination)' : '<audio> element'));
+ log('Checking Daily SDK...');
 if (!window.DailyIframe) err('Daily SDK failed to load');
 else log('Daily SDK loaded');
 
@@ -313,34 +319,75 @@ document.getElementById('btn-start').onclick = function() {
         log('Track already attached (id=' + track.id + ') — skipping duplicate attach from ' + source);
         return;
       }
-      // Disconnect previous WebAudio source if any (defensive — older builds
-      // routed the stream through ctx.destination AND the <audio> element at
-      // the same time, which produced overlapping playback that sounded like
-      // a heavy echo. Now we only use the <audio> element.).
+      // Daily fires several overlapping events (participant-updated,
+      // track-started, scan from joined-meeting/bot-speaking) and the
+      // persistent-track reference can have a different .id than the
+      // track-started event's track. If we re-attach while the previous
+      // track is still live, Safari keeps the old WebAudio sink running
+      // and you hear the bot voice twice with a delay. Only allow a new
+      // attach if the previously-attached track has actually ended.
+      if (attachedTrack && attachedTrack.readyState === 'live') {
+        log('Active track still live (id=' + attachedTrack.id + ') — ignoring new attach for ' + track.id + ' from ' + source);
+        return;
+      }
+      // Disconnect previous WebAudio source if any
       if (activeSource) {
         try { activeSource.disconnect(); } catch(e) {}
         activeSource = null;
       }
+      // Drop the previous orb analyser too — we'll rebuild it for the new source
+      if (orbBotSource) { try { orbBotSource.disconnect(); } catch(e) {} orbBotSource = null; }
+      orbAnalyserBot = null;
       var stream = new MediaStream([track]);
 
-      // Single playback path: HTML <audio> element only. Do NOT also pipe the
-      // same stream into ctx.createMediaStreamSource(...).connect(ctx.destination)
-      // — that causes the bot voice to play twice with a small inter-path
-      // latency offset and is heard as an echo/reverb.
-      try {
-        remoteAudioEl.srcObject = stream;
-        remoteAudioEl.muted = false;
-        remoteAudioEl.volume = 1.0;
-        remoteAudioEl.play().then(function() {
+      if (isSafari) {
+        // Safari's <audio> element has a tiny jitter buffer for WebRTC
+        // MediaStreams causing choppy playback. Route through WebAudio API
+        // which applies its own smoothing buffer.
+        log('[safari] using WebAudio path for track ' + track.id + ' from ' + source);
+        try {
+          var ctx = ensureAudioContext();
+          activeSource = ctx.createMediaStreamSource(stream);
+          activeSource.connect(ctx.destination);
           attachedTrackId = track.id;
-          log('Attached audio via <audio> element from ' + source + ' (id=' + track.id + ')');
-          // Setup bot analyser for orb visualizer
-          if (!orbAnalyserBot) orbSetupBotAnalyser();
-        }).catch(function(e) {
-          err('Audio element play blocked: ' + e.message);
-        });
-      } catch (e) {
-        err('Audio element attach failed: ' + e.message);
+          attachedTrack = track;
+          log('[safari] WebAudio attached OK (ctx.state=' + ctx.state + ')');
+          // IMPORTANT: do NOT assign srcObject to remoteAudioEl on Safari.
+          // The <audio> element has autoplay set and would render the stream
+          // in parallel with WebAudio — re-introducing the choppy path we
+          // just bypassed. Mute and clear the element defensively, and feed
+          // the orb analyser off the WebAudio source instead.
+          remoteAudioEl.muted = true;
+          remoteAudioEl.srcObject = null;
+          if (!orbAnalyserBot) orbSetupBotAnalyserFromSource(activeSource);
+        } catch (e) {
+          err('[safari] WebAudio attach failed: ' + e.message + ' — falling back to <audio>');
+          // Fall through to <audio> element path
+          activeSource = null;
+          remoteAudioEl.srcObject = stream;
+          remoteAudioEl.muted = false;
+          remoteAudioEl.volume = 1.0;
+          remoteAudioEl.play().catch(function(e2) { err('Fallback play failed: ' + e2.message); });
+          attachedTrackId = track.id;
+          attachedTrack = track;
+        }
+      } else {
+        // Chrome/Brave/Edge: <audio> element works perfectly
+        try {
+          remoteAudioEl.srcObject = stream;
+          remoteAudioEl.muted = false;
+          remoteAudioEl.volume = 1.0;
+          remoteAudioEl.play().then(function() {
+            attachedTrackId = track.id;
+            attachedTrack = track;
+            log('Attached audio via <audio> element from ' + source + ' (id=' + track.id + ')');
+            if (!orbAnalyserBot) orbSetupBotAnalyser();
+          }).catch(function(e) {
+            err('Audio element play blocked: ' + e.message);
+          });
+        } catch (e) {
+          err('Audio element attach failed: ' + e.message);
+        }
       }
     }
 
@@ -402,11 +449,26 @@ document.getElementById('btn-start').onclick = function() {
         setStatus('speaking', '🔊 Speaking...');
         orbSetState('speaking');
         ensureAudioContext();
-        remoteAudioEl.play().catch(function() {});
-        // Last-chance attach if not connected yet.
-        if (!attachedTrackId) scanParticipantsForAudio();
-        // Setup bot analyser if not done yet
-        if (!orbAnalyserBot && remoteAudioEl.srcObject) orbSetupBotAnalyser();
+        if (!isSafari) {
+          // Brave/Chrome: nudge <audio> element playback
+          remoteAudioEl.play().catch(function(e) {});
+        } else {
+          // Safari: WebAudio path handles playback; just resume ctx if needed
+          if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume();
+          }
+        }
+        if (!attachedTrackId) {
+          log('[audio] bot-speaking but no track attached yet — scanning');
+          scanParticipantsForAudio();
+        }
+        if (!orbAnalyserBot) {
+          if (isSafari && activeSource) {
+            orbSetupBotAnalyserFromSource(activeSource);
+          } else if (remoteAudioEl.srcObject) {
+            orbSetupBotAnalyser();
+          }
+        }
       } else if (msg.event === 'bot-done-speaking') {
         setStatus('listening', '🟢 Listening...');
         orbSetState('listening');
@@ -515,6 +577,7 @@ document.getElementById('btn-end').onclick = function() {
   }
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
   attachedTrackId = null;
+  attachedTrack = null;
   if (callObject) {
     callObject.leave().then(function() {
       callObject.destroy();
@@ -1008,6 +1071,20 @@ function orbSetupBotAnalyser() {
     // Do NOT connect to destination — the <audio> element already plays it.
   } catch(e) {
     log('Orb bot analyser setup failed: ' + e.message);
+  }
+}
+
+function orbSetupBotAnalyserFromSource(mediaStreamSource) {
+  // Safari path: activeSource is already connected to ctx.destination for
+  // playback. Branch the analyser off the same node — no extra destination
+  // connection needed.
+  if (!audioCtx || !mediaStreamSource) return;
+  try {
+    orbAnalyserBot = audioCtx.createAnalyser();
+    orbAnalyserBot.fftSize = 256;
+    mediaStreamSource.connect(orbAnalyserBot);
+  } catch(e) {
+    log('Orb bot analyser (Safari) setup failed: ' + e.message);
   }
 }
 </script>

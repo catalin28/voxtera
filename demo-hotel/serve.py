@@ -27,11 +27,15 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from voxtera.prompts.greetings import GREETINGS  # noqa: E402
-from voxtera.prompts.system_prompt import SYSTEM_PROMPT  # noqa: E402
-from voxtera.actions import load_hotel_config, compose_system_prompt, build_openai_tools  # noqa: E402
+from voxtera.actions import (  # noqa: E402
+    build_openai_tools,
+    compose_system_prompt,
+    load_hotel_config,
+)
 from voxtera.actions.logging_sink import LoggingSink  # noqa: E402
 from voxtera.actions.ticket import Category, Ticket  # noqa: E402
+from voxtera.prompts.greetings import GREETINGS  # noqa: E402
+from voxtera.prompts.system_prompt import SYSTEM_PROMPT  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Actions: OpenAI function-calling tool definition for create_ticket
@@ -48,14 +52,36 @@ _TOOLS = build_openai_tools(_hotel_config)
 
 # Language code → full name map for the LLM translation prompt.
 _LANG_NAMES: dict[str, str] = {
-    "en": "English", "fr": "French", "es": "Spanish", "de": "German",
-    "it": "Italian", "pt": "Portuguese", "ro": "Romanian", "tr": "Turkish",
-    "nl": "Dutch", "ja": "Japanese", "hi": "Hindi", "ru": "Russian",
-    "ar": "Arabic", "zh": "Chinese", "ko": "Korean", "pl": "Polish",
-    "bg": "Bulgarian", "cs": "Czech", "da": "Danish", "el": "Greek",
-    "fi": "Finnish", "he": "Hebrew", "hu": "Hungarian", "id": "Indonesian",
-    "no": "Norwegian", "sv": "Swedish", "th": "Thai", "uk": "Ukrainian",
-    "vi": "Vietnamese", "az": "Azerbaijani",
+    "en": "English",
+    "fr": "French",
+    "es": "Spanish",
+    "de": "German",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "ro": "Romanian",
+    "tr": "Turkish",
+    "nl": "Dutch",
+    "ja": "Japanese",
+    "hi": "Hindi",
+    "ru": "Russian",
+    "ar": "Arabic",
+    "zh": "Chinese",
+    "ko": "Korean",
+    "pl": "Polish",
+    "bg": "Bulgarian",
+    "cs": "Czech",
+    "da": "Danish",
+    "el": "Greek",
+    "fi": "Finnish",
+    "he": "Hebrew",
+    "hu": "Hungarian",
+    "id": "Indonesian",
+    "no": "Norwegian",
+    "sv": "Swedish",
+    "th": "Thai",
+    "uk": "Ukrainian",
+    "vi": "Vietnamese",
+    "az": "Azerbaijani",
 }
 
 
@@ -70,14 +96,16 @@ def _translate_greeting(text: str, lang: str, model: str) -> str:
     response = client.chat.completions.create(
         model=model,
         max_tokens=256,
-        messages=[{
-            "role": "user",
-            "content": (
-                f"Translate the following greeting into {lang_name}. "
-                "Return ONLY the translated text, nothing else.\n\n"
-                f"{text}"
-            ),
-        }],
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    f"Translate the following greeting into {lang_name}. "
+                    "Return ONLY the translated text, nothing else.\n\n"
+                    f"{text}"
+                ),
+            }
+        ],
     )
     return response.choices[0].message.content.strip()
 
@@ -103,6 +131,7 @@ def _init_rag():
 
         default_db = str(Path.home() / ".voxtera" / "voxtera.db")
         import os
+
         db_path = Path(os.environ.get("VOXTERA_DB_PATH", default_db))
         if db_path.exists():
             store = ChunksStore(db_path)
@@ -122,9 +151,7 @@ def _rag_context(query: str, hotel_id: str = "demo") -> str:
         return ""
     try:
         loop = asyncio.new_event_loop()
-        results = loop.run_until_complete(
-            _retriever.retrieve(hotel_id=hotel_id, query=query)
-        )
+        results = loop.run_until_complete(_retriever.retrieve(hotel_id=hotel_id, query=query))
         loop.close()
         if not results:
             return ""
@@ -132,8 +159,7 @@ def _rag_context(query: str, hotel_id: str = "demo") -> str:
         return (
             "Here are relevant excerpts from the hotel's information. Use them when "
             "answering, but only if they're relevant to the user's most recent "
-            "question. If they don't answer that question, ignore them.\n\n"
-            + excerpts
+            "question. If they don't answer that question, ignore them.\n\n" + excerpts
         )
     except Exception as exc:
         print(f"[rag] retrieval error: {exc}")
@@ -169,7 +195,9 @@ def _handle_create_ticket(args: dict, session_id: str) -> str:
     try:
         category = Category(args["category"])
     except (ValueError, KeyError):
-        return json.dumps({"status": "rejected", "reason": f"Invalid category: {args.get('category')}"})
+        return json.dumps(
+            {"status": "rejected", "reason": f"Invalid category: {args.get('category')}"}
+        )
 
     ticket = Ticket(
         category=category,
@@ -197,6 +225,7 @@ _TOOL_HANDLERS = {
 def _chat_completion(session_id: str, user_text: str, model: str, language: str) -> str:
     """Run one chat turn: RAG retrieval → OpenAI chat completion → reply text."""
     import os
+
     import openai
 
     if session_id not in _sessions:
@@ -228,11 +257,13 @@ def _chat_completion(session_id: str, user_text: str, model: str, language: str)
         messages.append(msg.model_dump())
         for tc in msg.tool_calls:
             result = _handle_tool_call(tc, session_id)
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": result,
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result,
+                }
+            )
         # Second LLM call to get the final spoken reply.
         response2 = client.chat.completions.create(
             model=model,
@@ -290,8 +321,14 @@ def _tts_google(text: str, voice: str, language: str) -> bytes:
     return response.audio_content
 
 
+_SERVE_DIR = str(Path(__file__).resolve().parent)
+
+
 class DemoHandler(http.server.SimpleHTTPRequestHandler):
     """Serves static files + the /api/tts-test endpoint."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=_SERVE_DIR, **kwargs)
 
     def handle_one_request(self):
         with contextlib.suppress(ConnectionResetError):
@@ -391,11 +428,13 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as tts_exc:
                 print(f"[chat] TTS failed ({tts_exc}), returning text only")
 
-            resp = json.dumps({
-                "text": reply,
-                "audio": audio_b64,
-                "session_id": session_id,
-            }).encode()
+            resp = json.dumps(
+                {
+                    "text": reply,
+                    "audio": audio_b64,
+                    "session_id": session_id,
+                }
+            ).encode()
             self.send_response(200)
             self._cors_headers()
             self.send_header("Content-Type", "application/json")
