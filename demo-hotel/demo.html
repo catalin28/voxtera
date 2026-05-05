@@ -607,6 +607,13 @@ document.getElementById('btn-start').onclick = async function() {
           ' local=' + (p && p.local));
     });
 
+    callObject.on('participant-left', function(evt) {
+      var p = evt.participant;
+      if (!isBotParticipant(p)) return;
+      log('Bot left the room — showing reconnect overlay');
+      showReconnectOverlay();
+    });
+
     callObject.on('participant-updated', function(evt) {
       var p = evt.participant;
       if (!isBotParticipant(p)) return;

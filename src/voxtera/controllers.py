@@ -24,6 +24,8 @@ import time
 
 from loguru import logger
 from pipecat.frames.frames import (
+    BotStoppedSpeakingFrame,
+    InterruptionFrame,
     LLMMessagesAppendFrame,
     LLMRunFrame,
     LLMUpdateSettingsFrame,
@@ -73,6 +75,25 @@ class LLMRunGuard(FrameProcessor):
     async def process_frame(self, frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
 
+        # The previous bot turn has ended — either naturally
+        # (BotStoppedSpeakingFrame) or because the user barged in
+        # (InterruptionFrame). In both cases the refractory window has
+        # already served its purpose (suppressing rapid run storms during a
+        # single bot turn) and must be cleared so the *next* user turn isn't
+        # silently dropped. Without this reset, an interruption that arrives
+        # within `min_run_interval_secs` of the last run leaves the bot
+        # permanently stuck: the user's append is recorded but the
+        # LLMRunFrame is dropped, so the LLM never fires.
+        if isinstance(frame, BotStoppedSpeakingFrame | InterruptionFrame):
+            if self._last_run_sent_at is not None:
+                logger.debug(
+                    "[llm-run-guard] clearing refractory window on {}",
+                    type(frame).__name__,
+                )
+                self._last_run_sent_at = None
+            await self.push_frame(frame, direction)
+            return
+
         if isinstance(frame, LLMMessagesAppendFrame):
             messages = getattr(frame, "messages", None) or []
             has_user_content = any(
@@ -90,7 +111,10 @@ class LLMRunGuard(FrameProcessor):
         if isinstance(frame, LLMRunFrame):
             now = time.monotonic()
 
-            # Refractory window: suppress rapid run storms from noisy VAD churn.
+            # Refractory window: suppress rapid run storms from noisy VAD churn
+            # *within a single bot turn*. The window is cleared when the bot
+            # turn ends (see BotStoppedSpeakingFrame / InterruptionFrame branch
+            # above) so post-interruption runs are not blocked.
             if (
                 self._last_run_sent_at is not None
                 and (now - self._last_run_sent_at) < self._min_run_interval_secs

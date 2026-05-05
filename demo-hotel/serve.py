@@ -92,9 +92,10 @@ _presence_cache: dict[str, object] = {"fetched_at": 0.0, "value": None}
 # ---------------------------------------------------------------------------
 
 # Spawn timeout: if the bot doesn't post ``{type:"ready"}`` within this many
-# seconds, the launcher kills it and returns 504. RAG warmup on a cold cache
-# can take ~5 s so 15 s leaves comfortable headroom.
-_SPAWN_TIMEOUT_SECS: float = float(os.environ.get("VOXTERA_SPAWN_TIMEOUT_SECS", "15"))
+# seconds, the launcher kills it and returns 504. Embedding model warmup +
+# Daily join can take ~20 s on a cold start (1 vCPU droplet), so 30 s leaves
+# comfortable headroom.
+_SPAWN_TIMEOUT_SECS: float = float(os.environ.get("VOXTERA_SPAWN_TIMEOUT_SECS", "30"))
 
 # Path to the Voxtera project root (parent of demo-hotel/). The bot subprocess
 # runs from here so its ``load_dotenv()`` call finds the project's ``.env``.
@@ -1023,8 +1024,8 @@ if __name__ == "__main__":
     # subprocesses receive this as ``VOXTERA_LAUNCHER_URL`` and POST events to
     # ``{LAUNCHER_BASE_URL}/api/bot-event`` via ``launcher_client.post_event``.
     LAUNCHER_BASE_URL = f"http://127.0.0.1:{port}"
+    socketserver.ThreadingTCPServer.allow_reuse_address = True
     with socketserver.ThreadingTCPServer(("", port), DemoHandler) as httpd:
-        httpd.allow_reuse_address = True
         print(f"Serving demo on http://localhost:{port}/demo.html")
         print(
             f"On-demand launcher ready — bot callback URL: "

@@ -88,6 +88,13 @@ class Settings:
         "spa treatments, pool hours, restaurant menu, dishes, check-in, "
         "check-out, wifi password, taxi, museum, airport, Paris, Louvre."
     )
+    # Path to the per-language Whisper confidence-threshold JSON file. When
+    # set, low-confidence transcriptions are dropped before reaching the LLM,
+    # which suppresses Whisper substitution hallucinations like "the water is
+    # not running" → "the White House". When unset (or the file is missing),
+    # the bot falls back to a single hardcoded threshold pair (lenient).
+    # See config/stt_thresholds.json for the schema and tuned defaults.
+    stt_thresholds_path: str | None = "config/stt_thresholds.json"
     # Actions feature: register the `create_ticket` LLM tool, post tickets to
     # the configured Telegram channel, and run the staff-button listener as
     # a background task. Requires TELEGRAM_BOT_TOKEN. The Telegram channel
@@ -156,4 +163,6 @@ def load_settings() -> Settings:
             ),
         ),
         actions_enabled=os.environ.get("ACTIONS_ENABLED", "false").lower() in ("1", "true", "yes"),
+        stt_thresholds_path=os.environ.get("STT_THRESHOLDS_PATH", "config/stt_thresholds.json")
+        or None,
     )

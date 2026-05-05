@@ -28,6 +28,7 @@ from pipecat.services.whisper.base_stt import Transcription
 from pipecat.transcriptions.language import Language
 
 from voxtera.config import Settings
+from voxtera.stt_thresholds import STTThresholds
 
 # OpenAI Whisper API model identifier.
 STT_MODEL_WHISPER = "whisper-1"
@@ -41,12 +42,29 @@ class _MultilingualWhisperSTT(OpenAISTTService):
     """Whisper STT with language auto-detection (omits the language param).
 
     Uses verbose_json to capture the detected language for downstream
-    logging and consistency checks.
+    logging and consistency checks, and to read per-segment confidence
+    signals (``avg_logprob``, ``no_speech_prob``) for the low-confidence
+    drop filter.
+
+    The optional ``thresholds`` argument enables per-language confidence
+    filtering. When set, transcriptions whose worst segment falls below
+    the configured ``avg_logprob_min`` (or above ``no_speech_prob_max``)
+    are dropped before reaching the LLM by clearing ``result.text``. This
+    suppresses Whisper substitution hallucinations like
+    "the water is not running" → "the White House" without language bias.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        *,
+        thresholds: STTThresholds | None = None,
+        **kwargs: object,
+    ) -> None:
         super().__init__(**kwargs)
         self.last_detected_language: str | None = None
+        # If no thresholds object is supplied, build one with the hardcoded
+        # fallback so call sites don't need to special-case None.
+        self._thresholds: STTThresholds = thresholds or STTThresholds.load(None)
 
     async def _transcribe(self, audio: bytes) -> Transcription:
         kwargs: dict = {
@@ -64,11 +82,77 @@ class _MultilingualWhisperSTT(OpenAISTTService):
         if lang_hint and lang_hint not in ("multi", "auto", ""):
             kwargs["language"] = lang_hint
         result = await self._client.audio.transcriptions.create(**kwargs)
+
         detected_lang = getattr(result, "language", None)
-        if detected_lang:
+        text = (getattr(result, "text", "") or "").strip()
+
+        # Confidence gate. Only run when there's actually text to evaluate;
+        # an already-empty result needs no further filtering.
+        if text:
+            segments = getattr(result, "segments", None) or []
+            if segments:
+                # Use the WORST segment-level scores so a single noisy span
+                # in a longer utterance can still trigger a drop. avg_logprob
+                # is most-negative-wins (lower = less confident);
+                # no_speech_prob is highest-wins.
+                worst_logprob = min(
+                    (float(getattr(s, "avg_logprob", 0.0) or 0.0) for s in segments),
+                    default=0.0,
+                )
+                worst_no_speech = max(
+                    (float(getattr(s, "no_speech_prob", 0.0) or 0.0) for s in segments),
+                    default=0.0,
+                )
+                t = self._thresholds.for_language(detected_lang)
+                if worst_logprob < t.avg_logprob_min or worst_no_speech > t.no_speech_prob_max:
+                    logger.warning(
+                        "[stt] dropped low-confidence transcription "
+                        "(lang={!r}, avg_logprob={:.2f} threshold={:.2f}, "
+                        "no_speech_prob={:.2f} threshold={:.2f}): {!r}",
+                        detected_lang,
+                        worst_logprob,
+                        t.avg_logprob_min,
+                        worst_no_speech,
+                        t.no_speech_prob_max,
+                        text,
+                    )
+                    # Clear the text so the base class doesn't emit a
+                    # TranscriptionFrame downstream. Critically, do NOT
+                    # update last_detected_language here — the language
+                    # detection itself isn't trustworthy when confidence
+                    # is low, and a stale value avoids the
+                    # AutoTTSLanguageSwitcher flicking to a misdetected
+                    # language on noise.
+                    try:
+                        result.text = ""
+                    except Exception:  # pragma: no cover - defensive
+                        # If the result object is somehow immutable, we
+                        # still want the bot to keep working — fall through
+                        # and let downstream filters handle it.
+                        logger.debug(
+                            "[stt] could not clear result.text; relying on "
+                            "downstream noise filter"
+                        )
+                    return result
+
+        # Accepted (or empty): only update language tracking on a result we
+        # trust enough to forward.
+        if detected_lang and text:
             self.last_detected_language = detected_lang
-            logger.info("[stt] detected language: {}", detected_lang)
+            logger.info(
+                "[stt] detected language: {} (avg_logprob ok)",
+                detected_lang,
+            )
         return result
+
+    def reload_thresholds(self) -> None:
+        """Reload the confidence-threshold JSON file at runtime.
+
+        Useful during a demo: edit ``config/stt_thresholds.json`` and call
+        this to pick up the change without restarting the bot. No-op if
+        the STT was constructed without a path-backed STTThresholds.
+        """
+        self._thresholds.reload()
 
 
 def _google_exception_status_code(exc: Exception) -> str | None:
@@ -201,6 +285,7 @@ def _build_whisper_stt(settings: Settings) -> FrameProcessor | None:
     """Build the Whisper STT service if its credentials are present."""
     if not settings.openai_api_key:
         return None
+    thresholds = STTThresholds.load(settings.stt_thresholds_path)
     stt = _MultilingualWhisperSTT(
         api_key=settings.openai_api_key,
         settings=OpenAISTTService.Settings(
@@ -208,8 +293,13 @@ def _build_whisper_stt(settings: Settings) -> FrameProcessor | None:
             prompt=settings.stt_prompt if settings.stt_prompt_enabled else None,
             temperature=0.0,
         ),
+        thresholds=thresholds,
     )
-    logger.info("[stt] whisper available (model={})", STT_MODEL_WHISPER)
+    logger.info(
+        "[stt] whisper available (model={}, thresholds_languages={})",
+        STT_MODEL_WHISPER,
+        thresholds.configured_languages() or "default-only",
+    )
     return stt
 
 
