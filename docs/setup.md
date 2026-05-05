@@ -81,7 +81,20 @@ INPUT_MODE=voice make run       # mic-only this session
 
 In `text` and `hybrid` modes you can type a question and press Enter, or say `quit` / `exit` / `bye` to end the session cleanly. The bot's spoken reply always plays through the speakers/headphones regardless of which mode you're in.
 
-## 6. Common problems
+## 6. Admin sessions monitor
+
+`demo-hotel/serve.py` exposes a small operator page at `/admin.html` that lists the participants currently in your Daily room and lets you eject them. To enable it, generate a token and put it in `.env`:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+# copy the value into VOXTERA_ADMIN_TOKEN in .env
+```
+
+Restart `serve.py` and open `http://localhost:8080/admin.html`. The page asks for the token once and stores it in your browser's `localStorage`. The admin endpoints require `DAILY_API_KEY` and `DAILY_ROOM_NAME` to be set; without them the page renders a banner explaining what's missing on the server.
+
+The page polls `GET /api/admin/sessions` every 3 seconds (configurable in the header dropdown), pauses while the tab is hidden, and includes per-participant Kick + a global "End session" button. See `docs/admin-sessions-monitor-plan.md` for the design rationale.
+
+## 7. Common problems
 
 ### "Could not find PortAudio"
 

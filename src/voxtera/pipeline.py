@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.request import Request, urlopen
@@ -36,6 +37,7 @@ from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
+    EndFrame,
     InputAudioRawFrame,
     InterimTranscriptionFrame,
     LLMFullResponseEndFrame,
@@ -173,23 +175,26 @@ try:
 except Exception:  # daily-python not available on Windows
     DailyParams = None  # type: ignore[assignment,misc]
     DailyTransport = None  # type: ignore[assignment,misc]
-from pipecat.transports.local.audio import LocalAudioTransport, LocalAudioTransportParams
+from pipecat.transports.local.audio import (  # noqa: E402
+    LocalAudioTransport,
+    LocalAudioTransportParams,
+)
 
-from voxtera.audio import (
+from voxtera.audio import (  # noqa: E402
     AudioLevelMonitor,
     BotActiveUserFrameSuppressor,
     PlaybackLeakageGuard,
     RNNoiseDenoiser,
     TranscriptionNoiseFilter,
 )
-from voxtera.health import ActivityNotifier, TransportHealthMonitor
+from voxtera.health import ActivityNotifier, TransportHealthMonitor  # noqa: E402
 
 try:
     from pyrnnoise import RNNoise as _RNNoise
 except Exception:  # pragma: no cover - optional dependency at runtime
     _RNNoise = None
-from voxtera.config import Settings
-from voxtera.controllers import (
+from voxtera.config import Settings  # noqa: E402
+from voxtera.controllers import (  # noqa: E402
     LLM_MODEL,
     AutoTTSLanguageSwitcher,
     BrowserTextInputController,
@@ -198,15 +203,15 @@ from voxtera.controllers import (
     LLMRunGuard,
     ModelSwitcher,
 )
-from voxtera.observability import (
+from voxtera.observability import (  # noqa: E402
     DemoEventBroadcaster,
     PipelineTracer,
     UserTranscriptBroadcaster,
 )
-from voxtera.prompts import SYSTEM_PROMPT, resolve_greeting
-from voxtera.routing import STTGate, STTRouter, TTSGate, TTSRouter
-from voxtera.stt import _STT_BUILDERS, _build_stt
-from voxtera.tts import _TTS_BUILDERS
+from voxtera.prompts import SYSTEM_PROMPT, resolve_greeting  # noqa: E402
+from voxtera.routing import STTGate, STTRouter, TTSGate, TTSRouter  # noqa: E402
+from voxtera.stt import _STT_BUILDERS, _build_stt  # noqa: E402
+from voxtera.tts import _TTS_BUILDERS  # noqa: E402
 
 
 def _eject_stale_bots(settings: Settings) -> None:
@@ -309,7 +314,14 @@ def build_pipeline(
                 audio_in_channels=1,
                 audio_in_passthrough=True,
                 audio_out_enabled=True,
-                audio_out_sample_rate=24000,
+                # 48 kHz = WebRTC native. The OpenAI TTS service is pinned
+                # to 24 kHz at construction (see ``voxtera/tts.py``), and
+                # Pipecat's BaseOutputTransport resampler upsamples 24 → 48
+                # before this transport hands audio to daily-python. Setting
+                # this to 24 kHz instead gives chipmunk playback in browsers
+                # because daily-python's WebRTC layer doesn't always
+                # negotiate non-native rates correctly.
+                audio_out_sample_rate=48000,
                 audio_out_channels=1,
                 camera_out_enabled=False,
                 microphone_out_enabled=True,
@@ -327,6 +339,90 @@ def build_pipeline(
                 inp._next,
                 inp._FrameProcessor__started if hasattr(inp, "_FrameProcessor__started") else "N/A",
             )
+
+        # On-demand spawn handshake: when this bot was spawned by the launcher
+        # (``serve.py`` /api/start-session), it knows its ``VOXTERA_SESSION_ID``
+        # and the launcher's callback URL via env vars. Posting "ready" here
+        # unblocks the launcher's ``q.get()`` and lets the browser proceed to
+        # ``callObject.join``. When those env vars are unset (e.g. ``make run``
+        # or the legacy always-on bot), ``post_event`` is a silent no-op and
+        # this handler costs nothing.
+        from voxtera import launcher_client
+
+        # Note: Pipecat's DailyTransport names this event ``on_joined`` (not
+        # ``on_joined_meeting`` — the latter is the daily-python low-level
+        # callback name). Using the wrong name silently does nothing: Pipecat
+        # accepts the registration but logs a warning at transport init and
+        # never fires the handler. Source of truth for valid event names is
+        # ``pipecat/transports/daily/transport.py`` near ``_register_event_handler``.
+        @transport.event_handler("on_joined")
+        async def _on_joined(transport, data):
+            logger.info(
+                "[daily] joined as {} (launcher_callback={}) data={}",
+                settings.bot_name,
+                "enabled" if launcher_client.is_enabled() else "disabled",
+                data,
+            )
+            await launcher_client.post_event("ready")
+
+        # Fast-exit on Guest leave — only for on-demand mode.
+        #
+        # In on-demand mode (launcher spawned this bot) we want the process to
+        # exit promptly when the human hangs up so the launcher can release the
+        # session slot and Daily participant-minutes stop accruing. Without
+        # this handler we would either wait for ``PIPELINE_IDLE_TIMEOUT_SECS``
+        # or sit in the room indefinitely (idle timeout is disabled by default).
+        #
+        # In legacy / always-on mode (launcher disabled) we keep the current
+        # behaviour: the bot stays in the room across Guest sessions. Adding
+        # an early-exit there would break ``make run`` workflows where the
+        # developer reconnects multiple times to the same long-running bot.
+        @transport.event_handler("on_participant_left")
+        async def _on_participant_left(transport, participant, reason):
+            user_name = participant.get("info", {}).get("userName", "")
+            logger.info("[daily] participant_left userName={!r} reason={!r}", user_name, reason)
+            # Filter on the *human* leaving. Multi-Guest is out of scope; we
+            # treat any non-bot leave as "the call is over."
+            if user_name == settings.bot_name:
+                return
+            if not launcher_client.is_enabled():
+                logger.debug("[daily] launcher disabled — staying in room (legacy mode)")
+                return
+            logger.info("[daily] guest left — queuing EndFrame to exit process cleanly")
+            await launcher_client.post_event("exiting", reason=f"guest_left:{reason}")
+            # ``task`` is created later in this function, but Python closures
+            # bind names lazily — by the time this handler fires the bot is
+            # already running, so ``task`` is defined.
+            await task.queue_frame(EndFrame())
+
+            # Force-exit watchdog. The Telegram action listener thread (and
+            # asyncio's default thread pool) can take up to 300 s to join on
+            # shutdown, which keeps the subprocess alive long after Daily
+            # has been left — the launcher's ``Popen.wait()`` reaper stays
+            # blocked, the registry slot stays "busy," and the next Start
+            # click is rejected with 409.
+            #
+            # We give the pipeline 5 s to drain TTS / LLM frames cleanly,
+            # then force-exit via ``os._exit(0)`` — bypasses asyncio cleanup,
+            # bypasses the thread pool join, immediately releases the OS
+            # resources. The launcher's reaper observes the exit and frees
+            # the registry slot within ~100 ms.
+            #
+            # 5 s headroom: in the working baseline the bot finished
+            # ``Left https://...`` 2 s after participant_left, so 5 s is
+            # comfortable. Daemon Timer thread = does NOT prevent process
+            # exit if the clean drain happens to win the race.
+            def _force_exit() -> None:
+                logger.warning(
+                    "[daily] EndFrame drain watchdog: forcing process exit "
+                    "(os._exit) after 5s — Telegram listener / asyncio "
+                    "executor likely still draining"
+                )
+                os._exit(0)
+
+            t = threading.Timer(5.0, _force_exit)
+            t.daemon = True
+            t.start()
 
         # Health monitor: exits the process when the room is empty for too
         # long, preventing transport degradation from idle WebRTC sessions.
@@ -696,7 +792,9 @@ def build_pipeline(
         params=PipelineParams(
             allow_interruptions=settings.allow_interruptions,
             audio_in_sample_rate=16000,
-            audio_out_sample_rate=24000,
+            # Must match the Daily transport rate above — Pipecat resamples
+            # the 24 kHz TTS frames up to 48 kHz before hitting the transport.
+            audio_out_sample_rate=48000,
         ),
         enable_rtvi=False,
         cancel_on_idle_timeout=settings.pipeline_idle_timeout_secs is not None,

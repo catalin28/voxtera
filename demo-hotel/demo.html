@@ -227,7 +227,12 @@
 
 <script src="https://unpkg.com/@daily-co/daily-js"></script>
 <script>
+// Default fallback used only if the launcher response somehow omits room_url.
+// In normal operation /api/start-session returns the URL the bot just joined.
 var ROOM_URL = 'https://voxtera.daily.co/voxtera-demo';
+// Session ID assigned by the launcher when this Start click spawned a bot.
+// Kept around for diagnostics; the bot also tracks it via VOXTERA_SESSION_ID.
+var SESSION_ID = null;
 var callObject = null;
 var isMuted = false;
 var userEndedSession = false;
@@ -254,11 +259,43 @@ function err(msg) {
 if (!window.DailyIframe) err('Daily SDK failed to load');
 else log('Daily SDK loaded');
 
-document.getElementById('btn-start').onclick = function() {
+document.getElementById('btn-start').onclick = async function() {
   log('START clicked');
   var btn = this;
   btn.disabled = true;
-  btn.textContent = 'Connecting...';
+  btn.textContent = '⏳ Starting bot...';
+
+  // Safari autoplay-policy guard.
+  //
+  // Safari consumes the user-activation token across the first ``await`` in
+  // an async handler. If we create the AudioContext after ``await fetch
+  // /api/start-session`` returns ~5-7 s later, the context is created
+  // outside the user-gesture window — Safari accepts it (state=running) but
+  // won't route audio to the speakers. The legacy synchronous flow worked
+  // because click → join → audio happened in one tick.
+  //
+  // The fix: create AND resume the AudioContext BEFORE any await. The
+  // resulting context carries the user-gesture token through the full flow,
+  // so when ``ensureAudioContext()`` is called again later it's a no-op and
+  // the WebAudio path can play the bot's voice.
+  if (!audioCtx) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      log('AudioContext created early (sampleRate=' + audioCtx.sampleRate + ')');
+    } catch (audioErr) {
+      err('AudioContext creation failed: ' + audioErr.message);
+    }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    // Fire-and-forget — resume() returns a Promise but we deliberately do
+    // NOT await it here; awaiting before any other work would defeat the
+    // whole point of running this synchronously inside the gesture.
+    audioCtx.resume().then(function() {
+      log('AudioContext resumed early (state=' + audioCtx.state + ')');
+    }).catch(function(e) {
+      err('AudioContext resume failed: ' + e.message);
+    });
+  }
 
   if (document.getElementById('use-chat').checked) {
     var params = new URLSearchParams({
@@ -274,6 +311,54 @@ document.getElementById('btn-start').onclick = function() {
 
   if (!window.DailyIframe) {
     err('Daily SDK not available');
+    btn.disabled = false;
+    btn.textContent = '🎙️ Start';
+    return;
+  }
+
+  // Phase 4 — On-demand bot spawn handshake.
+  //
+  // Before joining Daily, ask the launcher to spawn a fresh bot subprocess.
+  // The launcher blocks until the bot is in the room (via the launcher_client
+  // queue handshake) and only then returns the room URL. This guarantees the
+  // bot is already a Daily participant when we call ``callObject.join`` —
+  // no race, no missed greeting, no idle bot squatting in the room between
+  // calls. See docs/ON_DEMAND_BOT_SPAWN.md for the full flow.
+  try {
+    log('[launcher] requesting bot spawn...');
+    var startResp = await fetch('/api/start-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        language: document.getElementById('lang-select').value,
+        llm: document.getElementById('llm-select').value,
+        stt: document.getElementById('stt-select').value,
+        ttsProvider: document.getElementById('tts-provider-select').value,
+        voice: document.getElementById('voice-select').value
+      })
+    });
+    if (startResp.status === 409) {
+      var busyData = await startResp.json().catch(function() { return {}; });
+      err('Demo is busy — another session is active. Try again in a minute.');
+      log('[launcher] 409 busy, active_session=' + (busyData.active_session || '?'));
+      btn.disabled = false;
+      btn.textContent = '🎙️ Start';
+      return;
+    }
+    if (!startResp.ok) {
+      var errData = await startResp.json().catch(function() { return {}; });
+      err('Failed to start bot (HTTP ' + startResp.status + '): ' + (errData.error || 'unknown error'));
+      btn.disabled = false;
+      btn.textContent = '🎙️ Start';
+      return;
+    }
+    var startData = await startResp.json();
+    if (startData.room_url) ROOM_URL = startData.room_url;
+    SESSION_ID = startData.session_id || null;
+    log('[launcher] bot ready, session=' + SESSION_ID + ' room=' + ROOM_URL);
+    btn.textContent = '⏳ Joining session...';
+  } catch (fetchErr) {
+    err('Could not reach launcher at /api/start-session: ' + fetchErr.message);
     btn.disabled = false;
     btn.textContent = '🎙️ Start';
     return;
@@ -352,13 +437,26 @@ document.getElementById('btn-start').onclick = function() {
           attachedTrackId = track.id;
           attachedTrack = track;
           log('[safari] WebAudio attached OK (ctx.state=' + ctx.state + ')');
-          // IMPORTANT: do NOT assign srcObject to remoteAudioEl on Safari.
-          // The <audio> element has autoplay set and would render the stream
-          // in parallel with WebAudio — re-introducing the choppy path we
-          // just bypassed. Mute and clear the element defensively, and feed
-          // the orb analyser off the WebAudio source instead.
+          // WebKit "primer" workaround: Safari's MediaStreamAudioSourceNode
+          // silently produces zeros for a WebRTC track unless the SAME
+          // stream is also bound to an HTMLMediaElement. The element is
+          // kept MUTED so we don't get double playback — it's only there
+          // to wake up Safari's audio pipeline so the WebAudio graph
+          // actually receives samples.
+          //
+          // Symptoms when omitted: ctx.state=running, no errors, bot text
+          // arrives, transcript flows, but speakers stay silent. We hit
+          // this in Safari 26.1 with the on-demand spawn flow on
+          // 2026-05-05 — clearing srcObject was the original fix for a
+          // *different* "double playback" bug; muting the element solves
+          // both.
           remoteAudioEl.muted = true;
-          remoteAudioEl.srcObject = null;
+          remoteAudioEl.srcObject = stream;
+          remoteAudioEl.play().catch(function(playErr) {
+            // Muted autoplay should always succeed under autoplay policy;
+            // log if it doesn't so we can see why on a future regression.
+            log('[safari] muted primer play() rejected: ' + playErr.message);
+          });
           if (!orbAnalyserBot) orbSetupBotAnalyserFromSource(activeSource);
         } catch (e) {
           err('[safari] WebAudio attach failed: ' + e.message + ' — falling back to <audio>');
@@ -397,14 +495,41 @@ document.getElementById('btn-start').onclick = function() {
     });
     log('Call object created');
 
+    // Identify the bot in a Daily participant entry. Daily's JS SDK exposes
+    // the display name as either ``user_name`` (snake) or ``userName`` (camel)
+    // depending on version and code path; we accept both. We also fall back
+    // to "any non-local participant" because in the on-demand spawn model
+    // there is only ever the one bot in the room.
+    function isBotParticipant(p) {
+      if (!p || p.local) return false;
+      var name = p.user_name || p.userName || '';
+      // Strict match if the name is set, otherwise accept any remote.
+      return name === 'Voxtera' || name === '';
+    }
+
     function scanParticipantsForAudio() {
       try {
         var participants = callObject.participants();
+        // Diagnostic: log every participant we see, so we can tell whether
+        // the bot is even visible to the JS client when polling fails.
+        var seen = [];
+        for (var k in participants) {
+          var pp = participants[k];
+          seen.push({
+            key: k,
+            local: !!pp.local,
+            user_name: pp.user_name,
+            userName: pp.userName,
+            audio_state: pp.tracks && pp.tracks.audio && pp.tracks.audio.state,
+            has_persistent: !!(pp.tracks && pp.tracks.audio && pp.tracks.audio.persistentTrack),
+            has_track: !!(pp.tracks && pp.tracks.audio && pp.tracks.audio.track),
+          });
+        }
+        log('[scan] participants=' + JSON.stringify(seen));
+
         for (var key in participants) {
           var p = participants[key];
-          if (p.local) continue;
-          // Only attach audio from the bot, not stale participants
-          if (p.user_name !== 'Voxtera') continue;
+          if (!isBotParticipant(p)) continue;
           var t = p.tracks && p.tracks.audio;
           if (t && t.state === 'playable' && t.persistentTrack) {
             attachRemoteAudio(t.persistentTrack, 'scan.persistent');
@@ -477,14 +602,14 @@ document.getElementById('btn-start').onclick = function() {
 
     callObject.on('participant-joined', function(evt) {
       var p = evt.participant;
-      log('participant-joined: ' + (p && p.user_name));
+      log('participant-joined: user_name=' + (p && p.user_name) +
+          ' userName=' + (p && p.userName) +
+          ' local=' + (p && p.local));
     });
 
     callObject.on('participant-updated', function(evt) {
       var p = evt.participant;
-      if (!p || p.local) return;
-      // Only attach audio from the bot (Voxtera), not stale participants
-      if (p.user_name !== 'Voxtera') return;
+      if (!isBotParticipant(p)) return;
       var t = p.tracks && p.tracks.audio;
       if (t && t.state === 'playable') {
         var track = t.persistentTrack || t.track;
@@ -494,9 +619,7 @@ document.getElementById('btn-start').onclick = function() {
 
     callObject.on('track-started', function(evt) {
       if (!evt.track || evt.track.kind !== 'audio') return;
-      if (evt.participant && evt.participant.local) return;
-      // Only attach audio from the bot (Voxtera)
-      if (evt.participant && evt.participant.user_name !== 'Voxtera') return;
+      if (!isBotParticipant(evt.participant)) return;
       attachRemoteAudio(evt.track, 'track-started');
     });
 

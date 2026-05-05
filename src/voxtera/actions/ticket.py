@@ -14,11 +14,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from uuid import uuid4
 
 
-class Category(str, Enum):
+class Category(StrEnum):
     """Allowed ticket categories. Mirrors the enum the LLM tool chooses from.
 
     String values are the human-readable labels shown in the Telegram prefix
