@@ -59,6 +59,7 @@ from pipecat.processors.aggregators.llm_response_universal import LLMContextAggr
 from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.services.anthropic.llm import AnthropicLLMService
+from pipecat.services.openai.llm import OpenAILLMService
 
 
 class PipelineProbe(FrameProcessor):
@@ -149,6 +150,19 @@ class PipelineProbe(FrameProcessor):
                 frame.__class__.__name__,
                 direction.name,
             )
+            # Push to the trace bus so the dashboard sees the same flow we
+            # log. Cheap (just a deque append + queue.put_nowait per
+            # subscriber) and lossy by design — the bus drops oldest events
+            # on a full subscriber rather than blocking the pipeline.
+            _trace_emit(
+                "frame",
+                source=self._label,
+                turn_id=_trace_tracker().current(),
+                data={
+                    "frame_type": frame.__class__.__name__,
+                    "direction": direction.name.lower(),
+                },
+            )
         else:
             # Log all other non-audio frames to catch DailyInputTransportMessageFrame etc.
             self._other_frame_count += 1
@@ -211,7 +225,10 @@ from voxtera.observability import (  # noqa: E402
 from voxtera.prompts import SYSTEM_PROMPT, resolve_greeting  # noqa: E402
 from voxtera.routing import STTGate, STTRouter, TTSGate, TTSRouter  # noqa: E402
 from voxtera.stt import _STT_BUILDERS, _build_stt  # noqa: E402
+from voxtera.trace import emit as _trace_emit  # noqa: E402
+from voxtera.trace import tracker as _trace_tracker  # noqa: E402
 from voxtera.tts import _TTS_BUILDERS  # noqa: E402
+from voxtera.tunables import register_pipeline_knobs  # noqa: E402
 
 
 def _eject_stale_bots(settings: Settings) -> None:
@@ -512,10 +529,18 @@ def build_pipeline(
     if mic_enabled and not needs_vad:
         logger.info("[vad] external VAD skipped (STT provides its own)")
 
-    llm = AnthropicLLMService(
-        api_key=settings.anthropic_api_key,
-        settings=AnthropicLLMService.Settings(model=LLM_MODEL),
-    )
+    if LLM_MODEL in ("gpt-4o-mini",):
+        llm: FrameProcessor = OpenAILLMService(
+            api_key=settings.openai_api_key,
+            model=LLM_MODEL,
+        )
+        logger.info("[llm] using OpenAI model {}", LLM_MODEL)
+    else:
+        llm = AnthropicLLMService(
+            api_key=settings.anthropic_api_key,
+            settings=AnthropicLLMService.Settings(model=LLM_MODEL),
+        )
+        logger.info("[llm] using Anthropic model {}", LLM_MODEL)
 
     # Build TTS providers. In Daily mode we build every provider with valid
     # credentials and run them as gated parallel branches like STT, so the
@@ -605,6 +630,11 @@ def build_pipeline(
     _probing = True
     if _probing:
         processors.append(PipelineProbe("after_transport_in"))
+    # Track live processor refs so we can register live-tunable knobs at
+    # the end of build_pipeline (see register_pipeline_knobs below).
+    rnnoise_denoiser_ref = None
+    leakage_guard_ref = None
+    user_frame_suppressor_ref = None
     if mic_enabled:
         if settings.rnnoise_enabled:
             if _RNNoise is None:
@@ -612,16 +642,14 @@ def build_pipeline(
                     "[rnnoise] enabled but pyrnnoise is unavailable; running without denoiser"
                 )
             else:
-                processors.append(RNNoiseDenoiser(sample_rate=16000))
+                rnnoise_denoiser_ref = RNNoiseDenoiser(sample_rate=16000)
+                processors.append(rnnoise_denoiser_ref)
                 if _probing:
                     processors.append(PipelineProbe("after_rnnoise"))
                 logger.info("[rnnoise] enabled")
 
-        processors.extend(
-            [
-                PlaybackLeakageGuard(allow_interruptions=settings.allow_interruptions),
-            ]
-        )
+        leakage_guard_ref = PlaybackLeakageGuard(allow_interruptions=settings.allow_interruptions)
+        processors.append(leakage_guard_ref)
         if _probing:
             processors.append(PipelineProbe("after_leakage_guard"))
         processors.append(AudioLevelMonitor())
@@ -655,9 +683,10 @@ def build_pipeline(
             )
             if _probing:
                 processors.append(PipelineProbe("after_parallel_stt"))
-            processors.append(
-                BotActiveUserFrameSuppressor(allow_interruptions=settings.allow_interruptions)
+            user_frame_suppressor_ref = BotActiveUserFrameSuppressor(
+                allow_interruptions=settings.allow_interruptions
             )
+            processors.append(user_frame_suppressor_ref)
             if _probing:
                 processors.append(PipelineProbe("after_suppressor"))
         else:
@@ -675,11 +704,10 @@ def build_pipeline(
             )
             if _probing:
                 processors.append(PipelineProbe("after_noise_filter"))
-            processors.extend(
-                [
-                    BotActiveUserFrameSuppressor(allow_interruptions=settings.allow_interruptions),
-                ]
+            user_frame_suppressor_ref = BotActiveUserFrameSuppressor(
+                allow_interruptions=settings.allow_interruptions
             )
+            processors.append(user_frame_suppressor_ref)
             if _probing:
                 processors.append(PipelineProbe("after_suppressor"))
         if settings.transport_mode == "daily":
@@ -802,4 +830,22 @@ def build_pipeline(
     )
 
     runner = PipelineRunner(handle_sigint=True)
+
+    # Register live-tunable knobs against the running processors. This must
+    # come after every processor exists but before the runner starts, so the
+    # initial /knobs snapshot reflects the actual built state. Knobs whose
+    # processor wasn't built (e.g. RNNoise when disabled) are left in
+    # display-only mode (no apply handler).
+    register_pipeline_knobs(
+        settings=settings,
+        vad_processor=vad_processor,
+        leakage_guard=leakage_guard_ref,
+        user_frame_suppressor=user_frame_suppressor_ref,
+        rnnoise_denoiser=rnnoise_denoiser_ref,
+        stt_router=stt_router,
+        tts_router=tts_router,
+        llm=llm,
+        tts=tts,
+    )
+
     return task, runner

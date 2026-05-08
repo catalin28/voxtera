@@ -32,7 +32,10 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 import uuid
+from collections import deque
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -75,6 +78,95 @@ _BOT_NAME: str = os.environ.get("BOT_NAME") or "Voxtera"
 # at the same page.
 _PRESENCE_CACHE_TTL_SECS: float = 0.5
 _presence_cache: dict[str, object] = {"fetched_at": 0.0, "value": None}
+
+# ---------------------------------------------------------------------------
+# Trace plane — buffers events streamed from the bot subprocess and fans
+# them out to /trace.html dashboard subscribers via Server-Sent Events.
+# ---------------------------------------------------------------------------
+
+# Default bot tune-server port for ``make run`` / always-on legacy mode.
+# Overridable via env so multiple bots on one host don't collide.
+_DEFAULT_BOT_PORT: int = int(os.environ.get("VOXTERA_BOT_PORT_BASE", "9091"))
+
+
+class TraceEventBuffer:
+    """Ring buffer of trace events plus thread-safe SSE fan-out.
+
+    Each subscriber gets a per-subscriber ``queue.Queue``. Slow subscribers
+    drop their oldest event rather than blocking the producer (the bot's
+    HTTP POST handler thread). Late subscribers receive a small tail of the
+    ring buffer on connect so the dashboard is populated immediately.
+    """
+
+    def __init__(self, *, buffer_size: int = 5000, subscriber_queue_size: int = 1000) -> None:
+        self._buffer: deque[dict] = deque(maxlen=buffer_size)
+        self._subscribers: list[_queue.Queue] = []
+        self._subscriber_queue_size = subscriber_queue_size
+        self._lock = threading.Lock()
+
+    def add(self, event: dict) -> None:
+        """Append an event from the bot. Fan out to subscribers."""
+        with self._lock:
+            self._buffer.append(event)
+            subs = list(self._subscribers)
+        for q in subs:
+            try:
+                q.put_nowait(event)
+            except _queue.Full:
+                with contextlib.suppress(_queue.Empty):
+                    q.get_nowait()
+                with contextlib.suppress(_queue.Full):
+                    q.put_nowait(event)
+
+    def add_many(self, events: list[dict]) -> None:
+        """Bulk append (the bot batches POSTs)."""
+        for e in events:
+            self.add(e)
+
+    def subscribe(self) -> _queue.Queue:
+        q: _queue.Queue = _queue.Queue(maxsize=self._subscriber_queue_size)
+        with self._lock:
+            self._subscribers.append(q)
+        return q
+
+    def unsubscribe(self, q: _queue.Queue) -> None:
+        with self._lock:
+            if q in self._subscribers:
+                self._subscribers.remove(q)
+
+    def recent(self, limit: int = 200) -> list[dict]:
+        with self._lock:
+            if limit >= len(self._buffer):
+                return list(self._buffer)
+            return list(self._buffer)[-limit:]
+
+    def stats(self) -> dict:
+        with self._lock:
+            return {
+                "buffered": len(self._buffer),
+                "subscribers": len(self._subscribers),
+            }
+
+
+_TRACE_BUFFER = TraceEventBuffer()
+
+# Tracks the bot tune-server port for the live session. Single-slot for v1
+# (matches BotSessionRegistry's single-session constraint). Set by
+# /api/start-session at spawn time and read by /api/admin/tune.
+_BOT_TUNE_PORT: int | None = None
+_BOT_TUNE_LOCK = threading.Lock()
+
+
+def _set_bot_tune_port(port: int | None) -> None:
+    global _BOT_TUNE_PORT
+    with _BOT_TUNE_LOCK:
+        _BOT_TUNE_PORT = port
+
+
+def _get_bot_tune_port() -> int | None:
+    with _BOT_TUNE_LOCK:
+        return _BOT_TUNE_PORT
+
 
 # ---------------------------------------------------------------------------
 # Phase 3 — On-demand bot launcher
@@ -185,17 +277,22 @@ class BotSessionRegistry:
 REGISTRY = BotSessionRegistry()
 
 
-def _spawn_bot(session_id: str, callback_url: str) -> subprocess.Popen:
+def _spawn_bot(
+    session_id: str, callback_url: str, tune_port: int, llm_model: str | None = None
+) -> subprocess.Popen:
     """Spawn ``python -m voxtera.bot`` as a subprocess for this session.
 
-    The subprocess inherits the launcher's environment plus the two new vars
-    the bot's ``launcher_client`` reads at import time. stdout/stderr are
-    inherited so bot logs land in the launcher's terminal — keeps debugging
-    simple. For production, swap to ``subprocess.PIPE`` and tee to a file.
+    The subprocess inherits the launcher's environment plus the env vars the
+    bot's ``launcher_client`` and ``trace_server`` read at import time.
+    ``tune_port`` is the localhost port the bot's TuneServer binds to; the
+    launcher uses it to forward live-tune commands from the trace dashboard.
     """
     env = os.environ.copy()
     env["VOXTERA_SESSION_ID"] = session_id
     env["VOXTERA_LAUNCHER_URL"] = callback_url
+    env["VOXTERA_BOT_PORT"] = str(tune_port)
+    if llm_model:
+        env["LLM_MODEL_OVERRIDE"] = llm_model
 
     proc = subprocess.Popen(
         [sys.executable, "-m", "voxtera.bot"],
@@ -217,6 +314,7 @@ def _start_reaper_thread(session_id: str, proc: subprocess.Popen) -> None:
         rc = proc.wait()
         print(f"[launcher] bot session {session_id} exited (rc={rc})")
         REGISTRY.reap(session_id)
+        _set_bot_tune_port(None)
 
     t = threading.Thread(
         target=_reap,
@@ -534,6 +632,10 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_health()
         if self.path == "/api/admin/sessions":
             return self._handle_admin_sessions()
+        if self.path == "/api/trace/snapshot":
+            return self._handle_trace_snapshot()
+        if self.path == "/api/trace/stream":
+            return self._handle_trace_stream()
         return super().do_GET()
 
     def do_POST(self):  # noqa: N802
@@ -545,6 +647,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_eject()
         if self.path == "/api/admin/end-session":
             return self._handle_admin_end_session()
+        if self.path == "/api/admin/tune":
+            return self._handle_admin_tune()
         # Phase 3 — on-demand bot launcher
         if self.path == "/api/start-session":
             return self._handle_start_session()
@@ -837,13 +941,29 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             f"(callback={callback_url}, timeout={_SPAWN_TIMEOUT_SECS}s)"
         )
 
+        # Read body to extract per-session params (llm model, etc.).
+        body: dict = {}
         try:
-            proc = _spawn_bot(session_id, callback_url)
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                raw = self.rfile.read(length)
+                body = json.loads(raw.decode("utf-8"))
+        except Exception:  # noqa: BLE001
+            pass
+        llm_model = body.get("llm") or None
+
+        # Pick a tune port for this bot. v1 reuses the default base port for
+        # every session because we only ever have one live session at a time.
+        # When multi-session lands, allocate a unique port per session.
+        tune_port = _DEFAULT_BOT_PORT
+        try:
+            proc = _spawn_bot(session_id, callback_url, tune_port, llm_model=llm_model)
         except Exception as exc:
             print(f"[launcher] spawn failed: {exc}")
             REGISTRY.reap(session_id)
             self._send_json(500, {"error": f"spawn failed: {exc}"})
             return
+        _set_bot_tune_port(tune_port)
 
         REGISTRY.attach_process(session_id, proc)
         _start_reaper_thread(session_id, proc)
@@ -900,9 +1020,9 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
     def _handle_bot_event(self) -> None:
         """POST /api/bot-event — receive an event from a bot subprocess.
 
-        Body: ``{"session_id": "...", "type": "ready"|"error"|"exiting", ...}``.
-        We do not validate the event shape strictly — extra fields are kept
-        and propagated through the queue so future event types Just Work.
+        Body: ``{"session_id": "...", "type": "ready"|"error"|"exiting"|"trace", ...}``.
+        Trace events are routed into the trace buffer for SSE fan-out;
+        all other types go to the launcher's per-session queue as before.
         """
         try:
             body = self._read_json_body()
@@ -916,11 +1036,188 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(400, {"error": "session_id and type are required"})
             return
 
-        REGISTRY.deliver(session_id, body)
+        if event_type == "trace":
+            # Batched trace events from the bot's TraceForwarder. Each event
+            # in the batch is a dict matching voxtera.trace.TraceEvent.
+            events = body.get("events") or []
+            if isinstance(events, list):
+                # Stamp session_id onto each event for the dashboard's view.
+                for ev in events:
+                    if isinstance(ev, dict) and not ev.get("session_id"):
+                        ev["session_id"] = session_id
+                _TRACE_BUFFER.add_many([ev for ev in events if isinstance(ev, dict)])
+        else:
+            REGISTRY.deliver(session_id, body)
         # 204 No Content — nothing to return; the bot doesn't care.
         self.send_response(204)
         self._cors_headers()
         self.end_headers()
+
+    # ------------------------------------------------------------------
+    # Trace endpoints — power /trace.html
+    # ------------------------------------------------------------------
+
+    def _trace_auth(self) -> bool:
+        """Same gate as admin endpoints, with the same 401 / 503 semantics.
+
+        Returns True iff auth passed. On failure, an error response has
+        already been written.
+        """
+        if not _ADMIN_TOKEN:
+            self._send_json(
+                503,
+                {
+                    "error": "admin_disabled",
+                    "detail": "VOXTERA_ADMIN_TOKEN is not set on the server.",
+                },
+            )
+            return False
+        provided = self.headers.get("X-Admin-Token", "")
+        if provided != _ADMIN_TOKEN:
+            self._send_json(401, {"error": "unauthorized"})
+            return False
+        return True
+
+    def _bot_get_knobs(self) -> tuple[int, dict | None]:
+        """Fetch /knobs from the bot's tune-server. Returns (status, body)."""
+        port = _get_bot_tune_port()
+        if port is None:
+            return (502, {"error": "bot_unreachable", "detail": "no live bot session"})
+        url = f"http://127.0.0.1:{port}/knobs"
+        req = urllib.request.Request(url, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                data = json.loads(resp.read())
+                return (resp.status, data)
+        except urllib.error.HTTPError as exc:
+            return (exc.code, {"error": "bot_http_error", "detail": str(exc)})
+        except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+            return (502, {"error": "bot_unreachable", "detail": str(exc)})
+
+    def _handle_trace_snapshot(self) -> None:
+        """GET /api/trace/snapshot — current state in one JSON blob.
+
+        Returns: bot connection status, knobs (from bot if available, else
+        an empty list with a warning), recent events tail, and trace buffer
+        stats. Used by the dashboard at page load.
+        """
+        if not self._trace_auth():
+            return
+        port = _get_bot_tune_port()
+        bot_connected = port is not None
+        knobs: list = []
+        if bot_connected:
+            status, body = self._bot_get_knobs()
+            if status == 200 and isinstance(body, dict):
+                knobs = body.get("knobs", []) or []
+        snapshot = {
+            "bot_connected": bot_connected,
+            "tune_port": port,
+            "knobs": knobs,
+            "recent_events": _TRACE_BUFFER.recent(limit=200),
+            "buffer_stats": _TRACE_BUFFER.stats(),
+        }
+        self._send_json(200, snapshot)
+
+    def _handle_admin_tune(self) -> None:
+        """POST /api/admin/tune — forward to the bot's TuneServer.
+
+        Body: ``{"knob": "vad_stop_secs", "value": 0.3}``.
+        Returns the bot's response shape (applied / error).
+        """
+        if not self._trace_auth():
+            return
+        body = self._read_json_body()
+        knob = body.get("knob")
+        if not isinstance(knob, str) or not knob:
+            self._send_json(400, {"applied": False, "error": "missing_knob"})
+            return
+        port = _get_bot_tune_port()
+        if port is None:
+            self._send_json(
+                502,
+                {"applied": False, "error": "bot_unreachable"},
+            )
+            return
+        url = f"http://127.0.0.1:{port}/tune"
+        payload = json.dumps(body).encode()
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                resp_body = json.loads(resp.read() or b"{}")
+                self._send_json(resp.status, resp_body)
+        except urllib.error.HTTPError as exc:
+            try:
+                resp_body = json.loads(exc.read() or b"{}")
+            except (json.JSONDecodeError, OSError):
+                resp_body = {"applied": False, "error": "bot_http_error"}
+            self._send_json(exc.code, resp_body)
+        except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+            self._send_json(
+                502,
+                {"applied": False, "error": "bot_unreachable", "detail": str(exc)},
+            )
+
+    def _handle_trace_stream(self) -> None:
+        """GET /api/trace/stream — Server-Sent Events.
+
+        Sends the recent ring buffer as catch-up, then streams live events.
+        The handler thread blocks on a per-subscriber queue; the client
+        keeps the connection open until they navigate away.
+        """
+        if not self._trace_auth():
+            return
+        # SSE headers. ``Cache-Control: no-cache`` and the
+        # ``Content-Type: text/event-stream`` are required by browsers.
+        try:
+            self.send_response(200)
+            self._cors_headers()
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            # Disable proxy buffering so events flush immediately.
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError):
+            return
+
+        sub = _TRACE_BUFFER.subscribe()
+        # Send catch-up tail so the dashboard renders something immediately.
+        try:
+            for ev in _TRACE_BUFFER.recent(limit=200):
+                self._sse_write(ev)
+            # Live tail. The 15s heartbeat keeps proxies / load balancers
+            # from killing the connection during quiet periods.
+            last_heartbeat = time.monotonic()
+            while True:
+                try:
+                    ev = sub.get(timeout=5.0)
+                    self._sse_write(ev)
+                except _queue.Empty:
+                    pass
+                now = time.monotonic()
+                if (now - last_heartbeat) >= 15.0:
+                    try:
+                        self.wfile.write(b": heartbeat\n\n")
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError):
+                        break
+                    last_heartbeat = now
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            _TRACE_BUFFER.unsubscribe(sub)
+
+    def _sse_write(self, event: dict) -> None:
+        """Write a single SSE ``data:`` frame. Caller handles disconnects."""
+        line = f"data: {json.dumps(event)}\n\n"
+        self.wfile.write(line.encode("utf-8"))
+        self.wfile.flush()
 
     def _handle_tts_test(self):
         try:
@@ -1043,6 +1340,10 @@ if __name__ == "__main__":
             if not _DAILY_ROOM_NAME:
                 missing.append("DAILY_ROOM_NAME")
             print(f"Admin page disabled — missing env: {', '.join(missing)}")
+        if _ADMIN_TOKEN:
+            print(f"Trace page on http://localhost:{port}/trace.html")
+        else:
+            print("Trace page disabled — set VOXTERA_ADMIN_TOKEN to enable")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

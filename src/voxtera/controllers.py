@@ -20,6 +20,7 @@ pipeline without restarting it:
 
 from __future__ import annotations
 
+import os
 import time
 
 from loguru import logger
@@ -50,16 +51,19 @@ from voxtera.tts import (
     _voices_for_tts_provider,
 )
 
-# Default LLM. Change here (or factor to env vars) if you want to tune.
-LLM_MODEL = "claude-haiku-4-5-20251001"  # fast; swap to claude-sonnet-4-6 for quality
+# Default LLM. Override via LLM_MODEL_OVERRIDE env var (set by serve.py from
+# the browser's model selection at spawn time).
+LLM_MODEL: str = os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001")
 
-_VALID_LLM_MODELS: frozenset[str] = frozenset(
+_ANTHROPIC_LLM_MODELS: frozenset[str] = frozenset(
     {
         "claude-haiku-4-5-20251001",
         "claude-sonnet-4-6",
         "claude-opus-4-7",
     }
 )
+_OPENAI_LLM_MODELS: frozenset[str] = frozenset({"gpt-4o-mini"})
+_VALID_LLM_MODELS: frozenset[str] = _ANTHROPIC_LLM_MODELS | _OPENAI_LLM_MODELS
 
 
 class LLMRunGuard(FrameProcessor):
@@ -563,15 +567,25 @@ class ModelSwitcher(FrameProcessor):
                     if model not in _VALID_LLM_MODELS:
                         logger.warning("[model-switch] unknown LLM model {!r}, ignoring", model)
                     elif model != self._current_llm_model:
-                        self._current_llm_model = model
-                        logger.info("[model-switch] switching LLM model to {!r}", model)
-                        await self.push_frame(
-                            LLMUpdateSettingsFrame(
-                                delta=AnthropicLLMService.Settings(model=model),
-                                service=self._llm,
-                            ),
-                            FrameDirection.UPSTREAM,
-                        )
+                        if (
+                            model in _OPENAI_LLM_MODELS
+                            or self._current_llm_model in _OPENAI_LLM_MODELS
+                        ):
+                            logger.warning(
+                                "[model-switch] cross-provider switch {!r}→{!r} requires reconnect",
+                                self._current_llm_model,
+                                model,
+                            )
+                        else:
+                            self._current_llm_model = model
+                            logger.info("[model-switch] switching LLM model to {!r}", model)
+                            await self.push_frame(
+                                LLMUpdateSettingsFrame(
+                                    delta=AnthropicLLMService.Settings(model=model),
+                                    service=self._llm,
+                                ),
+                                FrameDirection.UPSTREAM,
+                            )
                     await self.push_frame(frame, direction)
                     return
                 elif msg.get("type") == "voxtera-voice":
