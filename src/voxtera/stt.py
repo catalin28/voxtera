@@ -35,6 +35,24 @@ STT_MODEL_WHISPER = "whisper-1"
 # Deepgram Nova-3 multilingual streaming model.
 STT_MODEL_DEEPGRAM = "nova-3-general"
 # Google Speech-to-Text V2 streaming model name.
+#
+# `latest_long` is the conservative default: broadly available across all
+# Google Cloud regions, accepts the multi-language auto-detect config
+# (`languages=_GOOGLE_AUTO_LANGUAGES`), and works with every feature flag
+# the builder enables. Downside: ~1000ms final-segment latency because
+# the model is tuned for long-form audio rather than conversational use.
+#
+# Lower-latency alternatives (verify before switching):
+#   - "latest_short"   — streaming, conversational, ~300-500ms final.
+#                        Broadly available; safer than `chirp_2`.
+#   - "chirp_2"        — Google's newest streaming foundation model,
+#                        ~150-350ms final, but REGION-RESTRICTED
+#                        (us-central1, europe-west4, asia-southeast1 only
+#                        as of mid-2025) and has tighter feature/language
+#                        constraints. May silently produce no transcripts
+#                        if the project's region or config is mismatched.
+#                        Confirmed not working with this builder's
+#                        config on 2026-05-05.
 STT_MODEL_GOOGLE = "latest_long"
 
 
@@ -363,10 +381,57 @@ def _build_google_stt(settings: Settings) -> FrameProcessor | None:
     return stt
 
 
+def _build_google_chirp2_stt(settings: Settings) -> FrameProcessor | None:
+    """Build a Google STT service using the chirp_2 model in us-central1.
+
+    chirp_2 is Google's lowest-latency streaming model (~150-350ms final)
+    but requires a regional endpoint (not available in ``global``).
+    """
+    if not settings.google_application_credentials:
+        return None
+    creds_path = Path(settings.google_application_credentials).expanduser()
+    if not creds_path.is_absolute():
+        creds_path = Path.cwd() / creds_path
+    if not creds_path.exists():
+        logger.warning(
+            "[stt] google credentials path does not exist: {} — google-chirp2 STT disabled",
+            creds_path,
+        )
+        return None
+    try:
+        from pipecat.services.google.stt import GoogleSTTService
+    except ImportError:
+        logger.warning(
+            "[stt] google STT extras not installed — install with: uv add 'pipecat-ai[google]'"
+        )
+        return None
+
+    class ResilientGoogleSTTService(_ResilientGoogleSTTService, GoogleSTTService):
+        pass
+
+    stt = ResilientGoogleSTTService(
+        credentials_path=str(creds_path),
+        location="us-central1",
+        settings=GoogleSTTService.Settings(
+            model="chirp_2",
+            # chirp_2 in us-central1 does NOT support multi-language auto-detect;
+            # pass a single language only.
+            languages=["en-US"],
+            enable_interim_results=True,
+            enable_voice_activity_events=True,
+            enable_automatic_punctuation=False,
+        ),
+    )
+    stt.last_detected_language = None  # type: ignore[attr-defined]
+    logger.info("[stt] google-chirp2 available (model=chirp_2, location=us-central1)")
+    return stt
+
+
 _STT_BUILDERS: dict[str, Callable[[Settings], FrameProcessor | None]] = {
     "whisper": _build_whisper_stt,
     "deepgram": _build_deepgram_stt,
     "google": _build_google_stt,
+    "google-chirp2": _build_google_chirp2_stt,
 }
 
 

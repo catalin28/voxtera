@@ -133,17 +133,19 @@
     <div class="model-picker">
       <label for="stt-select">🎤 STT model</label>
       <select id="stt-select">
-        <option value="whisper" selected>Whisper (OpenAI)</option>
+        <!-- Google (latest_long) is the default — broadly available.
+             Google Chirp 2 is lower latency (~250ms) but requires
+             us-central1 region. Pick it manually to test. -->
+        <option value="whisper">Whisper (OpenAI)</option>
         <option value="deepgram">Deepgram Nova-3</option>
-        <option value="google">Google STT</option>
+        <option value="google" selected>Google (latest_long)</option>
+        <option value="google-chirp2">Google Chirp 2 (low-latency)</option>
       </select>
     </div>
     <div class="model-picker">
       <label for="llm-select">🤖 LLM model</label>
       <select id="llm-select">
-        <option value="gpt-4o-mini" selected>GPT-4o mini (fast)</option>
-        <option value="gpt-4o">GPT-4o (quality)</option>
-        <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (fast)</option>
+        <option value="claude-haiku-4-5-20251001" selected>Claude Haiku 4.5 (fast)</option>
         <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (quality)</option>
         <option value="claude-opus-4-7">Claude Opus 4.7 (best)</option>
       </select>
@@ -151,6 +153,12 @@
     <div class="model-picker">
       <label for="tts-provider-select">🔊 TTS provider</label>
       <select id="tts-provider-select">
+        <!-- OpenAI tts-1 is the default because it works on the standard
+             <audio>-element WebRTC path in every browser including Safari.
+             Google Chirp 3 HD has lower TTS warmup (~400ms vs ~1000ms) and
+             multilingual voice consistency, but its 24kHz output broke
+             Safari's MediaStreamAudioSourceNode rendering in our 2026-05-05
+             test. Pick Chirp 3 HD manually when testing latency. -->
         <option value="openai" selected>OpenAI tts-1</option>
         <option value="google">Google Chirp 3 HD</option>
       </select>
@@ -158,7 +166,10 @@
     <div class="model-picker">
       <label for="voice-select">🔊 TTS voice</label>
       <select id="voice-select">
-        <!-- Populated by setVoiceOptions(provider) below; defaults to OpenAI voices. -->
+        <!-- Populated by setVoiceOptions(provider) on TTS-provider change.
+             Static defaults below match the page-load TTS provider above
+             (OpenAI tts-1). When the user picks Google Chirp 3 HD from the
+             provider combobox, this list is replaced with Chirp 3 HD voices. -->
         <option value="nova" selected>Nova</option>
         <option value="alloy">Alloy</option>
         <option value="echo">Echo</option>
@@ -169,6 +180,17 @@
         <option value="coral">Coral</option>
         <option value="sage">Sage</option>
         <option value="verse">Verse</option>
+      </select>
+    </div>
+    <div class="model-picker">
+      <label for="mic-select">🎤 Microphone</label>
+      <select id="mic-select">
+        <!-- Populated by populateMicDevices() after the user grants mic
+             permission for the first time (labels are empty without
+             permission). Until then, only "System default" is available.
+             We default to the first NON-VIRTUAL device so users with
+             BlackHole/Aggregate/Teams virtual devices don't get silence. -->
+        <option value="">System default</option>
       </select>
     </div>
   </div>
@@ -241,10 +263,40 @@ var audioCtx = null;
 var activeSource = null;
 var attachedTrackId = null;
 var attachedTrack = null;
-    // Safari has a tiny WebRTC jitter buffer that causes choppy audio with
-    // the <audio> element path. We use WebAudio directly on Safari and the
-    // <audio> element on Chromium-based browsers.
-var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    // Audio path selection.
+    //
+    // Default: the standard <audio> element path for ALL browsers. Verified
+    // working in Brave (always) and Safari 26.1 on macOS (after
+    // 2026-05-05 testing with ?audio=element). The historical reason for
+    // routing Safari through WebAudio was a "tiny WebRTC jitter buffer"
+    // that made <audio> playback choppy on older Safari versions, but
+    // modern Safari handles it cleanly while the WebAudio path
+    // (MediaStreamAudioSourceNode + muted-primer trick) actively breaks in
+    // 26.x — attach reports success, ctx.state=running, but no PCM samples
+    // reach the speakers.
+    //
+    // The variable is still named `isSafari` because three other branches
+    // in this file (bot-speaking handler, orb analyser setup, etc.) gate
+    // WebAudio-only code on it. They all do the right thing when it's
+    // false: follow the <audio> element path, which is what we want.
+    //
+    // URL override (debug / regression triage):
+    //   ?audio=webaudio — opt back in to the legacy WebAudio path. Use if
+    //                     a future Safari version regresses on the <audio>
+    //                     element path.
+    //   ?audio=element  — kept as a no-op for backward compatibility with
+    //                     existing diagnostic URLs; the <audio> path is
+    //                     now the default anyway.
+var isSafari = false;
+var _audioPathOverride = (function() {
+  try {
+    var v = (new URLSearchParams(window.location.search)).get('audio');
+    return v ? v.toLowerCase() : '';
+  } catch (e) { return ''; }
+})();
+if (_audioPathOverride === 'webaudio') {
+  isSafari = true; // opt back in to legacy WebAudio path
+}
 function log(msg) { console.log('[voxtera] ' + msg); }
 function err(msg) {
   var box = document.getElementById('error-box');
@@ -254,7 +306,8 @@ function err(msg) {
 }
 
  log('UA: ' + navigator.userAgent.substring(0, 120));
- log('isSafari=' + isSafari + ' — audio path: ' + (isSafari ? 'WebAudio (ctx.destination)' : '<audio> element'));
+ log('isSafari=' + isSafari + ' — audio path: ' + (isSafari ? 'WebAudio (ctx.destination)' : '<audio> element')
+   + (_audioPathOverride ? ' (overridden via ?audio=' + _audioPathOverride + ')' : ''));
  log('Checking Daily SDK...');
 if (!window.DailyIframe) err('Daily SDK failed to load');
 else log('Daily SDK loaded');
@@ -489,8 +542,20 @@ document.getElementById('btn-start').onclick = async function() {
       }
     }
 
+    // Pass the picker's deviceId straight to Daily so the bot receives
+    // audio from the user's actual mic, not whatever Chrome decides is
+    // the system default (often BlackHole or another virtual device on
+    // macOS). When the value is empty (System default), passing `true`
+    // preserves the previous "let Daily choose" behaviour.
+    var startMicDeviceId = document.getElementById('mic-select').value;
+    var dailyAudioSource = startMicDeviceId || true;
+    if (startMicDeviceId) {
+      log('[start] using picked mic deviceId=' + startMicDeviceId.substring(0, 8) + '...');
+    } else {
+      log('[start] using system-default mic (no device picked)');
+    }
     callObject = window.DailyIframe.createCallObject({
-      audioSource: true,
+      audioSource: dailyAudioSource,
       videoSource: false,
     });
     log('Call object created');
@@ -844,6 +909,23 @@ document.getElementById('voice-select').addEventListener('change', function() {
   }
 });
 
+// Mic picker — if a call is active, hot-swap the input device on Daily so
+// the user can switch from headset to laptop mic (or away from a virtual
+// device they accidentally selected) without dropping the call. Daily
+// exposes setInputDevicesAsync exactly for this; passing the deviceId
+// makes Daily re-acquire the track and republish.
+document.getElementById('mic-select').addEventListener('change', function() {
+  var deviceId = this.value;
+  if (callObject && deviceId) {
+    log('Hot-swapping mic to deviceId=' + deviceId.substring(0, 8) + '...');
+    callObject.setInputDevicesAsync({ audioDeviceId: deviceId }).then(function() {
+      log('Mic hot-swap OK');
+    }).catch(function(e) {
+      err('Mic hot-swap failed: ' + e.message);
+    });
+  }
+});
+
 // ========== Audio Test: Speaker ==========
 var speakerTestActive = false;
 var speakerAnimFrame = null;
@@ -989,7 +1071,64 @@ function animateMicBars() {
   micAnimFrame = requestAnimationFrame(animateMicBars);
 }
 
+// Names that mark a device as "virtual" on macOS — these usually produce
+// silence unless something is explicitly routing audio into them. We push
+// them to the bottom of the picker and never auto-select them as default.
+var VIRTUAL_MIC_PATTERNS = /blackhole|aggregate|virtual|teams audio|loopback|soundflower/i;
+
+function isVirtualMic(label) {
+  return VIRTUAL_MIC_PATTERNS.test(label || '');
+}
+
+// Populate the mic picker from enumerateDevices(). Labels are only exposed
+// after the user has granted mic permission at least once in this origin —
+// before that, the dropdown stays at just "System default".
+function populateMicDevices() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  return navigator.mediaDevices.enumerateDevices().then(function(devices) {
+    var sel = document.getElementById('mic-select');
+    var prevValue = sel.value;
+    var inputs = devices.filter(function(d) { return d.kind === 'audioinput'; });
+    if (inputs.length === 0 || !inputs[0].label) {
+      // No labels yet — permission not granted. Leave default option only.
+      log('[mic-devices] enumerate returned ' + inputs.length + ' inputs without labels');
+      return;
+    }
+    // Sort: real devices first, virtual devices at the bottom.
+    inputs.sort(function(a, b) {
+      var av = isVirtualMic(a.label) ? 1 : 0;
+      var bv = isVirtualMic(b.label) ? 1 : 0;
+      return av - bv;
+    });
+    sel.innerHTML = '';
+    inputs.forEach(function(d) {
+      var opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label + (isVirtualMic(d.label) ? ' ⚠ virtual' : '');
+      sel.appendChild(opt);
+    });
+    // Default to first non-virtual device on initial population. If user
+    // already picked something earlier in the session, keep their choice.
+    if (prevValue && Array.prototype.some.call(sel.options, function(o) { return o.value === prevValue; })) {
+      sel.value = prevValue;
+    }
+    log('[mic-devices] populated with ' + inputs.length + ' devices, default="' + sel.options[0].textContent + '"');
+  }).catch(function(e) {
+    log('[mic-devices] enumerate failed: ' + e.message);
+  });
+}
+
+// Try once on load — labels will be empty unless permission was granted in
+// a prior session. Either way, populateMicDevices() runs again after the
+// first successful getUserMedia (Test Mic or Start), at which point the
+// labels appear and the picker fills in.
+populateMicDevices();
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', populateMicDevices);
+}
+
 document.getElementById('btn-test-mic').onclick = function() {
+  log('[mic-test] click');
   if (micTestActive) {
     resetMicIndicator();
     return;
@@ -1001,7 +1140,26 @@ document.getElementById('btn-test-mic').onclick = function() {
   var btn = this;
   btn.disabled = true;
 
-  navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(function(stream) {
+  // Build constraints. If the user has explicitly picked a device in the
+  // mic picker, force exactly that deviceId — otherwise Chrome may hand us
+  // back the system default (often BlackHole or another virtual device on
+  // macOS) regardless of what's selected in the per-site permission panel.
+  var pickedDeviceId = document.getElementById('mic-select').value;
+  var audioConstraints;
+  if (pickedDeviceId) {
+    audioConstraints = { deviceId: { exact: pickedDeviceId } };
+    log('[mic-test] requesting deviceId=' + pickedDeviceId.substring(0, 8) + '...');
+  } else {
+    audioConstraints = true;
+    log('[mic-test] requesting system default mic');
+  }
+
+  navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false }).then(function(stream) {
+    log('[mic-test] getUserMedia resolved');
+    // Now that permission is granted, device labels are exposed —
+    // re-populate the picker so the user can switch to a different mic
+    // for the next test without leaving the page.
+    populateMicDevices();
     micStream = stream;
     micTestActive = true;
     btn.classList.add('active');
@@ -1010,11 +1168,61 @@ document.getElementById('btn-test-mic').onclick = function() {
     document.getElementById('mic-indicator').className = 'sound-indicator';
     document.getElementById('mic-label').textContent = 'Listening...';
 
+    // Diagnostic: dump every audio track returned by Chrome so we can see
+    // which device was actually selected and what its settings are.
+    var tracks = stream.getAudioTracks();
+    log('[mic-test] track count=' + tracks.length);
+    tracks.forEach(function(t, i) {
+      var settings = (typeof t.getSettings === 'function') ? t.getSettings() : {};
+      log('[mic-test] track[' + i + '] label="' + t.label + '" enabled=' + t.enabled +
+          ' muted=' + t.muted + ' readyState=' + t.readyState +
+          ' sampleRate=' + settings.sampleRate +
+          ' deviceId=' + (settings.deviceId || '').substring(0, 8) +
+          ' channelCount=' + settings.channelCount);
+    });
+
     micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    log('[mic-test] AudioContext created state=' + micAudioCtx.state +
+        ' sampleRate=' + micAudioCtx.sampleRate);
+
+    // Chrome's autoplay policy: an AudioContext created after an async
+    // boundary (here, the awaited getUserMedia permission prompt) starts
+    // in 'suspended' state because the click's user-gesture token has
+    // already been consumed. While suspended, the AnalyserNode produces
+    // all-zero samples — getByteFrequencyData returns zeros and the VU
+    // bars never move. Safari was unaffected (its gesture token survives
+    // the prompt), which is why this only repros in Chrome/Brave/Edge.
+    // Resuming explicitly is allowed because we're still inside the
+    // user-initiated permission flow.
+    if (micAudioCtx.state === 'suspended') {
+      micAudioCtx.resume().then(function() {
+        log('[mic-test] AudioContext resumed (state=' + micAudioCtx.state + ')');
+      }).catch(function(resumeErr) {
+        err('[mic-test] AudioContext resume failed: ' + resumeErr.message);
+      });
+    }
     var source = micAudioCtx.createMediaStreamSource(stream);
     micAnalyser = micAudioCtx.createAnalyser();
     micAnalyser.fftSize = 256;
     source.connect(micAnalyser);
+
+    // Diagnostic: every ~1s, log peak frequency data so we can tell whether
+    // the analyser is receiving samples or always returns zero.
+    var diagCount = 0;
+    var diagInterval = setInterval(function() {
+      if (!micTestActive || !micAnalyser) { clearInterval(diagInterval); return; }
+      var data = new Uint8Array(micAnalyser.frequencyBinCount);
+      micAnalyser.getByteFrequencyData(data);
+      var peak = 0, sum = 0;
+      for (var i = 0; i < data.length; i++) { if (data[i] > peak) peak = data[i]; sum += data[i]; }
+      log('[mic-test] tick #' + (++diagCount) + ' peak=' + peak +
+          ' avg=' + (sum / data.length).toFixed(1) +
+          ' ctx.state=' + micAudioCtx.state +
+          ' track.muted=' + (tracks[0] && tracks[0].muted) +
+          ' track.readyState=' + (tracks[0] && tracks[0].readyState));
+      if (diagCount >= 5) clearInterval(diagInterval); // stop after 5 ticks
+    }, 1000);
+
     animateMicBars();
   }).catch(function(e) {
     err('Microphone permission denied: ' + e.message);
