@@ -221,6 +221,8 @@ from voxtera.controllers import (  # noqa: E402
 from voxtera.observability import (  # noqa: E402
     DemoEventBroadcaster,
     PipelineTracer,
+    TranscriptStageTimer,
+    TTSStageTimer,
     UserTranscriptBroadcaster,
 )
 from voxtera.prompts import SYSTEM_PROMPT, resolve_greeting  # noqa: E402
@@ -406,12 +408,11 @@ def build_pipeline(
         # this handler costs nothing.
         from voxtera import launcher_client
 
-        # Note: Pipecat's DailyTransport names this event ``on_joined`` (not
-        # ``on_joined_meeting`` — the latter is the daily-python low-level
-        # callback name). Using the wrong name silently does nothing: Pipecat
-        # accepts the registration but logs a warning at transport init and
-        # never fires the handler. Source of truth for valid event names is
-        # ``pipecat/transports/daily/transport.py`` near ``_register_event_handler``.
+        # Holds the RAG retriever if rag_enabled — set later in run_bot() after
+        # the RAG block. _on_joined is a late-binding closure so it will see the
+        # updated value at call time.
+        _rag_retriever: Retriever | None = None  # noqa: F821
+
         @transport.event_handler("on_joined")
         async def _on_joined(transport, data):
             logger.info(
@@ -422,6 +423,8 @@ def build_pipeline(
             )
             await launcher_client.post_event("ready")
             asyncio.create_task(_warmup_tts_providers(settings))
+            if _rag_retriever is not None:
+                asyncio.create_task(_rag_retriever.warmup(hotel_id=settings.hotel_id))
 
         # Fast-exit on Guest leave — only for on-demand mode.
         #
@@ -753,6 +756,19 @@ def build_pipeline(
                 processors.append(PipelineProbe("after_suppressor"))
         if settings.transport_mode == "daily":
             processors.append(UserTranscriptBroadcaster())
+        # TranscriptStageTimer must come BEFORE context_aggregator.user(): the
+        # aggregator consumes TranscriptionFrame to fold the text into the LLM
+        # context messages, so anything downstream of it never sees the frame.
+        # This processor stamps the ``transcript`` anchor on TurnTracker and
+        # emits the ``stt`` stage event read by the trace dashboard.
+        processors.append(
+            TranscriptStageTimer(
+                "voxtera",
+                hotel_id=settings.hotel_id if settings.rag_enabled else None,
+            )
+        )
+        if _probing:
+            processors.append(PipelineProbe("after_transcript_timer"))
     processors.append(context_aggregator.user())
     if _probing:
         processors.append(PipelineProbe("after_ctx_user"))
@@ -779,6 +795,7 @@ def build_pipeline(
         store = ChunksStore(db_path)
         store.init_schema()
         retriever = Retriever(store)
+        _rag_retriever = retriever  # expose to _on_joined closure for warmup
         rag_injector = RAGContextInjector(retriever, hotel_id=settings.hotel_id)
         processors.append(rag_injector)
         if _probing:
@@ -845,6 +862,13 @@ def build_pipeline(
         processors.append(tts)
         if _probing:
             processors.append(PipelineProbe("after_tts"))
+    # TTSStageTimer must come AFTER the TTS service: TTSStartedFrame is
+    # emitted downstream by TTS and never bubbles back upstream. Placing
+    # the timer here lets it stamp the ``tts_started`` anchor that
+    # PipelineTracer reads when measuring tts_ttft on BotStartedSpeaking.
+    processors.append(TTSStageTimer("voxtera"))
+    if _probing:
+        processors.append(PipelineProbe("after_tts_timer"))
     processors.extend(
         [
             transport.output(),

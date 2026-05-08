@@ -40,6 +40,31 @@ class Retriever:
         self._store = store
         self._top_k = top_k
         self._min_score = min_score
+        # In-process cache: (hotel_id, language) -> (candidates, normalised matrix).
+        # Chunks are ingested once at startup and never change during a session,
+        # so caching eliminates the SQLite read + blob deserialization on every turn.
+        self._chunk_cache: dict[tuple[str, str | None], tuple[list, np.ndarray]] = {}
+
+    async def warmup(self, *, hotel_id: str, language: str | None = None) -> None:
+        """Pre-load and cache the chunk matrix so the first query is instant.
+
+        Call this as a fire-and-forget task after the bot joins the room.
+        """
+        cache_key = (hotel_id, language)
+        if cache_key in self._chunk_cache:
+            return
+        candidates = await asyncio.to_thread(
+            self._store.fetch_for_hotel, hotel_id=hotel_id, language=language
+        )
+        if not candidates:
+            logger.info("[rag-warmup] no chunks found for hotel_id={!r}", hotel_id)
+            return
+        matrix = np.array([c.embedding for c in candidates], dtype=np.float32)
+        norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1.0, norms)
+        matrix /= norms
+        self._chunk_cache[cache_key] = (candidates, matrix)
+        logger.info("[rag-warmup] cached {} chunks for hotel_id={!r}", len(candidates), hotel_id)
 
     async def retrieve(
         self, *, hotel_id: str, query: str, language: str | None = None
@@ -48,14 +73,24 @@ class Retriever:
         if not query.strip():
             return []
 
-        # SQLite reads are blocking. Off-load to a worker thread so the
-        # voice-loop event loop (audio frames, TTS, etc.) is not stalled
-        # while we read potentially thousands of chunk rows.
-        candidates = await asyncio.to_thread(
-            self._store.fetch_for_hotel, hotel_id=hotel_id, language=language
-        )
+        cache_key = (hotel_id, language)
+        if cache_key not in self._chunk_cache:
+            # Cache miss (first query before warmup completed, or new language).
+            # Load from SQLite and populate cache.
+            candidates = await asyncio.to_thread(
+                self._store.fetch_for_hotel, hotel_id=hotel_id, language=language
+            )
+            if not candidates:
+                logger.debug("No chunks for hotel_id={!r}, language={!r}", hotel_id, language)
+                return []
+            matrix = np.array([c.embedding for c in candidates], dtype=np.float32)
+            norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+            norms = np.where(norms == 0, 1.0, norms)
+            matrix /= norms
+            self._chunk_cache[cache_key] = (candidates, matrix)
+
+        candidates, matrix = self._chunk_cache[cache_key]
         if not candidates:
-            logger.debug("No chunks for hotel_id={!r}, language={!r}", hotel_id, language)
             return []
 
         try:
@@ -73,13 +108,6 @@ class Retriever:
         if query_norm == 0:
             return []
         query_vec /= query_norm
-
-        # Stack all candidate embeddings into a matrix for vectorised cosine similarity.
-        matrix = np.array([c.embedding for c in candidates], dtype=np.float32)
-        norms = np.linalg.norm(matrix, axis=1, keepdims=True)
-        # Avoid division by zero for any zero-norm stored embeddings.
-        norms = np.where(norms == 0, 1.0, norms)
-        matrix /= norms
 
         scores = matrix @ query_vec  # shape (n_candidates,)
         # Clamp to [0, 1] before filtering — negative values from floating-point
