@@ -57,8 +57,21 @@ def _build_openai_tts(settings: Settings) -> FrameProcessor | None:
             voice,
         )
         voice = "nova"
+    # Pin the TTS service to 24 kHz — OpenAI's tts-1 only returns 24 kHz PCM
+    # regardless of what rate you ask for. Without this pin, the service
+    # inherits the pipeline's audio_out_sample_rate (typically 48 kHz for
+    # WebRTC) and tags every TTSAudioRawFrame as 48 kHz, even though the
+    # actual bytes are still 24 kHz audio. The downstream
+    # BaseOutputTransport resampler then sees ``frame.sample_rate == target``
+    # and skips resampling — so 24 kHz audio gets played at 48 kHz, i.e.
+    # chipmunk speed (observed in Brave + Safari, 2026-05-05).
+    #
+    # With sample_rate=24000 here, frames are correctly tagged 24 kHz,
+    # the resampler kicks in to upsample 24 → 48 kHz before Daily sends
+    # the audio over WebRTC, and the browser hears normal-speed speech.
     tts = OpenAITTSService(
         api_key=settings.openai_api_key,
+        sample_rate=24000,
         settings=OpenAITTSService.Settings(model=TTS_MODEL, voice=voice),
     )
     logger.info("[tts] openai available (model={}, voice={})", TTS_MODEL, voice)

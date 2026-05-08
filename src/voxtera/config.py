@@ -29,7 +29,15 @@ class Settings:
     default_tts_voice: str = "nova"
     # VAD knobs. Pipecat's defaults (min_volume=0.6, confidence=0.7) are
     # tuned for headset mics; built-in laptop mics typically need both lower.
-    vad_stop_secs: float = 0.2
+    # vad_stop_secs is the silence window after which we declare the user
+    # done. 0.2s was too aggressive — a normal speaking cadence has ~200-300ms
+    # gaps between words, which made VAD chatter (multiple Started/Stopped
+    # cycles per utterance) and fired multiple Whisper API calls per turn,
+    # adding 1.5-2s of pure overhead. 0.5s is the sweet spot from
+    # 2026-05-06 latency tuning: no chatter on natural speech, ~300ms
+    # extra wait after the user actually finishes. Override via
+    # VAD_STOP_SECS env var if a specific demo needs different timing.
+    vad_stop_secs: float = 0.5
     vad_start_secs: float = 0.2
     # Empirically, even loud speech on a built-in mic peaks around 0.05–0.07
     # RMS per chunk. 0.02 is a generous floor that still rejects pure silence.
@@ -88,6 +96,13 @@ class Settings:
         "spa treatments, pool hours, restaurant menu, dishes, check-in, "
         "check-out, wifi password, taxi, museum, airport, Paris, Louvre."
     )
+    # Path to the per-language Whisper confidence-threshold JSON file. When
+    # set, low-confidence transcriptions are dropped before reaching the LLM,
+    # which suppresses Whisper substitution hallucinations like "the water is
+    # not running" → "the White House". When unset (or the file is missing),
+    # the bot falls back to a single hardcoded threshold pair (lenient).
+    # See config/stt_thresholds.json for the schema and tuned defaults.
+    stt_thresholds_path: str | None = "config/stt_thresholds.json"
     # Actions feature: register the `create_ticket` LLM tool, post tickets to
     # the configured Telegram channel, and run the staff-button listener as
     # a background task. Requires TELEGRAM_BOT_TOKEN. The Telegram channel
@@ -123,7 +138,7 @@ def load_settings() -> Settings:
         log_level=os.environ.get("LOG_LEVEL", "INFO"),
         bot_name=os.environ.get("BOT_NAME", "Voxtera"),
         default_tts_voice=os.environ.get("DEFAULT_TTS_VOICE", "nova"),
-        vad_stop_secs=float(os.environ.get("VAD_STOP_SECS", "0.2")),
+        vad_stop_secs=float(os.environ.get("VAD_STOP_SECS", "0.5")),
         vad_start_secs=float(os.environ.get("VAD_START_SECS", "0.2")),
         vad_min_volume=float(os.environ.get("VAD_MIN_VOLUME", "0.02")),
         vad_confidence=float(os.environ.get("VAD_CONFIDENCE", "0.5")),
@@ -156,4 +171,6 @@ def load_settings() -> Settings:
             ),
         ),
         actions_enabled=os.environ.get("ACTIONS_ENABLED", "false").lower() in ("1", "true", "yes"),
+        stt_thresholds_path=os.environ.get("STT_THRESHOLDS_PATH", "config/stt_thresholds.json")
+        or None,
     )

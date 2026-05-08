@@ -18,7 +18,7 @@ import asyncio
 import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum, IntEnum
+from enum import IntEnum, StrEnum
 
 from voxtera.actions.ticket import Category, Ticket
 
@@ -70,7 +70,7 @@ class UrgencyThresholds:
         )
 
 
-class TicketStatus(str, Enum):
+class TicketStatus(StrEnum):
     """Lifecycle of a posted ticket. Linear, no rewinding for v1.
 
     Status progression for the DM-driven flow:

@@ -137,8 +137,9 @@ else
 fi
 
 echo "==> Restarting services"
+ssh "${HOST}" "systemctl stop '${UI_SERVICE_NAME}' || true; fuser -k 8080/tcp 2>/dev/null || true; sleep 1"
 ssh "${HOST}" "systemctl restart '${SERVICE_NAME}'"
-ssh "${HOST}" "systemctl restart '${UI_SERVICE_NAME}'"
+ssh "${HOST}" "systemctl start '${UI_SERVICE_NAME}'"
 
 echo "==> Health checks"
 ssh "${HOST}" "systemctl --no-pager --full status '${SERVICE_NAME}' | head -n 25"

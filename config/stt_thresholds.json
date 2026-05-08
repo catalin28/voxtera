@@ -1,0 +1,35 @@
+{
+  "default": {
+    "avg_logprob_min": -1.0,
+    "no_speech_prob_max": 0.7
+  },
+
+  "en": {
+    "avg_logprob_min": -0.7,
+    "no_speech_prob_max": 0.6
+  },
+  "fr": {
+    "avg_logprob_min": -0.7,
+    "no_speech_prob_max": 0.6
+  },
+  "ro": {
+    "avg_logprob_min": -0.8,
+    "no_speech_prob_max": 0.6
+  },
+  "ru": {
+    "avg_logprob_min": -0.7,
+    "no_speech_prob_max": 0.6
+  },
+  "tr": {
+    "avg_logprob_min": -1.0,
+    "no_speech_prob_max": 0.7
+  },
+  "az": {
+    "avg_logprob_min": -1.1,
+    "no_speech_prob_max": 0.7
+  },
+  "ar": {
+    "avg_logprob_min": -1.0,
+    "no_speech_prob_max": 0.7
+  }
+}

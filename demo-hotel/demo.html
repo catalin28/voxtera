@@ -133,17 +133,19 @@
     <div class="model-picker">
       <label for="stt-select">🎤 STT model</label>
       <select id="stt-select">
-        <option value="whisper" selected>Whisper (OpenAI)</option>
+        <!-- Google (latest_long) is the default — broadly available.
+             Google Chirp 2 is lower latency (~250ms) but requires
+             us-central1 region. Pick it manually to test. -->
+        <option value="whisper">Whisper (OpenAI)</option>
         <option value="deepgram">Deepgram Nova-3</option>
-        <option value="google">Google STT</option>
+        <option value="google" selected>Google (latest_long)</option>
+        <option value="google-chirp2">Google Chirp 2 (low-latency)</option>
       </select>
     </div>
     <div class="model-picker">
       <label for="llm-select">🤖 LLM model</label>
       <select id="llm-select">
-        <option value="gpt-4o-mini" selected>GPT-4o mini (fast)</option>
-        <option value="gpt-4o">GPT-4o (quality)</option>
-        <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (fast)</option>
+        <option value="claude-haiku-4-5-20251001" selected>Claude Haiku 4.5 (fast)</option>
         <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (quality)</option>
         <option value="claude-opus-4-7">Claude Opus 4.7 (best)</option>
       </select>
@@ -151,6 +153,12 @@
     <div class="model-picker">
       <label for="tts-provider-select">🔊 TTS provider</label>
       <select id="tts-provider-select">
+        <!-- OpenAI tts-1 is the default because it works on the standard
+             <audio>-element WebRTC path in every browser including Safari.
+             Google Chirp 3 HD has lower TTS warmup (~400ms vs ~1000ms) and
+             multilingual voice consistency, but its 24kHz output broke
+             Safari's MediaStreamAudioSourceNode rendering in our 2026-05-05
+             test. Pick Chirp 3 HD manually when testing latency. -->
         <option value="openai" selected>OpenAI tts-1</option>
         <option value="google">Google Chirp 3 HD</option>
       </select>
@@ -158,7 +166,10 @@
     <div class="model-picker">
       <label for="voice-select">🔊 TTS voice</label>
       <select id="voice-select">
-        <!-- Populated by setVoiceOptions(provider) below; defaults to OpenAI voices. -->
+        <!-- Populated by setVoiceOptions(provider) on TTS-provider change.
+             Static defaults below match the page-load TTS provider above
+             (OpenAI tts-1). When the user picks Google Chirp 3 HD from the
+             provider combobox, this list is replaced with Chirp 3 HD voices. -->
         <option value="nova" selected>Nova</option>
         <option value="alloy">Alloy</option>
         <option value="echo">Echo</option>
@@ -169,6 +180,17 @@
         <option value="coral">Coral</option>
         <option value="sage">Sage</option>
         <option value="verse">Verse</option>
+      </select>
+    </div>
+    <div class="model-picker">
+      <label for="mic-select">🎤 Microphone</label>
+      <select id="mic-select">
+        <!-- Populated by populateMicDevices() after the user grants mic
+             permission for the first time (labels are empty without
+             permission). Until then, only "System default" is available.
+             We default to the first NON-VIRTUAL device so users with
+             BlackHole/Aggregate/Teams virtual devices don't get silence. -->
+        <option value="">System default</option>
       </select>
     </div>
   </div>
@@ -227,7 +249,12 @@
 
 <script src="https://unpkg.com/@daily-co/daily-js"></script>
 <script>
+// Default fallback used only if the launcher response somehow omits room_url.
+// In normal operation /api/start-session returns the URL the bot just joined.
 var ROOM_URL = 'https://voxtera.daily.co/voxtera-demo';
+// Session ID assigned by the launcher when this Start click spawned a bot.
+// Kept around for diagnostics; the bot also tracks it via VOXTERA_SESSION_ID.
+var SESSION_ID = null;
 var callObject = null;
 var isMuted = false;
 var userEndedSession = false;
@@ -235,7 +262,41 @@ var remoteAudioEl = document.getElementById('remote-audio');
 var audioCtx = null;
 var activeSource = null;
 var attachedTrackId = null;
-
+var attachedTrack = null;
+    // Audio path selection.
+    //
+    // Default: the standard <audio> element path for ALL browsers. Verified
+    // working in Brave (always) and Safari 26.1 on macOS (after
+    // 2026-05-05 testing with ?audio=element). The historical reason for
+    // routing Safari through WebAudio was a "tiny WebRTC jitter buffer"
+    // that made <audio> playback choppy on older Safari versions, but
+    // modern Safari handles it cleanly while the WebAudio path
+    // (MediaStreamAudioSourceNode + muted-primer trick) actively breaks in
+    // 26.x — attach reports success, ctx.state=running, but no PCM samples
+    // reach the speakers.
+    //
+    // The variable is still named `isSafari` because three other branches
+    // in this file (bot-speaking handler, orb analyser setup, etc.) gate
+    // WebAudio-only code on it. They all do the right thing when it's
+    // false: follow the <audio> element path, which is what we want.
+    //
+    // URL override (debug / regression triage):
+    //   ?audio=webaudio — opt back in to the legacy WebAudio path. Use if
+    //                     a future Safari version regresses on the <audio>
+    //                     element path.
+    //   ?audio=element  — kept as a no-op for backward compatibility with
+    //                     existing diagnostic URLs; the <audio> path is
+    //                     now the default anyway.
+var isSafari = false;
+var _audioPathOverride = (function() {
+  try {
+    var v = (new URLSearchParams(window.location.search)).get('audio');
+    return v ? v.toLowerCase() : '';
+  } catch (e) { return ''; }
+})();
+if (_audioPathOverride === 'webaudio') {
+  isSafari = true; // opt back in to legacy WebAudio path
+}
 function log(msg) { console.log('[voxtera] ' + msg); }
 function err(msg) {
   var box = document.getElementById('error-box');
@@ -244,15 +305,50 @@ function err(msg) {
   console.error(msg);
 }
 
-log('Checking Daily SDK...');
+ log('UA: ' + navigator.userAgent.substring(0, 120));
+ log('isSafari=' + isSafari + ' — audio path: ' + (isSafari ? 'WebAudio (ctx.destination)' : '<audio> element')
+   + (_audioPathOverride ? ' (overridden via ?audio=' + _audioPathOverride + ')' : ''));
+ log('Checking Daily SDK...');
 if (!window.DailyIframe) err('Daily SDK failed to load');
 else log('Daily SDK loaded');
 
-document.getElementById('btn-start').onclick = function() {
+document.getElementById('btn-start').onclick = async function() {
   log('START clicked');
   var btn = this;
   btn.disabled = true;
-  btn.textContent = 'Connecting...';
+  btn.textContent = '⏳ Starting bot...';
+
+  // Safari autoplay-policy guard.
+  //
+  // Safari consumes the user-activation token across the first ``await`` in
+  // an async handler. If we create the AudioContext after ``await fetch
+  // /api/start-session`` returns ~5-7 s later, the context is created
+  // outside the user-gesture window — Safari accepts it (state=running) but
+  // won't route audio to the speakers. The legacy synchronous flow worked
+  // because click → join → audio happened in one tick.
+  //
+  // The fix: create AND resume the AudioContext BEFORE any await. The
+  // resulting context carries the user-gesture token through the full flow,
+  // so when ``ensureAudioContext()`` is called again later it's a no-op and
+  // the WebAudio path can play the bot's voice.
+  if (!audioCtx) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      log('AudioContext created early (sampleRate=' + audioCtx.sampleRate + ')');
+    } catch (audioErr) {
+      err('AudioContext creation failed: ' + audioErr.message);
+    }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    // Fire-and-forget — resume() returns a Promise but we deliberately do
+    // NOT await it here; awaiting before any other work would defeat the
+    // whole point of running this synchronously inside the gesture.
+    audioCtx.resume().then(function() {
+      log('AudioContext resumed early (state=' + audioCtx.state + ')');
+    }).catch(function(e) {
+      err('AudioContext resume failed: ' + e.message);
+    });
+  }
 
   if (document.getElementById('use-chat').checked) {
     var params = new URLSearchParams({
@@ -268,6 +364,54 @@ document.getElementById('btn-start').onclick = function() {
 
   if (!window.DailyIframe) {
     err('Daily SDK not available');
+    btn.disabled = false;
+    btn.textContent = '🎙️ Start';
+    return;
+  }
+
+  // Phase 4 — On-demand bot spawn handshake.
+  //
+  // Before joining Daily, ask the launcher to spawn a fresh bot subprocess.
+  // The launcher blocks until the bot is in the room (via the launcher_client
+  // queue handshake) and only then returns the room URL. This guarantees the
+  // bot is already a Daily participant when we call ``callObject.join`` —
+  // no race, no missed greeting, no idle bot squatting in the room between
+  // calls. See docs/ON_DEMAND_BOT_SPAWN.md for the full flow.
+  try {
+    log('[launcher] requesting bot spawn...');
+    var startResp = await fetch('/api/start-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        language: document.getElementById('lang-select').value,
+        llm: document.getElementById('llm-select').value,
+        stt: document.getElementById('stt-select').value,
+        ttsProvider: document.getElementById('tts-provider-select').value,
+        voice: document.getElementById('voice-select').value
+      })
+    });
+    if (startResp.status === 409) {
+      var busyData = await startResp.json().catch(function() { return {}; });
+      err('Demo is busy — another session is active. Try again in a minute.');
+      log('[launcher] 409 busy, active_session=' + (busyData.active_session || '?'));
+      btn.disabled = false;
+      btn.textContent = '🎙️ Start';
+      return;
+    }
+    if (!startResp.ok) {
+      var errData = await startResp.json().catch(function() { return {}; });
+      err('Failed to start bot (HTTP ' + startResp.status + '): ' + (errData.error || 'unknown error'));
+      btn.disabled = false;
+      btn.textContent = '🎙️ Start';
+      return;
+    }
+    var startData = await startResp.json();
+    if (startData.room_url) ROOM_URL = startData.room_url;
+    SESSION_ID = startData.session_id || null;
+    log('[launcher] bot ready, session=' + SESSION_ID + ' room=' + ROOM_URL);
+    btn.textContent = '⏳ Joining session...';
+  } catch (fetchErr) {
+    err('Could not reach launcher at /api/start-session: ' + fetchErr.message);
     btn.disabled = false;
     btn.textContent = '🎙️ Start';
     return;
@@ -313,51 +457,144 @@ document.getElementById('btn-start').onclick = function() {
         log('Track already attached (id=' + track.id + ') — skipping duplicate attach from ' + source);
         return;
       }
-      // Disconnect previous WebAudio source if any (defensive — older builds
-      // routed the stream through ctx.destination AND the <audio> element at
-      // the same time, which produced overlapping playback that sounded like
-      // a heavy echo. Now we only use the <audio> element.).
+      // Daily fires several overlapping events (participant-updated,
+      // track-started, scan from joined-meeting/bot-speaking) and the
+      // persistent-track reference can have a different .id than the
+      // track-started event's track. If we re-attach while the previous
+      // track is still live, Safari keeps the old WebAudio sink running
+      // and you hear the bot voice twice with a delay. Only allow a new
+      // attach if the previously-attached track has actually ended.
+      if (attachedTrack && attachedTrack.readyState === 'live') {
+        log('Active track still live (id=' + attachedTrack.id + ') — ignoring new attach for ' + track.id + ' from ' + source);
+        return;
+      }
+      // Disconnect previous WebAudio source if any
       if (activeSource) {
         try { activeSource.disconnect(); } catch(e) {}
         activeSource = null;
       }
+      // Drop the previous orb analyser too — we'll rebuild it for the new source
+      if (orbBotSource) { try { orbBotSource.disconnect(); } catch(e) {} orbBotSource = null; }
+      orbAnalyserBot = null;
       var stream = new MediaStream([track]);
 
-      // Single playback path: HTML <audio> element only. Do NOT also pipe the
-      // same stream into ctx.createMediaStreamSource(...).connect(ctx.destination)
-      // — that causes the bot voice to play twice with a small inter-path
-      // latency offset and is heard as an echo/reverb.
-      try {
-        remoteAudioEl.srcObject = stream;
-        remoteAudioEl.muted = false;
-        remoteAudioEl.volume = 1.0;
-        remoteAudioEl.play().then(function() {
+      if (isSafari) {
+        // Safari's <audio> element has a tiny jitter buffer for WebRTC
+        // MediaStreams causing choppy playback. Route through WebAudio API
+        // which applies its own smoothing buffer.
+        log('[safari] using WebAudio path for track ' + track.id + ' from ' + source);
+        try {
+          var ctx = ensureAudioContext();
+          activeSource = ctx.createMediaStreamSource(stream);
+          activeSource.connect(ctx.destination);
           attachedTrackId = track.id;
-          log('Attached audio via <audio> element from ' + source + ' (id=' + track.id + ')');
-          // Setup bot analyser for orb visualizer
-          if (!orbAnalyserBot) orbSetupBotAnalyser();
-        }).catch(function(e) {
-          err('Audio element play blocked: ' + e.message);
-        });
-      } catch (e) {
-        err('Audio element attach failed: ' + e.message);
+          attachedTrack = track;
+          log('[safari] WebAudio attached OK (ctx.state=' + ctx.state + ')');
+          // WebKit "primer" workaround: Safari's MediaStreamAudioSourceNode
+          // silently produces zeros for a WebRTC track unless the SAME
+          // stream is also bound to an HTMLMediaElement. The element is
+          // kept MUTED so we don't get double playback — it's only there
+          // to wake up Safari's audio pipeline so the WebAudio graph
+          // actually receives samples.
+          //
+          // Symptoms when omitted: ctx.state=running, no errors, bot text
+          // arrives, transcript flows, but speakers stay silent. We hit
+          // this in Safari 26.1 with the on-demand spawn flow on
+          // 2026-05-05 — clearing srcObject was the original fix for a
+          // *different* "double playback" bug; muting the element solves
+          // both.
+          remoteAudioEl.muted = true;
+          remoteAudioEl.srcObject = stream;
+          remoteAudioEl.play().catch(function(playErr) {
+            // Muted autoplay should always succeed under autoplay policy;
+            // log if it doesn't so we can see why on a future regression.
+            log('[safari] muted primer play() rejected: ' + playErr.message);
+          });
+          if (!orbAnalyserBot) orbSetupBotAnalyserFromSource(activeSource);
+        } catch (e) {
+          err('[safari] WebAudio attach failed: ' + e.message + ' — falling back to <audio>');
+          // Fall through to <audio> element path
+          activeSource = null;
+          remoteAudioEl.srcObject = stream;
+          remoteAudioEl.muted = false;
+          remoteAudioEl.volume = 1.0;
+          remoteAudioEl.play().catch(function(e2) { err('Fallback play failed: ' + e2.message); });
+          attachedTrackId = track.id;
+          attachedTrack = track;
+        }
+      } else {
+        // Chrome/Brave/Edge: <audio> element works perfectly
+        try {
+          remoteAudioEl.srcObject = stream;
+          remoteAudioEl.muted = false;
+          remoteAudioEl.volume = 1.0;
+          remoteAudioEl.play().then(function() {
+            attachedTrackId = track.id;
+            attachedTrack = track;
+            log('Attached audio via <audio> element from ' + source + ' (id=' + track.id + ')');
+            if (!orbAnalyserBot) orbSetupBotAnalyser();
+          }).catch(function(e) {
+            err('Audio element play blocked: ' + e.message);
+          });
+        } catch (e) {
+          err('Audio element attach failed: ' + e.message);
+        }
       }
     }
 
+    // Pass the picker's deviceId straight to Daily so the bot receives
+    // audio from the user's actual mic, not whatever Chrome decides is
+    // the system default (often BlackHole or another virtual device on
+    // macOS). When the value is empty (System default), passing `true`
+    // preserves the previous "let Daily choose" behaviour.
+    var startMicDeviceId = document.getElementById('mic-select').value;
+    var dailyAudioSource = startMicDeviceId || true;
+    if (startMicDeviceId) {
+      log('[start] using picked mic deviceId=' + startMicDeviceId.substring(0, 8) + '...');
+    } else {
+      log('[start] using system-default mic (no device picked)');
+    }
     callObject = window.DailyIframe.createCallObject({
-      audioSource: true,
+      audioSource: dailyAudioSource,
       videoSource: false,
     });
     log('Call object created');
 
+    // Identify the bot in a Daily participant entry. Daily's JS SDK exposes
+    // the display name as either ``user_name`` (snake) or ``userName`` (camel)
+    // depending on version and code path; we accept both. We also fall back
+    // to "any non-local participant" because in the on-demand spawn model
+    // there is only ever the one bot in the room.
+    function isBotParticipant(p) {
+      if (!p || p.local) return false;
+      var name = p.user_name || p.userName || '';
+      // Strict match if the name is set, otherwise accept any remote.
+      return name === 'Voxtera' || name === '';
+    }
+
     function scanParticipantsForAudio() {
       try {
         var participants = callObject.participants();
+        // Diagnostic: log every participant we see, so we can tell whether
+        // the bot is even visible to the JS client when polling fails.
+        var seen = [];
+        for (var k in participants) {
+          var pp = participants[k];
+          seen.push({
+            key: k,
+            local: !!pp.local,
+            user_name: pp.user_name,
+            userName: pp.userName,
+            audio_state: pp.tracks && pp.tracks.audio && pp.tracks.audio.state,
+            has_persistent: !!(pp.tracks && pp.tracks.audio && pp.tracks.audio.persistentTrack),
+            has_track: !!(pp.tracks && pp.tracks.audio && pp.tracks.audio.track),
+          });
+        }
+        log('[scan] participants=' + JSON.stringify(seen));
+
         for (var key in participants) {
           var p = participants[key];
-          if (p.local) continue;
-          // Only attach audio from the bot, not stale participants
-          if (p.user_name !== 'Voxtera') continue;
+          if (!isBotParticipant(p)) continue;
           var t = p.tracks && p.tracks.audio;
           if (t && t.state === 'playable' && t.persistentTrack) {
             attachRemoteAudio(t.persistentTrack, 'scan.persistent');
@@ -402,11 +639,26 @@ document.getElementById('btn-start').onclick = function() {
         setStatus('speaking', '🔊 Speaking...');
         orbSetState('speaking');
         ensureAudioContext();
-        remoteAudioEl.play().catch(function() {});
-        // Last-chance attach if not connected yet.
-        if (!attachedTrackId) scanParticipantsForAudio();
-        // Setup bot analyser if not done yet
-        if (!orbAnalyserBot && remoteAudioEl.srcObject) orbSetupBotAnalyser();
+        if (!isSafari) {
+          // Brave/Chrome: nudge <audio> element playback
+          remoteAudioEl.play().catch(function(e) {});
+        } else {
+          // Safari: WebAudio path handles playback; just resume ctx if needed
+          if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume();
+          }
+        }
+        if (!attachedTrackId) {
+          log('[audio] bot-speaking but no track attached yet — scanning');
+          scanParticipantsForAudio();
+        }
+        if (!orbAnalyserBot) {
+          if (isSafari && activeSource) {
+            orbSetupBotAnalyserFromSource(activeSource);
+          } else if (remoteAudioEl.srcObject) {
+            orbSetupBotAnalyser();
+          }
+        }
       } else if (msg.event === 'bot-done-speaking') {
         setStatus('listening', '🟢 Listening...');
         orbSetState('listening');
@@ -415,14 +667,21 @@ document.getElementById('btn-start').onclick = function() {
 
     callObject.on('participant-joined', function(evt) {
       var p = evt.participant;
-      log('participant-joined: ' + (p && p.user_name));
+      log('participant-joined: user_name=' + (p && p.user_name) +
+          ' userName=' + (p && p.userName) +
+          ' local=' + (p && p.local));
+    });
+
+    callObject.on('participant-left', function(evt) {
+      var p = evt.participant;
+      if (!isBotParticipant(p)) return;
+      log('Bot left the room — showing reconnect overlay');
+      showReconnectOverlay();
     });
 
     callObject.on('participant-updated', function(evt) {
       var p = evt.participant;
-      if (!p || p.local) return;
-      // Only attach audio from the bot (Voxtera), not stale participants
-      if (p.user_name !== 'Voxtera') return;
+      if (!isBotParticipant(p)) return;
       var t = p.tracks && p.tracks.audio;
       if (t && t.state === 'playable') {
         var track = t.persistentTrack || t.track;
@@ -432,9 +691,7 @@ document.getElementById('btn-start').onclick = function() {
 
     callObject.on('track-started', function(evt) {
       if (!evt.track || evt.track.kind !== 'audio') return;
-      if (evt.participant && evt.participant.local) return;
-      // Only attach audio from the bot (Voxtera)
-      if (evt.participant && evt.participant.user_name !== 'Voxtera') return;
+      if (!isBotParticipant(evt.participant)) return;
       attachRemoteAudio(evt.track, 'track-started');
     });
 
@@ -515,6 +772,7 @@ document.getElementById('btn-end').onclick = function() {
   }
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
   attachedTrackId = null;
+  attachedTrack = null;
   if (callObject) {
     callObject.leave().then(function() {
       callObject.destroy();
@@ -648,6 +906,23 @@ document.getElementById('voice-select').addEventListener('change', function() {
   if (callObject) {
     log('Switching TTS voice to: ' + this.value);
     callObject.sendAppMessage({ type: 'voxtera-voice', voice: this.value }, '*');
+  }
+});
+
+// Mic picker — if a call is active, hot-swap the input device on Daily so
+// the user can switch from headset to laptop mic (or away from a virtual
+// device they accidentally selected) without dropping the call. Daily
+// exposes setInputDevicesAsync exactly for this; passing the deviceId
+// makes Daily re-acquire the track and republish.
+document.getElementById('mic-select').addEventListener('change', function() {
+  var deviceId = this.value;
+  if (callObject && deviceId) {
+    log('Hot-swapping mic to deviceId=' + deviceId.substring(0, 8) + '...');
+    callObject.setInputDevicesAsync({ audioDeviceId: deviceId }).then(function() {
+      log('Mic hot-swap OK');
+    }).catch(function(e) {
+      err('Mic hot-swap failed: ' + e.message);
+    });
   }
 });
 
@@ -796,7 +1071,64 @@ function animateMicBars() {
   micAnimFrame = requestAnimationFrame(animateMicBars);
 }
 
+// Names that mark a device as "virtual" on macOS — these usually produce
+// silence unless something is explicitly routing audio into them. We push
+// them to the bottom of the picker and never auto-select them as default.
+var VIRTUAL_MIC_PATTERNS = /blackhole|aggregate|virtual|teams audio|loopback|soundflower/i;
+
+function isVirtualMic(label) {
+  return VIRTUAL_MIC_PATTERNS.test(label || '');
+}
+
+// Populate the mic picker from enumerateDevices(). Labels are only exposed
+// after the user has granted mic permission at least once in this origin —
+// before that, the dropdown stays at just "System default".
+function populateMicDevices() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  return navigator.mediaDevices.enumerateDevices().then(function(devices) {
+    var sel = document.getElementById('mic-select');
+    var prevValue = sel.value;
+    var inputs = devices.filter(function(d) { return d.kind === 'audioinput'; });
+    if (inputs.length === 0 || !inputs[0].label) {
+      // No labels yet — permission not granted. Leave default option only.
+      log('[mic-devices] enumerate returned ' + inputs.length + ' inputs without labels');
+      return;
+    }
+    // Sort: real devices first, virtual devices at the bottom.
+    inputs.sort(function(a, b) {
+      var av = isVirtualMic(a.label) ? 1 : 0;
+      var bv = isVirtualMic(b.label) ? 1 : 0;
+      return av - bv;
+    });
+    sel.innerHTML = '';
+    inputs.forEach(function(d) {
+      var opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label + (isVirtualMic(d.label) ? ' ⚠ virtual' : '');
+      sel.appendChild(opt);
+    });
+    // Default to first non-virtual device on initial population. If user
+    // already picked something earlier in the session, keep their choice.
+    if (prevValue && Array.prototype.some.call(sel.options, function(o) { return o.value === prevValue; })) {
+      sel.value = prevValue;
+    }
+    log('[mic-devices] populated with ' + inputs.length + ' devices, default="' + sel.options[0].textContent + '"');
+  }).catch(function(e) {
+    log('[mic-devices] enumerate failed: ' + e.message);
+  });
+}
+
+// Try once on load — labels will be empty unless permission was granted in
+// a prior session. Either way, populateMicDevices() runs again after the
+// first successful getUserMedia (Test Mic or Start), at which point the
+// labels appear and the picker fills in.
+populateMicDevices();
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', populateMicDevices);
+}
+
 document.getElementById('btn-test-mic').onclick = function() {
+  log('[mic-test] click');
   if (micTestActive) {
     resetMicIndicator();
     return;
@@ -808,7 +1140,26 @@ document.getElementById('btn-test-mic').onclick = function() {
   var btn = this;
   btn.disabled = true;
 
-  navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(function(stream) {
+  // Build constraints. If the user has explicitly picked a device in the
+  // mic picker, force exactly that deviceId — otherwise Chrome may hand us
+  // back the system default (often BlackHole or another virtual device on
+  // macOS) regardless of what's selected in the per-site permission panel.
+  var pickedDeviceId = document.getElementById('mic-select').value;
+  var audioConstraints;
+  if (pickedDeviceId) {
+    audioConstraints = { deviceId: { exact: pickedDeviceId } };
+    log('[mic-test] requesting deviceId=' + pickedDeviceId.substring(0, 8) + '...');
+  } else {
+    audioConstraints = true;
+    log('[mic-test] requesting system default mic');
+  }
+
+  navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false }).then(function(stream) {
+    log('[mic-test] getUserMedia resolved');
+    // Now that permission is granted, device labels are exposed —
+    // re-populate the picker so the user can switch to a different mic
+    // for the next test without leaving the page.
+    populateMicDevices();
     micStream = stream;
     micTestActive = true;
     btn.classList.add('active');
@@ -817,11 +1168,61 @@ document.getElementById('btn-test-mic').onclick = function() {
     document.getElementById('mic-indicator').className = 'sound-indicator';
     document.getElementById('mic-label').textContent = 'Listening...';
 
+    // Diagnostic: dump every audio track returned by Chrome so we can see
+    // which device was actually selected and what its settings are.
+    var tracks = stream.getAudioTracks();
+    log('[mic-test] track count=' + tracks.length);
+    tracks.forEach(function(t, i) {
+      var settings = (typeof t.getSettings === 'function') ? t.getSettings() : {};
+      log('[mic-test] track[' + i + '] label="' + t.label + '" enabled=' + t.enabled +
+          ' muted=' + t.muted + ' readyState=' + t.readyState +
+          ' sampleRate=' + settings.sampleRate +
+          ' deviceId=' + (settings.deviceId || '').substring(0, 8) +
+          ' channelCount=' + settings.channelCount);
+    });
+
     micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    log('[mic-test] AudioContext created state=' + micAudioCtx.state +
+        ' sampleRate=' + micAudioCtx.sampleRate);
+
+    // Chrome's autoplay policy: an AudioContext created after an async
+    // boundary (here, the awaited getUserMedia permission prompt) starts
+    // in 'suspended' state because the click's user-gesture token has
+    // already been consumed. While suspended, the AnalyserNode produces
+    // all-zero samples — getByteFrequencyData returns zeros and the VU
+    // bars never move. Safari was unaffected (its gesture token survives
+    // the prompt), which is why this only repros in Chrome/Brave/Edge.
+    // Resuming explicitly is allowed because we're still inside the
+    // user-initiated permission flow.
+    if (micAudioCtx.state === 'suspended') {
+      micAudioCtx.resume().then(function() {
+        log('[mic-test] AudioContext resumed (state=' + micAudioCtx.state + ')');
+      }).catch(function(resumeErr) {
+        err('[mic-test] AudioContext resume failed: ' + resumeErr.message);
+      });
+    }
     var source = micAudioCtx.createMediaStreamSource(stream);
     micAnalyser = micAudioCtx.createAnalyser();
     micAnalyser.fftSize = 256;
     source.connect(micAnalyser);
+
+    // Diagnostic: every ~1s, log peak frequency data so we can tell whether
+    // the analyser is receiving samples or always returns zero.
+    var diagCount = 0;
+    var diagInterval = setInterval(function() {
+      if (!micTestActive || !micAnalyser) { clearInterval(diagInterval); return; }
+      var data = new Uint8Array(micAnalyser.frequencyBinCount);
+      micAnalyser.getByteFrequencyData(data);
+      var peak = 0, sum = 0;
+      for (var i = 0; i < data.length; i++) { if (data[i] > peak) peak = data[i]; sum += data[i]; }
+      log('[mic-test] tick #' + (++diagCount) + ' peak=' + peak +
+          ' avg=' + (sum / data.length).toFixed(1) +
+          ' ctx.state=' + micAudioCtx.state +
+          ' track.muted=' + (tracks[0] && tracks[0].muted) +
+          ' track.readyState=' + (tracks[0] && tracks[0].readyState));
+      if (diagCount >= 5) clearInterval(diagInterval); // stop after 5 ticks
+    }, 1000);
+
     animateMicBars();
   }).catch(function(e) {
     err('Microphone permission denied: ' + e.message);
@@ -1008,6 +1409,20 @@ function orbSetupBotAnalyser() {
     // Do NOT connect to destination — the <audio> element already plays it.
   } catch(e) {
     log('Orb bot analyser setup failed: ' + e.message);
+  }
+}
+
+function orbSetupBotAnalyserFromSource(mediaStreamSource) {
+  // Safari path: activeSource is already connected to ctx.destination for
+  // playback. Branch the analyser off the same node — no extra destination
+  // connection needed.
+  if (!audioCtx || !mediaStreamSource) return;
+  try {
+    orbAnalyserBot = audioCtx.createAnalyser();
+    orbAnalyserBot.fftSize = 256;
+    mediaStreamSource.connect(orbAnalyserBot);
+  } catch(e) {
+    log('Orb bot analyser (Safari) setup failed: ' + e.message);
   }
 }
 </script>

@@ -28,12 +28,31 @@ from pipecat.services.whisper.base_stt import Transcription
 from pipecat.transcriptions.language import Language
 
 from voxtera.config import Settings
+from voxtera.stt_thresholds import STTThresholds
 
 # OpenAI Whisper API model identifier.
 STT_MODEL_WHISPER = "whisper-1"
 # Deepgram Nova-3 multilingual streaming model.
 STT_MODEL_DEEPGRAM = "nova-3-general"
 # Google Speech-to-Text V2 streaming model name.
+#
+# `latest_long` is the conservative default: broadly available across all
+# Google Cloud regions, accepts the multi-language auto-detect config
+# (`languages=_GOOGLE_AUTO_LANGUAGES`), and works with every feature flag
+# the builder enables. Downside: ~1000ms final-segment latency because
+# the model is tuned for long-form audio rather than conversational use.
+#
+# Lower-latency alternatives (verify before switching):
+#   - "latest_short"   — streaming, conversational, ~300-500ms final.
+#                        Broadly available; safer than `chirp_2`.
+#   - "chirp_2"        — Google's newest streaming foundation model,
+#                        ~150-350ms final, but REGION-RESTRICTED
+#                        (us-central1, europe-west4, asia-southeast1 only
+#                        as of mid-2025) and has tighter feature/language
+#                        constraints. May silently produce no transcripts
+#                        if the project's region or config is mismatched.
+#                        Confirmed not working with this builder's
+#                        config on 2026-05-05.
 STT_MODEL_GOOGLE = "latest_long"
 
 
@@ -41,12 +60,29 @@ class _MultilingualWhisperSTT(OpenAISTTService):
     """Whisper STT with language auto-detection (omits the language param).
 
     Uses verbose_json to capture the detected language for downstream
-    logging and consistency checks.
+    logging and consistency checks, and to read per-segment confidence
+    signals (``avg_logprob``, ``no_speech_prob``) for the low-confidence
+    drop filter.
+
+    The optional ``thresholds`` argument enables per-language confidence
+    filtering. When set, transcriptions whose worst segment falls below
+    the configured ``avg_logprob_min`` (or above ``no_speech_prob_max``)
+    are dropped before reaching the LLM by clearing ``result.text``. This
+    suppresses Whisper substitution hallucinations like
+    "the water is not running" → "the White House" without language bias.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        *,
+        thresholds: STTThresholds | None = None,
+        **kwargs: object,
+    ) -> None:
         super().__init__(**kwargs)
         self.last_detected_language: str | None = None
+        # If no thresholds object is supplied, build one with the hardcoded
+        # fallback so call sites don't need to special-case None.
+        self._thresholds: STTThresholds = thresholds or STTThresholds.load(None)
 
     async def _transcribe(self, audio: bytes) -> Transcription:
         kwargs: dict = {
@@ -64,11 +100,77 @@ class _MultilingualWhisperSTT(OpenAISTTService):
         if lang_hint and lang_hint not in ("multi", "auto", ""):
             kwargs["language"] = lang_hint
         result = await self._client.audio.transcriptions.create(**kwargs)
+
         detected_lang = getattr(result, "language", None)
-        if detected_lang:
+        text = (getattr(result, "text", "") or "").strip()
+
+        # Confidence gate. Only run when there's actually text to evaluate;
+        # an already-empty result needs no further filtering.
+        if text:
+            segments = getattr(result, "segments", None) or []
+            if segments:
+                # Use the WORST segment-level scores so a single noisy span
+                # in a longer utterance can still trigger a drop. avg_logprob
+                # is most-negative-wins (lower = less confident);
+                # no_speech_prob is highest-wins.
+                worst_logprob = min(
+                    (float(getattr(s, "avg_logprob", 0.0) or 0.0) for s in segments),
+                    default=0.0,
+                )
+                worst_no_speech = max(
+                    (float(getattr(s, "no_speech_prob", 0.0) or 0.0) for s in segments),
+                    default=0.0,
+                )
+                t = self._thresholds.for_language(detected_lang)
+                if worst_logprob < t.avg_logprob_min or worst_no_speech > t.no_speech_prob_max:
+                    logger.warning(
+                        "[stt] dropped low-confidence transcription "
+                        "(lang={!r}, avg_logprob={:.2f} threshold={:.2f}, "
+                        "no_speech_prob={:.2f} threshold={:.2f}): {!r}",
+                        detected_lang,
+                        worst_logprob,
+                        t.avg_logprob_min,
+                        worst_no_speech,
+                        t.no_speech_prob_max,
+                        text,
+                    )
+                    # Clear the text so the base class doesn't emit a
+                    # TranscriptionFrame downstream. Critically, do NOT
+                    # update last_detected_language here — the language
+                    # detection itself isn't trustworthy when confidence
+                    # is low, and a stale value avoids the
+                    # AutoTTSLanguageSwitcher flicking to a misdetected
+                    # language on noise.
+                    try:
+                        result.text = ""
+                    except Exception:  # pragma: no cover - defensive
+                        # If the result object is somehow immutable, we
+                        # still want the bot to keep working — fall through
+                        # and let downstream filters handle it.
+                        logger.debug(
+                            "[stt] could not clear result.text; relying on "
+                            "downstream noise filter"
+                        )
+                    return result
+
+        # Accepted (or empty): only update language tracking on a result we
+        # trust enough to forward.
+        if detected_lang and text:
             self.last_detected_language = detected_lang
-            logger.info("[stt] detected language: {}", detected_lang)
+            logger.info(
+                "[stt] detected language: {} (avg_logprob ok)",
+                detected_lang,
+            )
         return result
+
+    def reload_thresholds(self) -> None:
+        """Reload the confidence-threshold JSON file at runtime.
+
+        Useful during a demo: edit ``config/stt_thresholds.json`` and call
+        this to pick up the change without restarting the bot. No-op if
+        the STT was constructed without a path-backed STTThresholds.
+        """
+        self._thresholds.reload()
 
 
 def _google_exception_status_code(exc: Exception) -> str | None:
@@ -201,6 +303,7 @@ def _build_whisper_stt(settings: Settings) -> FrameProcessor | None:
     """Build the Whisper STT service if its credentials are present."""
     if not settings.openai_api_key:
         return None
+    thresholds = STTThresholds.load(settings.stt_thresholds_path)
     stt = _MultilingualWhisperSTT(
         api_key=settings.openai_api_key,
         settings=OpenAISTTService.Settings(
@@ -208,8 +311,13 @@ def _build_whisper_stt(settings: Settings) -> FrameProcessor | None:
             prompt=settings.stt_prompt if settings.stt_prompt_enabled else None,
             temperature=0.0,
         ),
+        thresholds=thresholds,
     )
-    logger.info("[stt] whisper available (model={})", STT_MODEL_WHISPER)
+    logger.info(
+        "[stt] whisper available (model={}, thresholds_languages={})",
+        STT_MODEL_WHISPER,
+        thresholds.configured_languages() or "default-only",
+    )
     return stt
 
 
@@ -273,10 +381,57 @@ def _build_google_stt(settings: Settings) -> FrameProcessor | None:
     return stt
 
 
+def _build_google_chirp2_stt(settings: Settings) -> FrameProcessor | None:
+    """Build a Google STT service using the chirp_2 model in us-central1.
+
+    chirp_2 is Google's lowest-latency streaming model (~150-350ms final)
+    but requires a regional endpoint (not available in ``global``).
+    """
+    if not settings.google_application_credentials:
+        return None
+    creds_path = Path(settings.google_application_credentials).expanduser()
+    if not creds_path.is_absolute():
+        creds_path = Path.cwd() / creds_path
+    if not creds_path.exists():
+        logger.warning(
+            "[stt] google credentials path does not exist: {} — google-chirp2 STT disabled",
+            creds_path,
+        )
+        return None
+    try:
+        from pipecat.services.google.stt import GoogleSTTService
+    except ImportError:
+        logger.warning(
+            "[stt] google STT extras not installed — install with: uv add 'pipecat-ai[google]'"
+        )
+        return None
+
+    class ResilientGoogleSTTService(_ResilientGoogleSTTService, GoogleSTTService):
+        pass
+
+    stt = ResilientGoogleSTTService(
+        credentials_path=str(creds_path),
+        location="us-central1",
+        settings=GoogleSTTService.Settings(
+            model="chirp_2",
+            # chirp_2 in us-central1 does NOT support multi-language auto-detect;
+            # pass a single language only.
+            languages=["en-US"],
+            enable_interim_results=True,
+            enable_voice_activity_events=True,
+            enable_automatic_punctuation=False,
+        ),
+    )
+    stt.last_detected_language = None  # type: ignore[attr-defined]
+    logger.info("[stt] google-chirp2 available (model=chirp_2, location=us-central1)")
+    return stt
+
+
 _STT_BUILDERS: dict[str, Callable[[Settings], FrameProcessor | None]] = {
     "whisper": _build_whisper_stt,
     "deepgram": _build_deepgram_stt,
     "google": _build_google_stt,
+    "google-chirp2": _build_google_chirp2_stt,
 }
 
 
