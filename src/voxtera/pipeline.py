@@ -19,6 +19,7 @@ participants left over in the Daily room from a previous crash.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import threading
@@ -231,6 +232,33 @@ from voxtera.tts import _TTS_BUILDERS  # noqa: E402
 from voxtera.tunables import register_pipeline_knobs  # noqa: E402
 
 
+async def _warmup_tts_providers(openai_api_key: str, voice: str) -> None:
+    """Fire a silent request to OpenAI TTS right after the bot joins the room.
+
+    Eliminates the cold-start penalty on the first real reply (~1-3 s saved).
+    Runs as a fire-and-forget background task — failure is non-fatal.
+    """
+
+    def _call() -> None:
+        body = json.dumps({"model": "tts-1", "voice": voice, "input": "."}).encode()
+        req = Request(
+            "https://api.openai.com/v1/audio/speech",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {openai_api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        with urlopen(req, timeout=10) as resp:  # noqa: S310
+            resp.read()  # consume + discard the audio bytes
+
+    try:
+        await asyncio.to_thread(_call)
+        logger.info("[tts-warmup] OpenAI tts-1/{} pre-warmed", voice)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[tts-warmup] warmup skipped (non-fatal): {}", exc)
+
+
 def _eject_stale_bots(settings: Settings) -> None:
     """Remove leftover participants from previous runs via the Daily REST API.
 
@@ -381,6 +409,9 @@ def build_pipeline(
                 data,
             )
             await launcher_client.post_event("ready")
+            asyncio.create_task(
+                _warmup_tts_providers(settings.openai_api_key, settings.default_tts_voice)
+            )
 
         # Fast-exit on Guest leave — only for on-demand mode.
         #
