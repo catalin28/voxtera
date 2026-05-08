@@ -30,14 +30,11 @@ class Settings:
     # VAD knobs. Pipecat's defaults (min_volume=0.6, confidence=0.7) are
     # tuned for headset mics; built-in laptop mics typically need both lower.
     # vad_stop_secs is the silence window after which we declare the user
-    # done. 0.2s was too aggressive — a normal speaking cadence has ~200-300ms
-    # gaps between words, which made VAD chatter (multiple Started/Stopped
-    # cycles per utterance) and fired multiple Whisper API calls per turn,
-    # adding 1.5-2s of pure overhead. 0.5s is the sweet spot from
-    # 2026-05-06 latency tuning: no chatter on natural speech, ~300ms
-    # extra wait after the user actually finishes. Override via
-    # VAD_STOP_SECS env var if a specific demo needs different timing.
-    vad_stop_secs: float = 0.5
+    # done. 0.2s was too aggressive — normal speech has ~200-300ms inter-word
+    # gaps, causing VAD chatter and multiple STT calls per turn (+1.5s overhead).
+    # 0.3s is the tuned balance: no chatter on natural speech, minimal wait
+    # after the user finishes (~200ms saved vs 0.5s). Override via VAD_STOP_SECS.
+    vad_stop_secs: float = 0.3
     vad_start_secs: float = 0.2
     # Empirically, even loud speech on a built-in mic peaks around 0.05–0.07
     # RMS per chunk. 0.02 is a generous floor that still rejects pure silence.
@@ -138,7 +135,7 @@ def load_settings() -> Settings:
         log_level=os.environ.get("LOG_LEVEL", "INFO"),
         bot_name=os.environ.get("BOT_NAME", "Voxtera"),
         default_tts_voice=os.environ.get("DEFAULT_TTS_VOICE", "nova"),
-        vad_stop_secs=float(os.environ.get("VAD_STOP_SECS", "0.5")),
+        vad_stop_secs=float(os.environ.get("VAD_STOP_SECS", "0.3")),
         vad_start_secs=float(os.environ.get("VAD_START_SECS", "0.2")),
         vad_min_volume=float(os.environ.get("VAD_MIN_VOLUME", "0.02")),
         vad_confidence=float(os.environ.get("VAD_CONFIDENCE", "0.5")),

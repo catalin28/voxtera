@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import threading
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -30,6 +31,11 @@ from loguru import logger
 
 _LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
 _STATE_FILE = _LOG_DIR / "conversation-state.json"
+
+# Unique ID for this bot process. Since Daily.co spawns one process per room
+# join, SESSION_ID == one conversation. Use it to filter your test session
+# from other sessions in the JSONL logs.
+SESSION_ID: str = str(uuid.uuid4())
 
 # In-flight turn state: the injector writes the query + RAG data first,
 # then the tracer completes the entry with the bot reply.
@@ -108,6 +114,7 @@ def log_user_query(*, user_query: str, hotel_id: str | None = None) -> None:
         _turn_counter += 1
         _pending_turn = {
             "timestamp": datetime.now(tz=UTC).isoformat(),
+            "session_id": SESSION_ID,
             "turn_id": _turn_counter,
             "hotel_id": hotel_id,
             "user_query": text,
@@ -135,6 +142,7 @@ def log_rag_context(
             _turn_counter += 1
             _pending_turn = {
                 "timestamp": datetime.now(tz=UTC).isoformat(),
+                "session_id": SESSION_ID,
                 "turn_id": _turn_counter,
                 "hotel_id": hotel_id,
                 "user_query": user_query,
@@ -189,6 +197,7 @@ def log_bot_reply(*, reply: str, elapsed_ms: float | None = None) -> None:
             _turn_counter_local = _turn_counter
             entry = {
                 "timestamp": datetime.now(tz=UTC).isoformat(),
+                "session_id": SESSION_ID,
                 "turn_id": _turn_counter_local,
                 "hotel_id": None,
                 "user_query": None,
