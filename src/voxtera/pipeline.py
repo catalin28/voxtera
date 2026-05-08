@@ -232,12 +232,24 @@ from voxtera.tts import _TTS_BUILDERS  # noqa: E402
 from voxtera.tunables import register_pipeline_knobs  # noqa: E402
 
 
-async def _warmup_tts_providers(openai_api_key: str, voice: str) -> None:
-    """Fire a silent request to OpenAI TTS right after the bot joins the room.
+async def _warmup_tts_providers(settings: Settings) -> None:
+    """Fire a silent request to the active TTS provider right after the bot
+    joins the room to eliminate the cold-start penalty on the first real reply.
 
-    Eliminates the cold-start penalty on the first real reply (~1-3 s saved).
+    Currently warms OpenAI tts-1 (~1-3 s saved on first turn).
+    Google Chirp 3 HD already has low first-call latency (~400 ms) so no
+    warmup request is sent for that provider.
     Runs as a fire-and-forget background task — failure is non-fatal.
     """
+    if settings.tts_provider != "openai":
+        logger.debug("[tts-warmup] provider={!r} — no warmup needed", settings.tts_provider)
+        return
+
+    if not settings.openai_api_key:
+        logger.debug("[tts-warmup] no OpenAI API key — skipping")
+        return
+
+    voice = settings.default_tts_voice
 
     def _call() -> None:
         body = json.dumps({"model": "tts-1", "voice": voice, "input": "."}).encode()
@@ -245,7 +257,7 @@ async def _warmup_tts_providers(openai_api_key: str, voice: str) -> None:
             "https://api.openai.com/v1/audio/speech",
             data=body,
             headers={
-                "Authorization": f"Bearer {openai_api_key}",
+                "Authorization": f"Bearer {settings.openai_api_key}",
                 "Content-Type": "application/json",
             },
         )
@@ -409,9 +421,7 @@ def build_pipeline(
                 data,
             )
             await launcher_client.post_event("ready")
-            asyncio.create_task(
-                _warmup_tts_providers(settings.openai_api_key, settings.default_tts_voice)
-            )
+            asyncio.create_task(_warmup_tts_providers(settings))
 
         # Fast-exit on Guest leave — only for on-demand mode.
         #
