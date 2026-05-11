@@ -55,3 +55,4 @@ Thumbs.db
 *.tmp
 tmp/
 .secrets/
+demo-hotel/traces/

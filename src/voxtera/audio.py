@@ -32,6 +32,7 @@ from pipecat.frames.frames import (
     BotStoppedSpeakingFrame,
     InputAudioRawFrame,
     InterimTranscriptionFrame,
+    InterruptionFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
     STTUpdateSettingsFrame,
@@ -44,6 +45,7 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from voxtera.prompts import SYSTEM_PROMPT
+from voxtera.trace import DropAccumulator as _DropAccumulator
 
 
 def _tokenize(text: str) -> list[str]:
@@ -401,6 +403,10 @@ class PlaybackLeakageGuard(FrameProcessor):
         self._allow_interruptions = allow_interruptions
         self._bot_speaking = False
         self._bot_thinking = False
+        # Monotonic timestamps for when each flag was set, used by the
+        # watchdog below. None when the flag is False.
+        self._bot_speaking_set_at: float | None = None
+        self._bot_thinking_set_at: float | None = None
         self._cooldown_until = 0.0
         self._barge_in_open = False
         self._barge_in_frames = 0
@@ -416,6 +422,21 @@ class PlaybackLeakageGuard(FrameProcessor):
         self._min_open_rms = 0.045
         self._required_open_frames = 8  # ~160ms at 20ms frames
         self._post_tts_cooldown_secs = 0.25
+
+        # Watchdog timeouts: how long a state flag can stay True without
+        # receiving its corresponding end frame before we force-clear it.
+        # A real bot utterance rarely exceeds 6s, so 10s on _bot_speaking
+        # catches missed TTSStopped/BotStopped frames quickly while still
+        # leaving margin for legitimately long replies. _bot_thinking gets
+        # more room because LLM responses can stream for a while before
+        # the End frame fires.
+        self._max_bot_speaking_secs = 10.0
+        self._max_bot_thinking_secs = 20.0
+
+        # Drop counter — feeds the dashboard's per-stage "X muted" indicator
+        # so it's obvious when leakage suppression is eating user audio.
+        # action="silenced" because we push zeroed frames rather than dropping.
+        self._drops = _DropAccumulator(stage="leakage_guard", action="silenced")
 
     @staticmethod
     def _clone_audio_frame(frame: InputAudioRawFrame, audio_bytes: bytes) -> InputAudioRawFrame:
@@ -435,51 +456,127 @@ class PlaybackLeakageGuard(FrameProcessor):
         await super().process_frame(frame, direction)
         now = time.monotonic()
 
+        # All state-transition events are logged at INFO with the "[lg-state]"
+        # prefix so they can be grepped from production logs to debug "deaf"
+        # incidents. Format: "[lg-state] <FrameType> → <new state>".
         if isinstance(frame, BotStartedSpeakingFrame):
+            # CRITICAL: only stamp the watchdog timestamp on a False→True
+            # transition. Pipecat sometimes emits multiple BotStartedSpeaking
+            # frames during a single bot turn (per-sentence aggregator). If we
+            # re-stamp on every one, the watchdog timer keeps resetting and
+            # never fires — leaving the guard stuck silencing user audio
+            # indefinitely when the matching Stopped frame is lost.
+            was_speaking = self._bot_speaking
+            if not was_speaking:
+                self._bot_speaking_set_at = now
             self._bot_speaking = True
             self._barge_in_open = False
             self._barge_in_frames = 0
-            logger.debug("[leakage-guard] BotStartedSpeaking → bot_speaking=True")
+            logger.info(
+                "[lg-state] BotStartedSpeaking → speaking=True (was={})",
+                was_speaking,
+            )
             await self.push_frame(frame, direction)
             return
 
         if isinstance(frame, BotStoppedSpeakingFrame):
+            was_speaking = self._bot_speaking
             self._bot_speaking = False
+            self._bot_speaking_set_at = None
             self._barge_in_open = False
             self._barge_in_frames = 0
             self._cooldown_until = now + self._post_tts_cooldown_secs
-            logger.debug("[leakage-guard] BotStoppedSpeaking → bot_speaking=False")
+            logger.info(
+                "[lg-state] BotStoppedSpeaking → speaking=False (was={})",
+                was_speaking,
+            )
             await self.push_frame(frame, direction)
             return
 
         if isinstance(frame, LLMFullResponseStartFrame):
             # Treat thinking as bot-active for leakage suppression; otherwise
             # background speech can cancel the in-flight reply and yield <empty>.
+            # Same False→True guard as BotStartedSpeaking — protects the
+            # watchdog timestamp from being reset by intermediate Start frames.
+            was_thinking = self._bot_thinking
+            if not was_thinking:
+                self._bot_thinking_set_at = now
             self._bot_thinking = True
             self._barge_in_open = False
             self._barge_in_frames = 0
+            logger.info(
+                "[lg-state] LLMFullResponseStart → thinking=True (was={})",
+                was_thinking,
+            )
             await self.push_frame(frame, direction)
             return
 
         if isinstance(frame, LLMFullResponseEndFrame):
+            was_thinking = self._bot_thinking
             self._bot_thinking = False
+            self._bot_thinking_set_at = None
+            logger.info(
+                "[lg-state] LLMFullResponseEnd → thinking=False (was={})",
+                was_thinking,
+            )
             await self.push_frame(frame, direction)
             return
 
         # Some transports/services emit TTS lifecycle more reliably than bot
         # speaking frames. Handle both so state never gets stuck.
         if isinstance(frame, TTSStartedFrame):
+            # Same False→True guard: per-sentence TTSStartedFrame is common
+            # for multi-sentence replies, and re-stamping would defeat the
+            # watchdog. Only stamp when actually transitioning to speaking.
+            was_speaking = self._bot_speaking
+            if not was_speaking:
+                self._bot_speaking_set_at = now
             self._bot_speaking = True
             self._barge_in_open = False
             self._barge_in_frames = 0
+            logger.info(
+                "[lg-state] TTSStarted → speaking=True (was={})",
+                was_speaking,
+            )
             await self.push_frame(frame, direction)
             return
 
         if isinstance(frame, TTSStoppedFrame):
+            was_speaking = self._bot_speaking
             self._bot_speaking = False
+            self._bot_speaking_set_at = None
             self._barge_in_open = False
             self._barge_in_frames = 0
             self._cooldown_until = now + self._post_tts_cooldown_secs
+            logger.info(
+                "[lg-state] TTSStopped → speaking=False (was={})",
+                was_speaking,
+            )
+            await self.push_frame(frame, direction)
+            return
+
+        # Pipecat fires InterruptionFrame when a user barge-in cancels an
+        # in-flight bot turn. The LLM stream and TTS may be cancelled
+        # without their End frames ever firing, leaving _bot_thinking
+        # (and sometimes _bot_speaking) stuck True — which silences ALL
+        # subsequent user audio via the gate logic below. We force-reset
+        # state on InterruptionFrame so the next user utterance is heard.
+        if isinstance(frame, InterruptionFrame):
+            was_speaking = self._bot_speaking
+            was_thinking = self._bot_thinking
+            self._bot_speaking = False
+            self._bot_speaking_set_at = None
+            self._bot_thinking = False
+            self._bot_thinking_set_at = None
+            self._barge_in_open = False
+            self._barge_in_frames = 0
+            self._cooldown_until = now + self._post_tts_cooldown_secs
+            logger.info(
+                "[lg-state] InterruptionFrame → speaking=False thinking=False "
+                "(was speaking={}, thinking={})",
+                was_speaking,
+                was_thinking,
+            )
             await self.push_frame(frame, direction)
             return
 
@@ -488,6 +585,35 @@ class PlaybackLeakageGuard(FrameProcessor):
             if not samples.size:
                 await self.push_frame(frame, direction)
                 return
+
+            # Watchdog: clear flags that have been stuck True longer than
+            # their max plausible duration. Protects against the "End frame
+            # got lost" failure mode (LLM stream cancelled mid-flight, TTS
+            # disconnected, transport drop without InterruptionFrame, etc.)
+            # which would otherwise leave the guard silencing user audio
+            # forever. Logged at WARNING level so a recurring fire is
+            # visible in production logs.
+            if self._bot_speaking and self._bot_speaking_set_at is not None:
+                speaking_age = now - self._bot_speaking_set_at
+                if speaking_age > self._max_bot_speaking_secs:
+                    logger.warning(
+                        "[leakage-guard] _bot_speaking watchdog fired after "
+                        "{:.1f}s without TTSStopped/BotStopped — clearing",
+                        speaking_age,
+                    )
+                    self._bot_speaking = False
+                    self._bot_speaking_set_at = None
+                    self._cooldown_until = now + self._post_tts_cooldown_secs
+            if self._bot_thinking and self._bot_thinking_set_at is not None:
+                thinking_age = now - self._bot_thinking_set_at
+                if thinking_age > self._max_bot_thinking_secs:
+                    logger.warning(
+                        "[leakage-guard] _bot_thinking watchdog fired after "
+                        "{:.1f}s without LLMFullResponseEnd — clearing",
+                        thinking_age,
+                    )
+                    self._bot_thinking = False
+                    self._bot_thinking_set_at = None
 
             rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2))) / 32768.0
             bot_active = self._bot_speaking or self._bot_thinking
@@ -511,6 +637,7 @@ class PlaybackLeakageGuard(FrameProcessor):
                 # Never open while bot is active.
                 silent = np.zeros_like(samples, dtype=np.int16)
                 output = self._clone_audio_frame(frame, silent.tobytes())
+                self._drops.record("bot_active_strict")
                 await self.push_frame(output, direction)
                 return
 
@@ -536,6 +663,18 @@ class PlaybackLeakageGuard(FrameProcessor):
             # Suppress TTS playback leakage before it reaches VAD.
             silent = np.zeros_like(samples, dtype=np.int16)
             output = self._clone_audio_frame(frame, silent.tobytes())
+            # Reason taxonomy: distinguish the two "active" flag sources so
+            # the dashboard tooltip tells us WHICH End frame is missing on
+            # the next "deaf" incident. "bot_active" alone hid that detail.
+            if self._bot_speaking and self._bot_thinking:
+                reason = "bot_speaking_and_thinking"
+            elif self._bot_speaking:
+                reason = "bot_speaking"
+            elif self._bot_thinking:
+                reason = "bot_thinking"
+            else:
+                reason = "barge_in_closed"
+            self._drops.record(reason)
             await self.push_frame(output, direction)
             return
 
@@ -554,17 +693,58 @@ class BotActiveUserFrameSuppressor(FrameProcessor):
         super().__init__()
         self._allow_interruptions = allow_interruptions
         self._bot_active = False
+        # Watchdog: timestamp when _bot_active was last set True and the
+        # max duration we'll allow it to stay True without an end frame.
+        self._bot_active_set_at: float | None = None
+        self._max_bot_active_secs = 60.0  # covers LLM + TTS round-trip
+        # Drop counter — action="dropped" because we return without pushing
+        # (unlike leakage_guard which silences-then-pushes).
+        self._drops = _DropAccumulator(stage="suppressor", action="dropped")
 
     async def process_frame(self, frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
+        now = time.monotonic()
+
+        # Watchdog: clear _bot_active if it's been stuck True longer than
+        # max_bot_active_secs. Same failure mode as leakage_guard — the
+        # End frame can go missing and this flag would otherwise stay True
+        # forever, dropping every user-turn frame.
+        if self._bot_active and self._bot_active_set_at is not None:
+            active_age = now - self._bot_active_set_at
+            if active_age > self._max_bot_active_secs:
+                logger.warning(
+                    "[barge-in] _bot_active watchdog fired after {:.1f}s "
+                    "without an end frame — clearing",
+                    active_age,
+                )
+                self._bot_active = False
+                self._bot_active_set_at = None
 
         if isinstance(frame, LLMFullResponseStartFrame | BotStartedSpeakingFrame | TTSStartedFrame):
+            if not self._bot_active:
+                self._bot_active_set_at = now
             self._bot_active = True
             await self.push_frame(frame, direction)
             return
 
         if isinstance(frame, LLMFullResponseEndFrame | BotStoppedSpeakingFrame | TTSStoppedFrame):
             self._bot_active = False
+            self._bot_active_set_at = None
+            await self.push_frame(frame, direction)
+            return
+
+        # Interruption cancels the bot turn — the LLM/TTS End frames may not
+        # fire, so explicitly clear _bot_active here. Without this, all
+        # subsequent user-turn frames get dropped until the next clean
+        # End frame happens to fire (the "deaf after interruption" bug).
+        if isinstance(frame, InterruptionFrame):
+            if self._bot_active:
+                logger.info(
+                    "[barge-in] InterruptionFrame → bot_active cleared "
+                    "(user-turn frames will pass through again)"
+                )
+            self._bot_active = False
+            self._bot_active_set_at = None
             await self.push_frame(frame, direction)
             return
 
@@ -583,6 +763,7 @@ class BotActiveUserFrameSuppressor(FrameProcessor):
                 "[barge-in] dropped user frame while bot active: {}",
                 frame.__class__.__name__,
             )
+            self._drops.record(f"bot_active:{frame.__class__.__name__}")
             return
 
         await self.push_frame(frame, direction)

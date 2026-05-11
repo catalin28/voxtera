@@ -23,6 +23,10 @@ TTS_MODEL = "tts-1"
 # Google Chirp 3 HD streaming TTS — neural multilingual voices.
 # Voice IDs follow the pattern "<locale>-Chirp3-HD-<character>".
 # See https://cloud.google.com/text-to-speech/docs/chirp3-hd for the full list.
+# TTS_MODEL_GOOGLE is a display label (Google Chirp 3 HD isn't a single
+# "model" parameter — the voice ID encodes the model family); it's surfaced
+# in the dashboard's session_providers panel via voxtera.observability.
+TTS_MODEL_GOOGLE = "chirp3-hd"
 TTS_GOOGLE_DEFAULT_VOICE = "en-US-Chirp3-HD-Charon"
 TTS_GOOGLE_DEFAULT_LANGUAGE = "en-US"
 

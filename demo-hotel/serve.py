@@ -150,6 +150,225 @@ class TraceEventBuffer:
 
 _TRACE_BUFFER = TraceEventBuffer()
 
+
+# ---------------------------------------------------------------------------
+# Session history — persist trace events to disk per session so past
+# conversations can be replayed in the dashboard. NDJSON per session is the
+# simplest durable format: append-only, line-by-line parseable, no schema
+# migration risk. Meta sidecar (`{id}.meta.json`) holds derived summary fields
+# so the listing endpoint doesn't need to parse the full event log.
+# ---------------------------------------------------------------------------
+
+# Explicit None/empty check — Path("").expanduser() returns Path(".") which
+# is truthy, so `or` fallback never runs and files end up in cwd.
+_env_trace_dir = os.environ.get("VOXTERA_TRACE_DIR") or ""
+_TRACE_DIR = (
+    Path(_env_trace_dir).expanduser().resolve()
+    if _env_trace_dir
+    else (Path(__file__).resolve().parent / "traces")
+)
+
+
+class SessionStore:
+    """Append trace events to per-session NDJSON files and manage their lifecycle.
+
+    File layout under ``_TRACE_DIR``::
+
+        {session_id}.ndjson       # one JSON event per line, append-only
+        {session_id}.meta.json    # summary written when session is finalized
+
+    Thread-safe: every public method takes the per-store lock. File handles
+    are kept open for the active session(s) to avoid open/close per event,
+    and flushed after every batch so a crashed launcher loses at most one
+    pending batch (the in-memory ring buffer is still authoritative for
+    live viewing).
+    """
+
+    def __init__(self, directory: Path) -> None:
+        self._dir = directory.resolve()
+        self._dir.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        # session_id -> open file handle for fast append
+        self._handles: dict[str, object] = {}
+        # session_id -> {started_at, turn_ids, transcript_first, ...} accumulator
+        # for cheap meta generation at finalize time without re-scanning NDJSON.
+        self._accum: dict[str, dict] = {}
+        # Print on startup so the operator always knows where files go.
+        # Uses print rather than logger because serve.py doesn't configure
+        # loguru itself (the bot does); print lands in the launcher's stdout.
+        print(f"[trace-store] persisting trace events to {self._dir}", flush=True)
+
+    def _ndjson_path(self, session_id: str) -> Path:
+        return self._dir / f"{session_id}.ndjson"
+
+    def _meta_path(self, session_id: str) -> Path:
+        return self._dir / f"{session_id}.meta.json"
+
+    def append(self, session_id: str, events: list[dict]) -> None:
+        """Append a batch of events for one session. Creates the file on first
+        call. Updates the in-memory accumulator used by :meth:`finalize`.
+        """
+        if not session_id or not events:
+            return
+        with self._lock:
+            fh = self._handles.get(session_id)
+            if fh is None:
+                fh = open(self._ndjson_path(session_id), "a", encoding="utf-8")  # noqa: SIM115
+                self._handles[session_id] = fh
+                self._accum[session_id] = {
+                    "started_at": events[0].get("ts_ms"),
+                    "ended_at": None,
+                    "turn_ids": set(),
+                    "providers": None,
+                    "transcript_first": None,
+                    "transcript_last": None,
+                    "event_count": 0,
+                }
+            acc = self._accum[session_id]
+            for ev in events:
+                fh.write(json.dumps(ev, separators=(",", ":")) + "\n")
+                acc["event_count"] += 1
+                if ev.get("ts_ms"):
+                    acc["ended_at"] = ev["ts_ms"]
+                if ev.get("turn_id"):
+                    acc["turn_ids"].add(ev["turn_id"])
+                data = ev.get("data") or {}
+                if data.get("event") == "session_providers":
+                    acc["providers"] = {k: v for k, v in data.items() if k != "event"}
+                if data.get("event") == "transcript":
+                    text = (data.get("text") or "").strip()
+                    if text:
+                        if acc["transcript_first"] is None:
+                            acc["transcript_first"] = text
+                        acc["transcript_last"] = text
+            fh.flush()
+
+    def finalize(self, session_id: str) -> None:
+        """Close the NDJSON handle and write the meta sidecar.
+
+        Called from :class:`BotSessionRegistry.reap` when the bot subprocess
+        exits. Idempotent: a finalize on a session with no events is a no-op.
+        """
+        with self._lock:
+            fh = self._handles.pop(session_id, None)
+            acc = self._accum.pop(session_id, None)
+            if fh is not None:
+                with contextlib.suppress(Exception):
+                    fh.close()
+            if acc is None or acc.get("event_count", 0) == 0:
+                # Nothing was written — clean up an empty file if it exists.
+                with contextlib.suppress(FileNotFoundError):
+                    self._ndjson_path(session_id).unlink()
+                return
+            meta = {
+                "session_id": session_id,
+                "started_at": acc["started_at"],
+                "ended_at": acc["ended_at"],
+                "turn_count": len(acc["turn_ids"]),
+                "event_count": acc["event_count"],
+                "providers": acc["providers"],
+                "transcript_first": acc["transcript_first"],
+                "transcript_last": acc["transcript_last"],
+            }
+            self._meta_path(session_id).write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+    def list_sessions(self) -> list[dict]:
+        """Return all stored sessions sorted by ``started_at`` descending.
+
+        Includes both finalized sessions (meta file exists) and in-progress
+        sessions (NDJSON exists, meta does not — synthesize meta on the fly).
+        """
+        with self._lock:
+            # Snapshot in-memory accumulators for in-progress sessions.
+            in_progress = {sid: dict(acc) for sid, acc in self._accum.items()}
+
+        sessions: list[dict] = []
+        for ndjson_file in self._dir.glob("*.ndjson"):
+            session_id = ndjson_file.stem
+            meta_file = self._meta_path(session_id)
+            if meta_file.exists():
+                try:
+                    sessions.append(json.loads(meta_file.read_text()))
+                    continue
+                except Exception:
+                    pass  # fall through to synthesized meta
+            # In-progress or meta-less session: synthesize a meta-like dict.
+            acc = in_progress.get(session_id)
+            if acc:
+                sessions.append(
+                    {
+                        "session_id": session_id,
+                        "started_at": acc["started_at"],
+                        "ended_at": acc["ended_at"],
+                        "turn_count": len(acc["turn_ids"]),
+                        "event_count": acc["event_count"],
+                        "providers": acc["providers"],
+                        "transcript_first": acc["transcript_first"],
+                        "transcript_last": acc["transcript_last"],
+                        "in_progress": True,
+                    }
+                )
+            else:
+                # Orphan ndjson with no accumulator (left from a previous launcher
+                # process that crashed before finalize). Mark as such.
+                sessions.append(
+                    {
+                        "session_id": session_id,
+                        "started_at": None,
+                        "ended_at": None,
+                        "turn_count": None,
+                        "event_count": None,
+                        "providers": None,
+                        "transcript_first": None,
+                        "transcript_last": None,
+                        "orphan": True,
+                    }
+                )
+        sessions.sort(key=lambda s: s.get("started_at") or 0, reverse=True)
+        return sessions
+
+    def read_events(self, session_id: str) -> list[dict] | None:
+        """Return the full event list for a session, or None if not found.
+
+        Reads the NDJSON line-by-line; tolerant of trailing partial lines
+        (which can happen on an in-progress session).
+        """
+        path = self._ndjson_path(session_id)
+        if not path.exists():
+            return None
+        events: list[dict] = []
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    # Partial trailing write on an active session — stop here.
+                    break
+        return events
+
+    def delete(self, session_id: str) -> bool:
+        """Delete both files for a session. Returns True if anything was removed.
+
+        Refuses to delete the currently-active session (one with an open file
+        handle); the operator should end the session first.
+        """
+        with self._lock:
+            if session_id in self._handles:
+                return False
+            removed = False
+            for p in (self._ndjson_path(session_id), self._meta_path(session_id)):
+                if p.exists():
+                    with contextlib.suppress(Exception):
+                        p.unlink()
+                        removed = True
+            return removed
+
+
+_SESSION_STORE = SessionStore(_TRACE_DIR)
+
 # Tracks the bot tune-server port for the live session. Single-slot for v1
 # (matches BotSessionRegistry's single-session constraint). Set by
 # /api/start-session at spawn time and read by /api/admin/tune.
@@ -264,6 +483,11 @@ class BotSessionRegistry:
         if sess is not None:
             with contextlib.suppress(Exception):
                 sess["queue"].put({"type": "_reaped"})
+        # Close the session's NDJSON handle and write the meta sidecar so the
+        # dashboard's session picker shows the right summary fields. Safe to
+        # call for sessions that never produced trace events (no-op).
+        with contextlib.suppress(Exception):
+            _SESSION_STORE.finalize(session_id)
 
     def is_busy(self) -> bool:
         with self._lock:
@@ -636,6 +860,11 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_trace_snapshot()
         if self.path == "/api/trace/stream":
             return self._handle_trace_stream()
+        if self.path == "/api/trace/sessions":
+            return self._handle_list_sessions()
+        if self.path.startswith("/api/trace/sessions/") and self.path.endswith("/events"):
+            sid = self.path[len("/api/trace/sessions/") : -len("/events")]
+            return self._handle_session_events(sid)
         return super().do_GET()
 
     def do_POST(self):  # noqa: N802
@@ -657,6 +886,13 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         self.send_error(404)
         return None
 
+    def do_DELETE(self):  # noqa: N802
+        if self.path.startswith("/api/trace/sessions/"):
+            sid = self.path[len("/api/trace/sessions/") :]
+            return self._handle_delete_session(sid)
+        self.send_error(404)
+        return None
+
     def do_OPTIONS(self):  # noqa: N802
         self.send_response(200)
         self._cors_headers()
@@ -664,7 +900,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
     def _cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         # X-Admin-Token must be in the allow-list or browsers will block
         # preflighted admin requests. Content-Type stays for /api/chat.
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Admin-Token")
@@ -1045,7 +1281,12 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 for ev in events:
                     if isinstance(ev, dict) and not ev.get("session_id"):
                         ev["session_id"] = session_id
-                _TRACE_BUFFER.add_many([ev for ev in events if isinstance(ev, dict)])
+                clean = [ev for ev in events if isinstance(ev, dict)]
+                _TRACE_BUFFER.add_many(clean)
+                # Durable copy on disk so this session can be replayed later
+                # from /trace.html. The in-memory ring buffer is still the
+                # source of truth for live SSE; this is purely for history.
+                _SESSION_STORE.append(session_id, clean)
         else:
             REGISTRY.deliver(session_id, body)
         # 204 No Content — nothing to return; the bot doesn't care.
@@ -1218,6 +1459,76 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         line = f"data: {json.dumps(event)}\n\n"
         self.wfile.write(line.encode("utf-8"))
         self.wfile.flush()
+
+    # ------------------------------------------------------------------
+    # Session history endpoints — power the session picker in trace.html
+    # ------------------------------------------------------------------
+
+    def _handle_list_sessions(self) -> None:
+        """GET /api/trace/sessions — JSON list of stored sessions.
+
+        Includes both finalized (meta-file-present) and in-progress sessions,
+        sorted newest first. Each entry has ``session_id``, ``started_at``,
+        ``ended_at``, ``turn_count``, ``providers``, and short transcript
+        peeks. Used by the dashboard's session picker.
+        """
+        if not self._trace_auth():
+            return
+        try:
+            sessions = _SESSION_STORE.list_sessions()
+        except Exception as exc:
+            self._send_json(500, {"error": "list_failed", "detail": str(exc)})
+            return
+        # Mark the currently-active session so the dashboard can highlight it.
+        active = REGISTRY.active_session()
+        for s in sessions:
+            s["active"] = s.get("session_id") == active
+        self._send_json(200, {"sessions": sessions})
+
+    def _handle_session_events(self, session_id: str) -> None:
+        """GET /api/trace/sessions/{id}/events — full event list for replay.
+
+        Returns ``{events: [...]}`` (a JSON array, not NDJSON, so the browser
+        can parse it in one shot). For long sessions this can be a few MB —
+        acceptable for a debug tool; if it grows past that, paginate.
+        """
+        if not self._trace_auth():
+            return
+        if not session_id or "/" in session_id or ".." in session_id:
+            self._send_json(400, {"error": "bad_session_id"})
+            return
+        events = _SESSION_STORE.read_events(session_id)
+        if events is None:
+            self._send_json(404, {"error": "session_not_found"})
+            return
+        self._send_json(200, {"session_id": session_id, "events": events})
+
+    def _handle_delete_session(self, session_id: str) -> None:
+        """DELETE /api/trace/sessions/{id} — remove NDJSON + meta for a session.
+
+        Refuses to delete the currently-active session (409) — the operator
+        must end the session first. This is the safety guard the operator
+        controls; no automatic retention or rotation runs.
+        """
+        if not self._trace_auth():
+            return
+        if not session_id or "/" in session_id or ".." in session_id:
+            self._send_json(400, {"error": "bad_session_id"})
+            return
+        if session_id == REGISTRY.active_session():
+            self._send_json(
+                409,
+                {
+                    "error": "session_active",
+                    "detail": "End the session before deleting it.",
+                },
+            )
+            return
+        removed = _SESSION_STORE.delete(session_id)
+        if not removed:
+            self._send_json(404, {"error": "session_not_found"})
+            return
+        self._send_json(200, {"session_id": session_id, "deleted": True})
 
     def _handle_tts_test(self):
         try:

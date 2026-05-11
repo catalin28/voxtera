@@ -42,6 +42,7 @@ except Exception:  # daily-python not available on Windows
 
 from voxtera.stt import _STT_BUILDERS
 from voxtera.tts import _TTS_BUILDERS
+from voxtera.tunables import update_current as _update_knob_current
 
 
 class STTGate(FrameProcessor):
@@ -128,6 +129,24 @@ class STTRouter(FrameProcessor):
     def active_stt(self) -> FrameProcessor:
         return self._branches[self._active]["stt"]
 
+    def set_active(self, name: str) -> None:
+        """Public switching API. Used by both the trace-tune endpoint and the
+        ``voxtera-stt`` app-message handler in :meth:`process_frame`.
+
+        Raises ``ValueError`` if ``name`` isn't a built branch. On a real
+        change, also mirrors the new value into TunablesRegistry so the
+        dashboard's session_providers panel reflects the live state instead
+        of the boot-time default.
+        """
+        if name not in self._branches:
+            raise ValueError(f"unknown STT branch: {name!r}")
+        if name != self._active:
+            logger.info("[stt-router] set_active {!r} → {!r}", self._active, name)
+            self._activate(name)
+        # Always mirror — covers the case where the registry got out of sync
+        # with reality via some other path. Idempotent on no-change.
+        _update_knob_current("stt_provider", name)
+
     def _activate(self, name: str) -> None:
         for prov, branch in self._branches.items():
             on = prov == name
@@ -164,15 +183,10 @@ class STTRouter(FrameProcessor):
                         )
                     else:
                         logger.warning("[stt-router] unknown provider {!r}, ignoring", provider)
-                elif provider != self._active:
-                    logger.info(
-                        "[stt-router] switching STT {!r} → {!r}",
-                        self._active,
-                        provider,
-                    )
-                    self._activate(provider)
                 else:
-                    logger.debug("[stt-router] provider {!r} already active", provider)
+                    # Funnel through set_active so the registry is mirrored
+                    # in one place. set_active is a no-op on no-change.
+                    self.set_active(provider)
         await self.push_frame(frame, direction)
 
 
@@ -297,6 +311,20 @@ class TTSRouter(FrameProcessor):
     def active_tts(self) -> FrameProcessor:
         return self._branches[self._active]["tts"]
 
+    def set_active(self, name: str) -> None:
+        """Public switching API. Used by both the trace-tune endpoint and the
+        ``voxtera-tts-provider`` app-message handler in :meth:`process_frame`.
+
+        On a real change, also mirrors the new value into TunablesRegistry so
+        the dashboard's session_providers panel reflects the live state.
+        """
+        if name not in self._branches:
+            raise ValueError(f"unknown TTS branch: {name!r}")
+        if name != self._active:
+            logger.info("[tts-router] set_active {!r} → {!r}", self._active, name)
+            self._activate(name)
+        _update_knob_current("tts_provider", name)
+
     def _activate(self, name: str) -> None:
         for prov, branch in self._branches.items():
             on = prov == name
@@ -320,13 +348,8 @@ class TTSRouter(FrameProcessor):
                         )
                     else:
                         logger.warning("[tts-router] unknown provider {!r}, ignoring", provider)
-                elif provider != self._active:
-                    logger.info(
-                        "[tts-router] switching TTS {!r} → {!r}",
-                        self._active,
-                        provider,
-                    )
-                    self._activate(provider)
                 else:
-                    logger.debug("[tts-router] provider {!r} already active", provider)
+                    # Funnel through set_active so the registry is mirrored
+                    # in one place. set_active is a no-op on no-change.
+                    self.set_active(provider)
         await self.push_frame(frame, direction)

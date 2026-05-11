@@ -50,6 +50,7 @@ from voxtera.tts import (
     TTS_GOOGLE_DEFAULT_VOICE,
     _voices_for_tts_provider,
 )
+from voxtera.tunables import update_current as _update_knob_current
 
 # Default LLM. Override via LLM_MODEL_OVERRIDE env var (set by serve.py from
 # the browser's model selection at spawn time).
@@ -586,6 +587,9 @@ class ModelSwitcher(FrameProcessor):
                                 ),
                                 FrameDirection.UPSTREAM,
                             )
+                            # Mirror into the registry so the dashboard's
+                            # session_providers panel reflects the live model.
+                            _update_knob_current("llm_model", model)
                     await self.push_frame(frame, direction)
                     return
                 elif msg.get("type") == "voxtera-voice":
@@ -615,6 +619,9 @@ class ModelSwitcher(FrameProcessor):
                             TTSUpdateSettingsFrame(delta=delta, service=active_tts),
                             FrameDirection.DOWNSTREAM,
                         )
+                        # Mirror into the registry so the dashboard's
+                        # session_providers panel reflects the live voice.
+                        _update_knob_current("tts_voice", voice)
                     await self.push_frame(frame, direction)
                     return
 

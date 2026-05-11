@@ -51,6 +51,8 @@ from voxtera.conversation_logger import log_user_query
 from voxtera.pipeline import build_pipeline
 from voxtera.prompts import resolve_greeting
 from voxtera.stt import STT_MODEL_DEEPGRAM, STT_MODEL_GOOGLE, STT_MODEL_WHISPER
+from voxtera.trace import TraceForwarder
+from voxtera.trace_server import TuneServer, resolve_port
 from voxtera.tts import TTS_MODEL
 
 
@@ -155,6 +157,40 @@ async def run_bot(settings: Settings) -> None:
         listener_task = asyncio.create_task(action_runtime.listener.run())
         logger.info("[actions] Telegram button listener started")
 
+    # Trace plane: drain the in-process TraceBus into HTTP POSTs to serve.py
+    # (no-op when VOXTERA_LAUNCHER_URL is unset), and expose a localhost-only
+    # tune endpoint so serve.py can forward live-tune commands from the
+    # /trace.html dashboard.
+    import os as _os
+
+    from voxtera import launcher_client as _launcher_client
+
+    trace_forwarder = TraceForwarder(
+        launcher_url=_launcher_client.LAUNCHER_URL,
+        session_id=_launcher_client.SESSION_ID,
+    )
+    await trace_forwarder.start()
+
+    tune_server: TuneServer | None = None
+    trace_enabled = _os.environ.get("VOXTERA_TRACE_ENABLED", "true").lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+    if trace_enabled:
+        tune_server = TuneServer(
+            port=resolve_port(),
+            session_id=_launcher_client.SESSION_ID,
+        )
+        try:
+            await tune_server.start()
+        except OSError as exc:
+            # Port already in use (another bot still running, or VOXTERA_BOT_PORT
+            # collision). Log and continue — the bot still runs, just no live
+            # tuning.
+            logger.warning("[trace-server] could not bind: {} — live tuning disabled", exc)
+            tune_server = None
+
     try:
         await runner.run(task)
     except Exception:
@@ -169,6 +205,15 @@ async def run_bot(settings: Settings) -> None:
                 await asyncio.wait_for(listener_task, timeout=2.0)
             except (TimeoutError, asyncio.CancelledError, Exception):
                 listener_task.cancel()
+        if tune_server is not None:
+            try:
+                await tune_server.stop()
+            except Exception:  # noqa: BLE001
+                logger.exception("[trace-server] stop failed")
+        try:
+            await trace_forwarder.stop()
+        except Exception:  # noqa: BLE001
+            logger.exception("[trace] forwarder stop failed")
         await task.queue_frame(EndFrame())
 
 

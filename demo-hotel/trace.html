@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voxtera — Pipeline Trace</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0f0f1a;
+    --panel: #1a1a2e;
+    --panel-2: #25253d;
+    --border: #333;
+    --border-strong: #444;
+    --text: #e8e8f0;
+    --muted: #888;
+    --gold: #c9a84c;
+    --gold-dim: #a08030;
+    --green: #4caf50;
+    --amber: #ff9800;
+    --red: #ef5350;
+    --blue: #5f9cff;
+    --grey: #555;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    min-height: 100vh;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--gold-dim);
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { font-size: 16px; margin: 0; color: var(--gold); font-weight: 600; }
+  header .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--panel-2);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  header .status .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--grey);
+  }
+  header .status.connected .dot { background: var(--green); }
+  header .status.disconnected .dot { background: var(--red); }
+  header .spacer { flex: 1; }
+  header button, header a.btn {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    padding: 5px 12px;
+    border-radius: 5px;
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+  }
+  header button:hover, header a.btn:hover { border-color: var(--gold); }
+
+  /* Token gate */
+  #gate {
+    position: fixed; inset: 0;
+    background: rgba(15, 15, 26, 0.97);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  #gate.show { display: flex; }
+  #gate .card {
+    background: var(--panel);
+    border: 1px solid var(--gold-dim);
+    border-radius: 8px;
+    padding: 24px 28px;
+    width: 380px;
+    max-width: 90%;
+  }
+  #gate h2 { margin: 0 0 8px; color: var(--gold); font-size: 18px; }
+  #gate p { color: var(--muted); margin: 0 0 16px; }
+  #gate input {
+    width: 100%; padding: 8px 10px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: 5px;
+    font-family: monospace; font-size: 13px;
+  }
+  #gate .row { display: flex; gap: 8px; margin-top: 12px; }
+  #gate button {
+    background: var(--gold); color: #111;
+    border: none; padding: 8px 16px; border-radius: 5px;
+    font-weight: 600; cursor: pointer;
+  }
+  #gate .err { color: var(--red); font-size: 12px; margin-top: 8px; min-height: 16px; }
+
+  main { padding: 16px 20px 40px; max-width: 1600px; margin: 0 auto; }
+
+  section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+  }
+  section h2 {
+    margin: 0 0 10px;
+    font-size: 13px; font-weight: 600;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  /* Vital signs */
+  #vitals { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .vital {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .vital .label {
+    font-size: 10px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .vital .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .vital .unit { font-size: 11px; color: var(--muted); margin-left: 3px; }
+  .vital.good .value { color: var(--green); }
+  .vital.warn .value { color: var(--amber); }
+  .vital.bad .value { color: var(--red); }
+
+  /* Pipeline graph */
+  #pipeline {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    align-items: stretch;
+    overflow-x: auto;
+    padding: 4px 0;
+  }
+  .node {
+    background: var(--panel-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    padding: 8px 10px;
+    min-width: 110px;
+    flex-shrink: 0;
+    transition: border-color 0.2s, background 0.2s;
+    cursor: default;
+    position: relative;
+  }
+  .node.active { border-color: var(--green); background: #1e3a1e; }
+  .node.stale { border-color: var(--red); }
+  /* Amber border when frames have been silenced/dropped recently.
+     Takes precedence over .active (so the eye lands on the offending
+     stage even when audio is flowing through it). */
+  .node.dropping { border-color: var(--amber); background: #3a2f1a; }
+  .node .name {
+    font-size: 11px; font-weight: 600;
+    color: var(--text); margin-bottom: 4px;
+  }
+  .node .count {
+    font-size: 10px; color: var(--muted);
+    font-family: monospace;
+  }
+  .node .drops {
+    font-size: 10px; color: var(--amber);
+    font-family: monospace; margin-top: 2px;
+    /* Tiny warning glyph keeps it scannable without taking horizontal space. */
+  }
+  .node .drops.stale { color: #b07333; }
+  .node .pulse {
+    position: absolute; top: 6px; right: 6px;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--grey);
+  }
+  .node.active .pulse {
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse-glow 0.6s ease-out;
+  }
+  @keyframes pulse-glow {
+    from { box-shadow: 0 0 12px var(--green); }
+    to { box-shadow: 0 0 4px var(--green); }
+  }
+  .arrow {
+    align-self: center;
+    color: var(--muted);
+    font-size: 14px;
+    user-select: none;
+  }
+
+  /* Turn timeline */
+  #timeline { font-family: monospace; font-size: 12px; }
+  .turn-row {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .turn-row:last-child { border-bottom: none; }
+  .turn-row .turn-id { color: var(--muted); font-size: 10px; }
+  .turn-bars {
+    display: flex; align-items: center;
+    height: 22px;
+    background: var(--panel-2);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+  .stage {
+    height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 10px; font-weight: 600;
+    overflow: hidden; white-space: nowrap;
+    transition: width 0.3s;
+  }
+  /* Main bar — perceived-latency stages that add to end-to-end. */
+  .stage.stt { background: #2e7d32; }
+  .stage.stt-to-llm { background: #b07d2c; }
+  .stage.llm-ttft { background: #1565c0; }
+  .stage.llm-ttft-to-tts { background: #ad1457; }
+  .stage.tts { background: #6a1b9a; }
+  .stage.transport { background: #ef6c00; }
+
+  /* Background-work strip — stages that overlap the latency bar.
+     Rendered as a thin track beneath the main row, absolutely positioned
+     so its width AND offset reflect when the stage actually happened. */
+  .turn-bg {
+    position: relative;
+    height: 6px;
+    margin-top: 2px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 2px;
+  }
+  .bg-stage {
+    position: absolute;
+    top: 0; bottom: 0;
+    border-radius: 2px;
+    opacity: 0.7;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; color: rgba(255,255,255,0.85);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .bg-stage.llm-full { background: #2c4d7a; }
+  .bg-stage.llm-end-to-tts { background: #6e1d3d; }
+
+  /* Legend */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 14px;
+    margin-bottom: 10px;
+    font-size: 11px; color: var(--muted);
+  }
+  .legend .item { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .swatch {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .legend .swatch.stt { background: #2e7d32; }
+  .legend .swatch.stt-to-llm { background: #b07d2c; }
+  .legend .swatch.llm-ttft { background: #1565c0; }
+  .legend .swatch.llm-ttft-to-tts { background: #ad1457; }
+  .legend .swatch.tts { background: #6a1b9a; }
+  .legend .swatch.transport { background: #ef6c00; }
+  .legend .swatch.llm-full { background: #2c4d7a; opacity: 0.7; }
+  .legend .swatch.llm-end-to-tts { background: #6e1d3d; opacity: 0.7; }
+  .legend .group-label {
+    font-size: 10px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    margin-right: 4px;
+  }
+  .turn-meta {
+    font-size: 11px; color: var(--muted);
+    margin-top: 4px;
+  }
+  .turn-meta .text { color: var(--text); }
+  .turn-meta .lang { color: var(--gold); margin-right: 6px; }
+
+  /* Knobs */
+  .knob-tabs { display: flex; gap: 2px; margin-bottom: 10px; flex-wrap: wrap; }
+  .knob-tab {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    user-select: none;
+  }
+  .knob-tab.active { background: var(--gold); color: #111; border-color: var(--gold); }
+  .knob-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+  }
+  .knob {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 10px 12px;
+    position: relative;
+  }
+  .knob.live { border-color: var(--green); }
+  .knob.live::before {
+    content: '';
+    position: absolute; top: 8px; right: 8px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green);
+  }
+  .knob.next_restart::before {
+    content: '';
+    position: absolute; top: 8px; right: 8px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--blue);
+  }
+  .knob.hardcoded::before {
+    content: '';
+    position: absolute; top: 8px; right: 8px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--grey);
+  }
+  .knob .label {
+    font-size: 12px; font-weight: 600; margin-right: 18px;
+  }
+  .knob .explanation {
+    color: var(--muted); font-size: 11px; margin-top: 4px;
+  }
+  .knob .value-row {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+  }
+  .knob .current {
+    font-family: monospace;
+    background: var(--bg);
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--gold);
+  }
+  .knob .origin {
+    font-size: 10px; color: var(--muted);
+  }
+  .knob .origin.live { color: var(--green); }
+  .knob .origin.env { color: var(--gold); }
+  .knob input[type="number"], .knob input[type="range"] {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    padding: 4px 6px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+  .knob input[type="range"] { padding: 0; min-width: 120px; }
+  .knob select {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+  .knob input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--gold); }
+  .knob .note {
+    color: var(--muted); font-size: 10px;
+    font-family: monospace; margin-top: 6px;
+  }
+  .knob .toast {
+    margin-top: 6px; font-size: 11px;
+  }
+  .knob .toast.ok { color: var(--green); }
+  .knob .toast.err { color: var(--red); }
+
+  /* Frame waterfall */
+  #waterfall {
+    font-family: monospace;
+    font-size: 11px;
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .ev-row {
+    padding: 2px 8px;
+    display: grid;
+    grid-template-columns: 70px 60px 130px 1fr;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .ev-row:last-child { border-bottom: none; }
+  .ev-row.kind-error { color: var(--red); }
+  .ev-row.kind-knob { color: var(--gold); }
+  .ev-row.kind-stage { color: var(--blue); }
+  .ev-row.kind-lifecycle { color: var(--green); }
+  .ev-row .ts { color: var(--muted); }
+  .ev-row .src { color: var(--muted); }
+
+  /* Layout for two-column areas */
+  .row2 { display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; }
+  @media (max-width: 1100px) { .row2 { grid-template-columns: 1fr; } }
+
+  details { color: var(--muted); }
+  details > summary { cursor: pointer; font-size: 12px; padding: 4px 0; }
+  details > summary:hover { color: var(--text); }
+
+  .empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 20px;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="card">
+    <h2>Trace access</h2>
+    <p>Enter the admin token (set in <code>.env</code> as <code>VOXTERA_ADMIN_TOKEN</code>).</p>
+    <input id="token-input" type="password" placeholder="admin token" autocomplete="off">
+    <div class="row">
+      <button id="token-save">Connect</button>
+    </div>
+    <div class="err" id="token-err"></div>
+  </div>
+</div>
+
+<header>
+  <h1>Voxtera Trace</h1>
+  <div class="status" id="conn-status"><div class="dot"></div><span id="conn-label">connecting…</span></div>
+  <div class="status" id="bot-status"><div class="dot"></div><span id="bot-label">no bot</span></div>
+  <div class="spacer"></div>
+  <select id="session-picker"
+          title="View a past session or stay on the live stream"
+          style="background:var(--panel-2); color:var(--text);
+                 border:1px solid var(--border-strong); border-radius:5px;
+                 padding:5px 10px; font-size:12px; min-width:220px;">
+    <option value="">● Live</option>
+  </select>
+  <button id="btn-refresh-sessions"
+          title="Refresh session list"
+          style="background:var(--panel-2); color:var(--text);
+                 border:1px solid var(--border-strong); border-radius:5px;
+                 padding:5px 10px; font-size:12px; cursor:pointer;">↻</button>
+  <button id="btn-delete-session"
+          title="Delete this historical session"
+          disabled
+          style="background:var(--panel-2); color:var(--text);
+                 border:1px solid var(--border-strong); border-radius:5px;
+                 padding:5px 10px; font-size:12px; cursor:pointer;
+                 opacity:0.5;">🗑 Delete</button>
+  <button id="btn-clear">Clear waterfall</button>
+  <button id="btn-forget">Forget token</button>
+  <a class="btn" href="/demo.html" target="_blank" rel="noopener">Open demo</a>
+</header>
+<div id="history-banner"
+     style="display:none; background:#3a2f1a; color:#e8d088; padding:8px 16px;
+            border-bottom:1px solid #5a4a2a; font-size:13px; text-align:center;">
+  <span id="history-banner-text">Viewing historical session</span>
+  &nbsp;·&nbsp;
+  <a href="#" id="history-back-link"
+     style="color:#e8d088; text-decoration:underline; cursor:pointer;">Back to live</a>
+</div>
+
+<main>
+  <section>
+    <h2>Vital signs (last 10 turns)</h2>
+    <div id="vitals">
+      <div class="vital"><div class="label">End-to-end p50</div><div class="value" id="v-e2e-p50">—</div></div>
+      <div class="vital"><div class="label">End-to-end p95</div><div class="value" id="v-e2e-p95">—</div></div>
+      <div class="vital"><div class="label">STT (last)</div><div class="value" id="v-stt">—</div></div>
+      <div class="vital"><div class="label">LLM TTFT (last)</div><div class="value" id="v-llm-ttft">—</div></div>
+      <div class="vital"><div class="label">LLM full (last)</div><div class="value" id="v-llm-full">—</div></div>
+      <div class="vital"><div class="label">TTS TTFT (last)</div><div class="value" id="v-tts-ttft">—</div></div>
+      <div class="vital"><div class="label">Errors (5min)</div><div class="value" id="v-errors">0</div></div>
+      <div class="vital"><div class="label">Active providers</div><div class="value" id="v-providers" style="font-size:13px">—</div></div>
+    </div>
+  </section>
+
+  <div class="row2">
+    <section>
+      <h2>Live pipeline graph</h2>
+      <div id="pipeline" class="empty">No bot connected.</div>
+    </section>
+
+    <section>
+      <h2>Turn timeline (latest 10)</h2>
+      <div class="legend"
+           title="Top row: stages that delay the user hearing the bot (sum ≈ end-to-end). Bottom thin strip: background work that overlaps with TTS / playback.">
+        <div class="item"><span class="group-label">perceived latency</span></div>
+        <div class="item"><span class="swatch stt"></span>STT</div>
+        <div class="item"><span class="swatch stt-to-llm"></span>STT → LLM</div>
+        <div class="item"><span class="swatch llm-ttft"></span>LLM TTFT</div>
+        <div class="item"><span class="swatch llm-ttft-to-tts"></span>LLM → TTS</div>
+        <div class="item"><span class="swatch tts"></span>TTS TTFT</div>
+        <div class="item"><span class="swatch transport"></span>Other</div>
+        <div class="item" style="margin-left:14px;"><span class="group-label">background</span></div>
+        <div class="item"><span class="swatch llm-full"></span>LLM full duration</div>
+        <div class="item"><span class="swatch llm-end-to-tts"></span>LLM end → TTS</div>
+      </div>
+      <div id="timeline" class="empty">No turns yet.</div>
+    </section>
+  </div>
+
+  <section>
+    <h2>Knobs — voice & sentence quality</h2>
+    <div class="knob-tabs" id="knob-tabs"></div>
+    <div id="knobs" class="empty">No bot connected.</div>
+    <div style="margin-top:10px; color:var(--muted); font-size:11px">
+      <span style="color:var(--green)">●</span> live &nbsp;
+      <span style="color:var(--blue)">●</span> needs restart &nbsp;
+      <span style="color:var(--grey)">●</span> hardcoded
+    </div>
+  </section>
+
+  <section>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+      <h2 style="margin:0;">Frame waterfall</h2>
+      <div style="display:flex; gap:8px;">
+        <button id="btn-export-waterfall"
+                title="Download every event currently in the waterfall as a .json file"
+                style="background:var(--panel-2); color:var(--text);
+                       border:1px solid var(--border-strong);
+                       padding:5px 12px; border-radius:5px; font-size:12px;
+                       cursor:pointer;">⬇ Download JSON</button>
+      </div>
+    </div>
+    <div id="waterfall" class="empty">No events yet.</div>
+  </section>
+</main>
+
+<script>
+// ======================================================================
+// Token + connection
+// ======================================================================
+const TOKEN_KEY = 'voxtera_admin_token';
+let token = localStorage.getItem(TOKEN_KEY) || '';
+let es = null;          // EventSource
+let recentEvents = [];  // ring buffer mirror for waterfall
+let snapshot = null;
+let knobs = [];
+let activeKnobGroup = null;
+let stageLatencies = []; // last N {turn_id, stage, duration_ms}
+let frameCounts = {};    // probe -> {count, lastTs}
+// Per-stage drop tally. Key is the stage name emitted by DropAccumulator
+// (e.g. "leakage_guard", "suppressor"). Each entry:
+//   { total, byReason: {reason: count, ...}, lastTs, action }
+// total is the cumulative count since session start; lastTs is used to
+// decide if the indicator should be "active" (recent) or "stale".
+let frameDrops = {};
+let turns = {};          // turn_id -> {stages: {}, transcript, reply, lang, started_at, providers}
+let turnOrder = [];      // newest first
+let errors = [];
+// Latest provider/model snapshot from session_providers lifecycle events.
+// Updated on every user_started turn. The vital-signs Active Providers
+// card reads from this rather than from the knobs snapshot — the trace
+// stream is the only source guaranteed to be in sync with what actually
+// produced the current turn.
+let currentProviders = {};
+
+// ======================================================================
+// Session history — view past conversations via /api/trace/sessions
+// ======================================================================
+// When historyMode is true, live SSE events are dropped on the floor so
+// the dashboard renders only the events we replayed from disk. Switching
+// back to Live calls fetchSnapshot() to repopulate the live view.
+let historyMode = false;
+let historicalSessionId = null;
+
+function resetTraceState() {
+  recentEvents = [];
+  stageLatencies = [];
+  frameCounts = {};
+  frameDrops = {};
+  turns = {};
+  turnOrder = [];
+  errors = [];
+  currentProviders = {};
+  scheduleRender();
+}
+
+async function loadSessions() {
+  try {
+    const r = await fetch('/api/trace/sessions', {
+      headers: { 'X-Admin-Token': token }
+    });
+    if (!r.ok) {
+      console.warn('loadSessions:', r.status);
+      return;
+    }
+    const data = await r.json();
+    renderSessionPicker(data.sessions || []);
+  } catch (e) {
+    console.warn('loadSessions error', e);
+  }
+}
+
+function fmtSessionLabel(s) {
+  const ts = s.started_at ? new Date(s.started_at) : null;
+  const when = ts
+    ? ts.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '(no start time)';
+  const turns = s.turn_count != null ? `${s.turn_count} turn${s.turn_count === 1 ? '' : 's'}` : '';
+  const preview = (s.transcript_first || '').slice(0, 40);
+  const tag = s.active ? ' ● LIVE' : (s.in_progress ? ' (in progress)' : (s.orphan ? ' (orphan)' : ''));
+  const parts = [when, turns, preview ? `"${preview}"` : ''].filter(Boolean);
+  return parts.join(' · ') + tag;
+}
+
+function renderSessionPicker(sessions) {
+  const sel = document.getElementById('session-picker');
+  const prev = sel.value;
+  // Keep "Live" option at index 0; rebuild the rest from the fetched list.
+  sel.length = 1;
+  for (const s of sessions) {
+    const opt = document.createElement('option');
+    opt.value = s.session_id;
+    opt.textContent = fmtSessionLabel(s);
+    sel.appendChild(opt);
+  }
+  // Try to keep the user's current selection if it still exists.
+  if (prev && Array.from(sel.options).some(o => o.value === prev)) {
+    sel.value = prev;
+  }
+}
+
+async function enterHistoryMode(sessionId) {
+  if (!sessionId) return;
+  historyMode = true;
+  historicalSessionId = sessionId;
+  // Visual state.
+  document.getElementById('history-banner').style.display = 'block';
+  const sel = document.getElementById('session-picker');
+  const label = sel.options[sel.selectedIndex]?.textContent || sessionId;
+  document.getElementById('history-banner-text').textContent =
+    'Viewing historical session: ' + label;
+  const delBtn = document.getElementById('btn-delete-session');
+  delBtn.disabled = false;
+  delBtn.style.opacity = '1';
+
+  resetTraceState();
+
+  // Fetch and replay.
+  try {
+    const r = await fetch(`/api/trace/sessions/${encodeURIComponent(sessionId)}/events`, {
+      headers: { 'X-Admin-Token': token }
+    });
+    if (!r.ok) {
+      alert(`Failed to load session: ${r.status}`);
+      exitHistoryMode();
+      return;
+    }
+    const data = await r.json();
+    const events = data.events || [];
+    // Replay through the same handler the live stream uses so renderers
+    // don't need a separate code path. fromHistory=true bypasses the
+    // history-mode drop guard inside handleEvent.
+    for (const ev of events) handleEvent(ev, true);
+  } catch (e) {
+    console.warn('enterHistoryMode error', e);
+    alert('Failed to load session: ' + e);
+    exitHistoryMode();
+  }
+}
+
+function exitHistoryMode() {
+  historyMode = false;
+  historicalSessionId = null;
+  document.getElementById('history-banner').style.display = 'none';
+  const sel = document.getElementById('session-picker');
+  sel.value = '';
+  const delBtn = document.getElementById('btn-delete-session');
+  delBtn.disabled = true;
+  delBtn.style.opacity = '0.5';
+  resetTraceState();
+  // Re-pull the live snapshot so the dashboard re-populates from current bot.
+  fetchSnapshot().then(s => { if (s) { snapshot = s; knobs = s.knobs || []; renderKnobs(); } });
+}
+
+async function deleteHistoricalSession() {
+  if (!historicalSessionId) return;
+  const sid = historicalSessionId;
+  const sel = document.getElementById('session-picker');
+  const label = sel.options[sel.selectedIndex]?.textContent || sid;
+  if (!confirm(`Delete session?\n\n${label}\n\nThis cannot be undone.`)) return;
+  try {
+    const r = await fetch(`/api/trace/sessions/${encodeURIComponent(sid)}`, {
+      method: 'DELETE',
+      headers: { 'X-Admin-Token': token }
+    });
+    if (r.status === 409) {
+      alert('Cannot delete the currently-active session. End it first.');
+      return;
+    }
+    if (!r.ok) {
+      alert(`Delete failed: ${r.status}`);
+      return;
+    }
+    exitHistoryMode();
+    await loadSessions();
+  } catch (e) {
+    alert('Delete failed: ' + e);
+  }
+}
+
+// Wire up the controls.
+document.getElementById('session-picker').addEventListener('change', function() {
+  const sid = this.value;
+  if (sid) {
+    enterHistoryMode(sid);
+  } else if (historyMode) {
+    exitHistoryMode();
+  }
+});
+document.getElementById('btn-refresh-sessions').addEventListener('click', loadSessions);
+document.getElementById('btn-delete-session').addEventListener('click', deleteHistoricalSession);
+document.getElementById('history-back-link').addEventListener('click', function(e) {
+  e.preventDefault();
+  exitHistoryMode();
+});
+
+function showGate(err) {
+  document.getElementById('gate').classList.add('show');
+  document.getElementById('token-err').textContent = err || '';
+  document.getElementById('token-input').focus();
+}
+function hideGate() {
+  document.getElementById('gate').classList.remove('show');
+}
+
+document.getElementById('token-save').addEventListener('click', () => {
+  const v = document.getElementById('token-input').value.trim();
+  if (!v) { document.getElementById('token-err').textContent = 'Token required.'; return; }
+  token = v;
+  localStorage.setItem(TOKEN_KEY, token);
+  hideGate();
+  init();
+});
+document.getElementById('token-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('token-save').click();
+});
+document.getElementById('btn-forget').addEventListener('click', () => {
+  localStorage.removeItem(TOKEN_KEY);
+  token = '';
+  if (es) { es.close(); es = null; }
+  showGate();
+});
+document.getElementById('btn-clear').addEventListener('click', () => {
+  recentEvents = [];
+  renderWaterfall();
+});
+
+document.getElementById('btn-export-waterfall').addEventListener('click', () => {
+  // Bundle the events with light context (filename uses ISO timestamp so
+  // multiple downloads in one debugging session don't clobber each other).
+  const payload = {
+    exported_at: new Date().toISOString(),
+    schema: 'voxtera.trace.v1',
+    event_count: recentEvents.length,
+    bot_connected: snapshot ? snapshot.bot_connected : null,
+    knobs_snapshot: snapshot ? snapshot.knobs : null,
+    events: recentEvents,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  a.href = url;
+  a.download = `voxtera-trace-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Revoke after a tick so the browser has time to start the download.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+// ======================================================================
+// Snapshot + SSE
+// ======================================================================
+async function fetchSnapshot() {
+  const r = await fetch('/api/trace/snapshot', {
+    headers: { 'X-Admin-Token': token }
+  });
+  if (r.status === 401) { showGate('Token rejected.'); return null; }
+  if (r.status === 503) { showGate('Admin endpoints disabled on server.'); return null; }
+  if (!r.ok) { setConn(false, `snapshot ${r.status}`); return null; }
+  return r.json();
+}
+
+function startStream() {
+  // EventSource doesn't support custom headers, so token goes in the URL
+  // for this endpoint. Trade-off accepted: this is a localhost / VPN
+  // surface. Server reads token from query string OR header.
+  const url = `/api/trace/stream?token=${encodeURIComponent(token)}`;
+  // Server currently only reads X-Admin-Token; until that's added for SSE,
+  // fall back to a fetch+ReadableStream parser.
+  fetchStream();
+}
+
+async function fetchStream() {
+  while (true) {
+    try {
+      const resp = await fetch('/api/trace/stream', {
+        headers: { 'X-Admin-Token': token, 'Accept': 'text/event-stream' }
+      });
+      if (resp.status === 401) { showGate('Token rejected.'); return; }
+      if (!resp.ok) { setConn(false, `stream ${resp.status}`); await sleep(2000); continue; }
+      setConn(true, 'streaming');
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf('\n\n')) !== -1) {
+          const block = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          for (const line of block.split('\n')) {
+            if (line.startsWith('data: ')) {
+              try { handleEvent(JSON.parse(line.slice(6))); }
+              catch (e) { console.warn('bad SSE', e, line); }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('stream error', e);
+    }
+    setConn(false, 'reconnecting');
+    await sleep(2000);
+  }
+}
+
+function setConn(connected, label) {
+  const s = document.getElementById('conn-status');
+  s.classList.toggle('connected', connected);
+  s.classList.toggle('disconnected', !connected);
+  document.getElementById('conn-label').textContent = label;
+}
+
+function setBot(connected, label) {
+  const s = document.getElementById('bot-status');
+  s.classList.toggle('connected', connected);
+  s.classList.toggle('disconnected', !connected);
+  document.getElementById('bot-label').textContent = label;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ======================================================================
+// Event handling
+// ======================================================================
+function handleEvent(ev, fromHistory = false) {
+  if (!ev || !ev.kind) return;
+  // While viewing a historical session, drop live SSE events so the
+  // dashboard reflects only the replayed history. The SSE connection
+  // stays open so we resume instantly when the user picks "Live".
+  if (historyMode && !fromHistory) return;
+  recentEvents.push(ev);
+  if (recentEvents.length > 1000) recentEvents.shift();
+
+  if (ev.kind === 'frame') handleFrame(ev);
+  else if (ev.kind === 'stage') handleStage(ev);
+  else if (ev.kind === 'lifecycle') handleLifecycle(ev);
+  else if (ev.kind === 'error') handleError(ev);
+  else if (ev.kind === 'knob') handleKnob(ev);
+  else if (ev.kind === 'frame_drop') handleFrameDrop(ev);
+
+  // Throttle re-renders.
+  scheduleRender();
+}
+
+function handleFrame(ev) {
+  const src = ev.source;
+  if (!frameCounts[src]) frameCounts[src] = { count: 0, lastTs: 0 };
+  frameCounts[src].count += 1;
+  frameCounts[src].lastTs = ev.ts_ms;
+}
+
+function handleFrameDrop(ev) {
+  // ev.source = stage name (e.g. "leakage_guard", "suppressor"); ev.data:
+  //   { action: "silenced"|"dropped", count: N, by_reason: { reason: N } }
+  const stage = ev.source;
+  const d = ev.data || {};
+  const count = d.count || 0;
+  const byReason = d.by_reason || {};
+  if (!frameDrops[stage]) {
+    frameDrops[stage] = { total: 0, byReason: {}, lastTs: 0, action: d.action || 'dropped' };
+  }
+  const slot = frameDrops[stage];
+  slot.total += count;
+  slot.lastTs = ev.ts_ms;
+  slot.action = d.action || slot.action;
+  for (const [reason, n] of Object.entries(byReason)) {
+    slot.byReason[reason] = (slot.byReason[reason] || 0) + n;
+  }
+}
+
+function handleStage(ev) {
+  const { stage, duration_ms } = ev.data || {};
+  if (!stage) return;
+  stageLatencies.push({ turn_id: ev.turn_id, stage, duration_ms });
+  if (stageLatencies.length > 200) stageLatencies.shift();
+
+  if (ev.turn_id) {
+    if (!turns[ev.turn_id]) {
+      turns[ev.turn_id] = { stages: {}, started_at: ev.ts_ms };
+      turnOrder.unshift(ev.turn_id);
+      if (turnOrder.length > 30) {
+        const dropped = turnOrder.pop();
+        delete turns[dropped];
+      }
+    }
+    turns[ev.turn_id].stages[stage] = duration_ms;
+  }
+}
+
+function handleLifecycle(ev) {
+  const data = ev.data || {};
+  const tid = ev.turn_id;
+  if (!tid) return;
+  if (!turns[tid]) {
+    turns[tid] = { stages: {}, started_at: ev.ts_ms };
+    turnOrder.unshift(tid);
+    if (turnOrder.length > 30) {
+      const dropped = turnOrder.pop();
+      delete turns[dropped];
+    }
+  }
+  if (data.event === 'transcript') {
+    turns[tid].transcript = data.text;
+    turns[tid].lang = data.language;
+  }
+  if (data.event === 'bot_reply') {
+    turns[tid].reply = data.text;
+    turns[tid].char_count = data.char_count;
+  }
+  if (data.event === 'session_providers') {
+    // The session_providers event carries the full active-pipeline snapshot
+    // (stt_provider, stt_model, llm_model, tts_provider, tts_model, tts_voice).
+    // Cache the latest globally for the vital-signs card AND stash it on
+    // the turn so the per-turn meta line can show what actually produced it.
+    const snap = { ...data };
+    delete snap.event;
+    currentProviders = { ...currentProviders, ...snap };
+    turns[tid].providers = { ...snap };
+  }
+}
+
+function handleError(ev) {
+  errors.push({ ts: ev.ts_ms, ...ev.data });
+  // Keep only last 5 minutes.
+  const cutoff = Date.now() - 5 * 60 * 1000;
+  errors = errors.filter(e => e.ts >= cutoff);
+}
+
+function handleKnob(ev) {
+  const { knob, new: newVal } = ev.data || {};
+  if (!knob) return;
+  const k = knobs.find(k => k.name === knob);
+  if (k) {
+    k.current = newVal;
+    k.origin = 'live';
+    renderKnobs();
+  }
+}
+
+// ======================================================================
+// Renderers
+// ======================================================================
+let renderQueued = false;
+function scheduleRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => {
+    renderQueued = false;
+    renderVitals();
+    renderPipeline();
+    renderTimeline();
+    renderWaterfall();
+  });
+}
+
+const PIPELINE_NODES = [
+  'after_transport_in', 'after_rnnoise', 'after_leakage_guard',
+  'after_audio_monitor', 'after_vad', 'after_stt_router',
+  'after_parallel_stt', 'after_suppressor', 'after_stt',
+  'after_noise_filter', 'after_ctx_user', 'after_llm_guard',
+  'after_rag', 'after_llm', 'after_tts', 'after_transport_out',
+];
+
+function renderPipeline() {
+  const el = document.getElementById('pipeline');
+  if (!Object.keys(frameCounts).length) {
+    el.classList.add('empty');
+    el.innerHTML = 'Waiting for frames…';
+    return;
+  }
+  el.classList.remove('empty');
+  const now = Date.now();
+  const html = PIPELINE_NODES.map((name, i) => {
+    const fc = frameCounts[name];
+    if (!fc) return '';
+    const ageMs = now - fc.lastTs;
+    const isActive = ageMs < 1500;
+    const isStale = ageMs > 8000 && fc.count > 0;
+
+    // Look up drops for this stage. The DropAccumulator emits with the
+    // bare stage name (e.g. "leakage_guard"); the pipeline probe is
+    // "after_<stage>". Strip the prefix to correlate.
+    const stageName = name.replace(/^after_/, '');
+    const dropInfo = frameDrops[stageName];
+    const dropAgeMs = dropInfo ? (now - dropInfo.lastTs) : Infinity;
+    const isDropping = dropInfo && dropInfo.total > 0 && dropAgeMs < 3000;
+
+    const cls = ['node'];
+    if (isDropping) cls.push('dropping');
+    else if (isActive) cls.push('active');
+    if (isStale) cls.push('stale');
+
+    // Build a per-reason breakdown tooltip so hover gives diagnosis detail.
+    let titleAttr = name;
+    let dropLine = '';
+    if (dropInfo && dropInfo.total > 0) {
+      const reasons = Object.entries(dropInfo.byReason)
+        .map(([r, n]) => `${r}: ${n}`).join('\n');
+      titleAttr = `${name}\n${dropInfo.action} ${dropInfo.total} frames\n${reasons}`;
+      const verb = dropInfo.action === 'silenced' ? 'muted' : 'dropped';
+      const staleCls = dropAgeMs > 3000 ? ' stale' : '';
+      dropLine = `<div class="drops${staleCls}" title="${escapeAttr(titleAttr)}">⚠ ${dropInfo.total} ${verb}</div>`;
+    }
+
+    const arrow = i < PIPELINE_NODES.length - 1 ? '<div class="arrow">▶</div>' : '';
+    return `<div class="${cls.join(' ')}" title="${escapeAttr(titleAttr)}">
+      <div class="pulse"></div>
+      <div class="name">${stageName}</div>
+      <div class="count">${fc.count} frames</div>
+      ${dropLine}
+    </div>${arrow}`;
+  }).filter(s => s).join('');
+  el.innerHTML = html || 'No probe events yet.';
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+function renderVitals() {
+  const last10 = turnOrder.slice(0, 10).map(tid => turns[tid]).filter(Boolean);
+  const e2e = last10.map(t => t.stages?.end_to_end).filter(v => typeof v === 'number');
+  const setVital = (id, value, unit, classify) => {
+    const el = document.getElementById(id);
+    el.textContent = (value === null || value === undefined) ? '—' : value;
+    if (unit && value !== null && value !== undefined) {
+      el.innerHTML = `${value}<span class="unit">${unit}</span>`;
+    }
+    const card = el.closest('.vital');
+    card.classList.remove('good','warn','bad');
+    if (classify) card.classList.add(classify);
+  };
+
+  setVital('v-e2e-p50', percentile(e2e, 0.5), 'ms', classifyE2E(percentile(e2e, 0.5)));
+  setVital('v-e2e-p95', percentile(e2e, 0.95), 'ms', classifyE2E(percentile(e2e, 0.95)));
+
+  const lastTurn = last10[0];
+  if (lastTurn) {
+    setVital('v-stt', lastTurn.stages?.stt ?? null, 'ms');
+    setVital('v-llm-ttft', lastTurn.stages?.llm_ttft ?? null, 'ms');
+    setVital('v-llm-full', lastTurn.stages?.llm_full ?? null, 'ms');
+    setVital('v-tts-ttft', lastTurn.stages?.tts_ttft ?? null, 'ms');
+  }
+
+  document.getElementById('v-errors').textContent = errors.length;
+  if (errors.length > 0) {
+    const card = document.getElementById('v-errors').closest('.vital');
+    card.classList.add(errors.length >= 5 ? 'bad' : 'warn');
+  }
+
+  // Providers — prefer the per-turn session_providers snapshot (always
+  // accurate for the live turn). Fall back to the knobs registry only when
+  // no turn has fired yet on this connection.
+  const cp = currentProviders;
+  const knobVal = (name) => (knobs.find(k => k.name === name) || {}).current;
+  const sttProv = cp.stt_provider || knobVal('stt_provider');
+  const sttModel = cp.stt_model;
+  const llmModel = cp.llm_model || knobVal('llm_model');
+  const ttsProv = cp.tts_provider || knobVal('tts_provider');
+  const ttsModel = cp.tts_model;
+  const voice = cp.tts_voice || knobVal('tts_voice');
+  const sttLabel = sttProv ? (sttModel ? `${sttProv}/${sttModel}` : sttProv) : '?';
+  const ttsLabel = ttsProv ? (ttsModel ? `${ttsProv}/${ttsModel}` : ttsProv) : '?';
+  const provLabel = `STT: ${sttLabel} · LLM: ${llmModel || '?'} · TTS: ${ttsLabel} (${voice || '?'})`;
+  document.getElementById('v-providers').textContent = provLabel;
+}
+
+function classifyE2E(ms) {
+  if (ms === null || ms === undefined) return null;
+  if (ms < 1500) return 'good';
+  if (ms < 2500) return 'warn';
+  return 'bad';
+}
+
+function percentile(arr, p) {
+  if (!arr.length) return null;
+  const s = arr.slice().sort((a, b) => a - b);
+  const idx = Math.min(s.length - 1, Math.floor(s.length * p));
+  return Math.round(s[idx]);
+}
+
+function renderTimeline() {
+  const el = document.getElementById('timeline');
+  const list = turnOrder.slice(0, 10).map(tid => ({ tid, ...turns[tid] })).filter(t => t.stages);
+  if (!list.length) { el.classList.add('empty'); el.textContent = 'No turns yet.'; return; }
+  el.classList.remove('empty');
+  // Normalisation max: the larger of (end_to_end) and (llm_full extended
+  // past end_to_end). The latter matters because the LLM often keeps
+  // generating after the bot starts speaking — we want the background
+  // strip to extend visibly past the perceived-latency bar in that case.
+  const max = Math.max(
+    1,
+    ...list.map(t => {
+      const s = t.stages || {};
+      const e2e = s.end_to_end || 0;
+      const llmStart = (s.stt || 0) + (s.stt_to_llm || 0);
+      const llmFullEnd = llmStart + (s.llm_full || 0);
+      const llmEndToTtsEnd = llmStart + (s.llm_full || 0) + (s.llm_end_to_tts || 0);
+      return Math.max(e2e, llmFullEnd, llmEndToTtsEnd);
+    }),
+  );
+  el.innerHTML = list.map(t => renderTurnRow(t, max)).join('');
+}
+
+function renderTurnRow(t, maxMs) {
+  const stages = t.stages || {};
+  // Perceived-latency stages — these add to end-to-end (sequential in time).
+  const stt = stages.stt || 0;
+  const sttToLlm = stages.stt_to_llm || 0;
+  const llmTtft = stages.llm_ttft || 0;
+  const llmTtftToTts = stages.llm_ttft_to_tts || 0;
+  const ttsTtft = stages.tts_ttft || 0;
+  const perceived = stt + sttToLlm + llmTtft + llmTtftToTts + ttsTtft;
+  // end_to_end is the source of truth when it's set; fall back to the
+  // perceived sum for typed turns.
+  const total = stages.end_to_end || perceived;
+  // "Other" is unaccounted time inside end-to-end. Should be a thin sliver
+  // when all named stages fired correctly.
+  const other = Math.max(0, total - perceived);
+
+  // Background-work stages — they overlap with the perceived row.
+  const llmFull = stages.llm_full || 0;
+  const llmEndToTts = stages.llm_end_to_tts || 0;
+  // LLM start happens after stt + sttToLlm in the timeline, so the
+  // background strip is offset by that distance from the left edge.
+  const llmStartOffset = stt + sttToLlm;
+  // llm_end_to_tts is only emitted when ≥ 0 (LLM finished before TTS
+  // started). Position it where llm_full ends.
+  const llmEndOffset = llmStartOffset + llmFull;
+
+  const wPct = (ms) => ((ms / maxMs) * 100).toFixed(2) + '%';
+  const txt = (t.transcript || '').slice(0, 60);
+  const reply = (t.reply || '').slice(0, 60);
+
+  // Background strip is only meaningful when there's something to show.
+  const showBg = llmFull > 0 || llmEndToTts > 0;
+
+  return `
+    <div class="turn-row">
+      <div>
+        <div>${total} ms</div>
+        <div class="turn-id">${t.tid.slice(-12)}</div>
+      </div>
+      <div>
+        <div class="turn-bars">
+          ${stt ? `<div class="stage stt" style="width:${wPct(stt)}" title="STT ${stt}ms (mic stop → transcript)">${stt}</div>` : ''}
+          ${sttToLlm ? `<div class="stage stt-to-llm" style="width:${wPct(sttToLlm)}" title="STT → LLM ${sttToLlm}ms (plumbing + RAG)">${sttToLlm}</div>` : ''}
+          ${llmTtft ? `<div class="stage llm-ttft" style="width:${wPct(llmTtft)}" title="LLM TTFT ${llmTtft}ms (start → first token)">${llmTtft}</div>` : ''}
+          ${llmTtftToTts ? `<div class="stage llm-ttft-to-tts" style="width:${wPct(llmTtftToTts)}" title="LLM → TTS ${llmTtftToTts}ms (first token → TTS started; sentence buffering)">${llmTtftToTts}</div>` : ''}
+          ${ttsTtft ? `<div class="stage tts" style="width:${wPct(ttsTtft)}" title="TTS TTFT ${ttsTtft}ms (TTS started → bot speaking)">${ttsTtft}</div>` : ''}
+          ${other ? `<div class="stage transport" style="width:${wPct(other)}" title="Other ${other}ms (unaccounted)">${other}</div>` : ''}
+        </div>
+        ${showBg ? `
+        <div class="turn-bg" title="Background work — overlaps with TTS / playback">
+          ${llmFull ? `<div class="bg-stage llm-full" style="left:${wPct(llmStartOffset)}; width:${wPct(llmFull)}" title="LLM full ${llmFull}ms (start → end)">${llmFull}</div>` : ''}
+          ${llmEndToTts ? `<div class="bg-stage llm-end-to-tts" style="left:${wPct(llmEndOffset)}; width:${wPct(llmEndToTts)}" title="LLM end → TTS ${llmEndToTts}ms (only emitted when LLM finished before TTS started)">${llmEndToTts}</div>` : ''}
+        </div>
+        ` : ''}
+        <div class="turn-meta">
+          ${t.lang ? `<span class="lang">${t.lang}</span>` : ''}
+          ${renderTurnProviders(t)}
+          ${txt ? `<span class="text">"${escapeHtml(txt)}"</span>` : ''}
+          ${reply ? ` → <span class="text">"${escapeHtml(reply)}"</span>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function renderTurnProviders(t) {
+  // Per-turn provider tag — small subdued chips that travel with the row.
+  // Comes from the turn's own session_providers event so a turn replayed
+  // months later still shows what produced it.
+  const p = t.providers;
+  if (!p) return '';
+  const parts = [];
+  if (p.stt_provider) {
+    parts.push(p.stt_model ? `${p.stt_provider}/${p.stt_model}` : p.stt_provider);
+  }
+  if (p.llm_model) parts.push(p.llm_model);
+  if (p.tts_provider) {
+    const tts = p.tts_model ? `${p.tts_provider}/${p.tts_model}` : p.tts_provider;
+    parts.push(p.tts_voice ? `${tts}:${p.tts_voice}` : tts);
+  }
+  if (!parts.length) return '';
+  return `<span class="providers" style="color: var(--muted); font-size: 10px; margin-right: 8px;">[${parts.join(' · ')}]</span>`;
+}
+
+function renderWaterfall() {
+  const el = document.getElementById('waterfall');
+  if (!recentEvents.length) { el.classList.add('empty'); el.textContent = 'No events yet.'; return; }
+  el.classList.remove('empty');
+  const tail = recentEvents.slice(-300).reverse();
+  el.innerHTML = tail.map(ev => {
+    const ts = new Date(ev.ts_ms).toLocaleTimeString('en-GB', { hour12: false });
+    const dataStr = JSON.stringify(ev.data || {}).slice(0, 200);
+    return `<div class="ev-row kind-${ev.kind}">
+      <span class="ts">${ts}</span>
+      <span>${ev.kind}</span>
+      <span class="src">${ev.source}</span>
+      <span>${escapeHtml(dataStr)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ======================================================================
+// Knobs UI
+// ======================================================================
+function renderKnobs() {
+  if (!knobs.length) {
+    document.getElementById('knobs').innerHTML = 'No bot connected. Knobs become editable when a bot session is active.';
+    document.getElementById('knobs').classList.add('empty');
+    document.getElementById('knob-tabs').innerHTML = '';
+    return;
+  }
+  document.getElementById('knobs').classList.remove('empty');
+  const groups = {};
+  for (const k of knobs) {
+    if (!groups[k.group]) groups[k.group] = [];
+    groups[k.group].push(k);
+  }
+  const groupNames = Object.keys(groups);
+  if (!activeKnobGroup || !groups[activeKnobGroup]) activeKnobGroup = groupNames[0];
+
+  document.getElementById('knob-tabs').innerHTML = groupNames.map(g =>
+    `<div class="knob-tab ${g === activeKnobGroup ? 'active' : ''}" data-group="${g}">${g}</div>`
+  ).join('');
+  document.querySelectorAll('.knob-tab').forEach(t => {
+    t.addEventListener('click', () => { activeKnobGroup = t.dataset.group; renderKnobs(); });
+  });
+
+  document.getElementById('knobs').innerHTML = `<div class="knob-grid">
+    ${groups[activeKnobGroup].map(renderKnob).join('')}
+  </div>`;
+  document.querySelectorAll('[data-knob]').forEach(el => {
+    el.addEventListener('change', onKnobChange);
+  });
+}
+
+function renderKnob(k) {
+  const valueDisplay = formatValue(k);
+  const editor = renderEditor(k);
+  return `
+    <div class="knob ${k.tier}" data-knob-name="${k.name}">
+      <div class="label">${k.label}</div>
+      <div class="explanation">${escapeHtml(k.explanation)}</div>
+      <div class="value-row">
+        <div class="current">${valueDisplay}</div>
+        <div class="origin ${k.origin}">${k.origin}</div>
+        ${k.tier === 'live' ? editor : ''}
+      </div>
+      ${k.note ? `<div class="note">${escapeHtml(k.note)}</div>` : ''}
+      <div class="toast"></div>
+    </div>
+  `;
+}
+
+function formatValue(k) {
+  if (k.current === null || k.current === undefined) return '—';
+  if (k.type === 'bool') return k.current ? 'true' : 'false';
+  return String(k.current);
+}
+
+function renderEditor(k) {
+  if (k.type === 'bool') {
+    return `<input type="checkbox" data-knob="${k.name}" ${k.current ? 'checked' : ''}>`;
+  }
+  if (k.type === 'enum') {
+    const opts = (k.choices || []).map(c =>
+      `<option value="${escapeHtml(c)}" ${c === k.current ? 'selected' : ''}>${escapeHtml(c)}</option>`
+    ).join('');
+    return `<select data-knob="${k.name}">${opts}</select>`;
+  }
+  if (k.type === 'float' || k.type === 'int') {
+    const min = k.min ?? '';
+    const max = k.max ?? '';
+    const step = k.step ?? (k.type === 'int' ? '1' : '0.01');
+    return `<input type="number" data-knob="${k.name}"
+      value="${k.current}" min="${min}" max="${max}" step="${step}">`;
+  }
+  return `<input type="text" data-knob="${k.name}" value="${escapeHtml(k.current)}">`;
+}
+
+async function onKnobChange(e) {
+  const name = e.target.dataset.knob;
+  const k = knobs.find(k => k.name === name);
+  if (!k) return;
+  let value;
+  if (k.type === 'bool') value = e.target.checked;
+  else if (k.type === 'float') value = parseFloat(e.target.value);
+  else if (k.type === 'int') value = parseInt(e.target.value, 10);
+  else value = e.target.value;
+
+  const card = e.target.closest('.knob');
+  const toast = card.querySelector('.toast');
+  toast.className = 'toast';
+  toast.textContent = 'applying…';
+  try {
+    const r = await fetch('/api/admin/tune', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': token },
+      body: JSON.stringify({ knob: name, value })
+    });
+    const body = await r.json();
+    if (r.ok && body.applied) {
+      toast.classList.add('ok');
+      toast.textContent = `applied: ${body.old} → ${body.new}`;
+      // Optimistically update; the knob trace event will confirm.
+      k.current = body.new;
+      k.origin = 'live';
+      renderKnobs();
+    } else {
+      toast.classList.add('err');
+      toast.textContent = `error: ${body.error || r.status}`;
+    }
+  } catch (err) {
+    toast.classList.add('err');
+    toast.textContent = `network error: ${err.message}`;
+  }
+  setTimeout(() => { toast.textContent = ''; toast.className = 'toast'; }, 4000);
+}
+
+// ======================================================================
+// Init
+// ======================================================================
+async function init() {
+  if (!token) { showGate(); return; }
+  setConn(false, 'connecting');
+  const snap = await fetchSnapshot();
+  if (!snap) return;
+  snapshot = snap;
+  knobs = snap.knobs || [];
+  setBot(snap.bot_connected, snap.bot_connected ? 'bot connected' : 'no bot');
+
+  // Replay recent events from the snapshot so the UI starts populated.
+  if (Array.isArray(snap.recent_events)) {
+    for (const ev of snap.recent_events) handleEvent(ev);
+  }
+  renderKnobs();
+  scheduleRender();
+
+  // Initial fetch of stored sessions for the picker. Refresh on focus too,
+  // so the dropdown stays current if a session ended while the tab was idle.
+  loadSessions();
+  window.addEventListener('focus', loadSessions);
+
+  // Poll snapshot every 30s to refresh knob state in case live edits were
+  // missed (e.g. trace stream was disconnected). The SSE stream is the
+  // primary delivery mechanism.
+  setInterval(async () => {
+    const s = await fetchSnapshot();
+    if (s) {
+      snapshot = s;
+      knobs = s.knobs || [];
+      setBot(s.bot_connected, s.bot_connected ? 'bot connected' : 'no bot');
+      renderKnobs();
+    }
+  }, 30000);
+
+  fetchStream();
+}
+
+init();
+</script>
+</body>
+</html>
