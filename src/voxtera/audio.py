@@ -415,13 +415,24 @@ class PlaybackLeakageGuard(FrameProcessor):
         self._noise_floor = 0.005
         self._noise_floor_alpha = 0.02
 
-        # Auto-tuned gate settings (no env knobs required).
+        # Auto-tuned gate settings. These defaults are tuned to minimize
+        # word-truncation at the start of follow-up utterances (the user
+        # speaking immediately after the bot stops). Previous settings
+        # (0.25s cooldown, 8 frames, 0.045 RMS) lost ~200ms of audio at
+        # the start of each utterance because:
+        #  * cooldown forced audio through the barge-in gate path
+        #  * the gate required ~160ms of high-RMS frames to open
+        #  * the RMS threshold was tuned for laptop mics (AirPods/headsets
+        #    produce slightly lower normalized RMS)
+        # Symptom: Whisper transcribes "What time does breakfast start?" as
+        # "Does breakfast start?" or hallucinates "Time does break for Scott".
+        # Lowered values trade a small TTS-echo-protection margin (only
+        # relevant for speaker-based mics, not headphones/AirPods) for
+        # clean transcripts on follow-up turns.
         self._open_ratio = 3.5
-        # Built-in laptop mics often peak around 0.05-0.07 RMS for speech.
-        # Keep threshold below that so intentional barge-in can open.
-        self._min_open_rms = 0.045
-        self._required_open_frames = 8  # ~160ms at 20ms frames
-        self._post_tts_cooldown_secs = 0.25
+        self._min_open_rms = 0.025
+        self._required_open_frames = 3  # ~60ms at 20ms frames
+        self._post_tts_cooldown_secs = 0.10
 
         # Watchdog timeouts: how long a state flag can stay True without
         # receiving its corresponding end frame before we force-clear it.

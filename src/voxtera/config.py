@@ -74,9 +74,40 @@ class Settings:
     google_tts_enabled: bool = True
     # Deepgram API key (required when stt_provider=deepgram).
     deepgram_api_key: str | None = field(default=None, repr=False)
+    # Gladia API key (required when stt_provider=gladia). Solaria-1 is the
+    # multilingual streaming model with native code-switching support.
+    gladia_api_key: str | None = field(default=None, repr=False)
+    # Gladia region: "eu-west" (default) or "us-west". Pick the one closer
+    # to your deployment to minimise WebSocket round-trip time.
+    gladia_region: str = "eu-west"
+    # Optional Gladia candidate language set. Two semantics, depending on
+    # whether ``gladia_code_switching`` is enabled below:
+    #
+    # * Empty (default): no ``language_config`` is sent. Gladia auto-detects
+    #   each utterance across all 99 supported languages.
+    # * Non-empty + code_switching=False (recommended): "detect within this
+    #   set" — Gladia picks ONE language per utterance from the listed codes.
+    #   This is Gladia's documented best-accuracy mode and what tourism
+    #   demos typically want (top 5-15 tourism languages).
+    # * Non-empty + code_switching=True: enables mid-utterance switching
+    #   like "where is the gare?". Requires ≥2 languages (a single-language
+    #   list with code_switching=True is contradictory and Gladia silently
+    #   produces no transcripts).
+    gladia_languages: tuple[str, ...] = field(default_factory=tuple)
+    # Enable mid-utterance code-switching. Requires gladia_languages to
+    # contain at least 2 codes. Default off because constrained detection
+    # alone fixes most accuracy issues without restricting to a single
+    # within-utterance language.
+    gladia_code_switching: bool = False
     # Google credentials file path (required when stt_provider=google or
     # tts_provider=google).
     google_application_credentials: str | None = None
+    # Cartesia API key (required when tts_provider=cartesia). Sonic-3 is
+    # the multilingual streaming TTS model with sub-100ms TTFA.
+    cartesia_api_key: str | None = field(default=None, repr=False)
+    # Cartesia TTS model. "sonic-3" is the latest (90ms TTFA, 42 languages).
+    # Pin to a snapshot like "sonic-3-2026-01-12" for production stability.
+    cartesia_model: str = "sonic-3"
     # Daily WebRTC config for browser-based transport.
     daily_api_key: str | None = field(default=None, repr=False)
     daily_domain: str | None = None
@@ -153,7 +184,24 @@ def load_settings() -> Settings:
         google_tts_enabled=os.environ.get("GOOGLE_TTS_ENABLED", "true").lower()
         not in ("0", "false", "no"),
         deepgram_api_key=os.environ.get("DEEPGRAM_API_KEY"),
+        gladia_api_key=os.environ.get("GLADIA_API_KEY"),
+        gladia_region=os.environ.get("GLADIA_REGION", "eu-west").lower(),
+        # Accept the new name first; fall back to the legacy
+        # GLADIA_CODE_SWITCH_LANGUAGES so already-deployed .env files keep
+        # working until they're rotated.
+        gladia_languages=tuple(
+            code.strip().lower()
+            for code in (
+                os.environ.get("GLADIA_LANGUAGES")
+                or os.environ.get("GLADIA_CODE_SWITCH_LANGUAGES", "")
+            ).split(",")
+            if code.strip()
+        ),
+        gladia_code_switching=os.environ.get("GLADIA_CODE_SWITCHING", "false").lower()
+        in ("1", "true", "yes"),
         google_application_credentials=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
+        cartesia_api_key=os.environ.get("CARTESIA_API_KEY"),
+        cartesia_model=os.environ.get("CARTESIA_MODEL", "sonic-3"),
         daily_api_key=os.environ.get("DAILY_API_KEY"),
         daily_domain=os.environ.get("DAILY_DOMAIN"),
         daily_room_name=os.environ.get("DAILY_ROOM_NAME"),

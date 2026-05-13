@@ -21,6 +21,21 @@
   #controls { background: #1a1a2e; border-top: 1px solid #333; padding: 16px; display: flex; gap: 12px; justify-content: center; }
   button { border: none; border-radius: 8px; padding: 12px 24px; font-weight: 600; cursor: pointer; }
   #btn-start { background: #c9a84c; color: #111; }
+  #btn-start:disabled, #btn-test-speaker:disabled {
+    opacity: 0.4; cursor: not-allowed; filter: grayscale(0.5);
+  }
+  #compat-error {
+    display: none;
+    margin: 12px auto 0;
+    max-width: 720px;
+    padding: 12px 16px;
+    background: rgba(220, 90, 90, 0.12);
+    border: 1px solid rgba(220, 90, 90, 0.5);
+    color: #ffb0b0;
+    border-radius: 8px;
+    font-size: 14px;
+    text-align: center;
+  }
   #btn-end { background: #ef5350; color: white; display: none; }
   #btn-mute { background: #333; color: #e8e8f0; display: none; }
   #lang-picker { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 8px; }
@@ -124,6 +139,7 @@
       <option value="el">Greek / Ελληνικά</option>
       <option value="fi">Finnish / Suomi</option>
       <option value="he">Hebrew / עברית</option>
+      <option value="hy">Armenian / Հայերեն</option>
       <option value="hu">Hungarian / Magyar</option>
       <option value="id">Indonesian / Bahasa</option>
       <option value="no">Norwegian / Norsk</option>
@@ -142,6 +158,7 @@
              us-central1 region. Pick it manually to test. -->
         <option value="whisper">Whisper (OpenAI)</option>
         <option value="deepgram">Deepgram Nova-3</option>
+        <option value="gladia">Gladia Solaria-1 (99+ langs)</option>
         <option value="google" selected>Google (latest_long)</option>
         <option value="google-chirp2">Google Chirp 2 (low-latency)</option>
       </select>
@@ -166,6 +183,7 @@
              test. Pick Chirp 3 HD manually when testing latency. -->
         <option value="openai" selected>OpenAI tts-1</option>
         <option value="google">Google Chirp 3 HD</option>
+        <option value="cartesia">Cartesia Sonic-3 (90ms TTFA)</option>
       </select>
     </div>
     <div class="model-picker">
@@ -235,6 +253,10 @@
       </div>
     </div>
   </div>
+  <!-- Populated by updateCompatibility() in the script below when the
+       selected (language, TTS provider) combo isn't supported. Disables
+       both Start and Test Speaker buttons. -->
+  <div id="compat-error"></div>
 </div>
 
 <div id="orb-container">
@@ -845,9 +867,20 @@ document.getElementById('stt-select').addEventListener('change', function() {
   }
 });
 document.getElementById('lang-select').addEventListener('change', function() {
+  // Refresh voice list + compat banner whenever the language changes.
+  // Voice IDs include the locale (e.g. ro-RO-Chirp3-HD-Charon), so a
+  // language change without a voice refresh would leave the dropdown
+  // showing en-US voices for a Romanian session.
+  updateVoiceOptions();
+  updateCompatibility();
   if (callObject) {
     log('Switching STT language to: ' + this.value);
     callObject.sendAppMessage({ type: 'voxtera-language', language: this.value }, '*');
+    // Re-send voice too since the voice ID may have changed locale.
+    var voice = document.getElementById('voice-select').value;
+    if (voice) {
+      callObject.sendAppMessage({ type: 'voxtera-voice', voice: voice }, '*');
+    }
   }
 });
 document.getElementById('llm-select').addEventListener('change', function() {
@@ -858,47 +891,197 @@ document.getElementById('llm-select').addEventListener('change', function() {
 });
 // Language picker is always visible — it provides a hint even for Whisper.
 
-// TTS provider <-> voice list coupling. The voice IDs are provider-specific
-// (OpenAI uses short names like "nova"; Google Chirp 3 HD uses IDs like
-// "en-US-Chirp3-HD-Charon"), so changing the provider must repopulate the
-// voice dropdown.
-var TTS_VOICES = {
-  openai: [
-    ['nova', 'Nova'],
-    ['alloy', 'Alloy'],
-    ['echo', 'Echo'],
-    ['fable', 'Fable'],
-    ['onyx', 'Onyx'],
-    ['shimmer', 'Shimmer'],
-    ['ash', 'Ash'],
-    ['coral', 'Coral'],
-    ['sage', 'Sage'],
-    ['verse', 'Verse']
-  ],
-  google: [
-    ['en-US-Chirp3-HD-Charon', 'Charon (en-US)'],
-    ['en-US-Chirp3-HD-Aoede', 'Aoede (en-US)'],
-    ['en-US-Chirp3-HD-Kore', 'Kore (en-US)'],
-    ['en-US-Chirp3-HD-Leda', 'Leda (en-US)'],
-    ['en-US-Chirp3-HD-Orus', 'Orus (en-US)'],
-    ['en-US-Chirp3-HD-Puck', 'Puck (en-US)'],
-    ['en-US-Chirp3-HD-Zephyr', 'Zephyr (en-US)']
-  ]
-};
-function setVoiceOptions(provider) {
-  var sel = document.getElementById('voice-select');
+// Language config loaded from /api/languages at page load. Single source
+// of truth for STT/TTS codes per provider, voice catalogs, and support
+// flags. Lives in config/languages.json on the server.
+var LANG_CONFIG = null;
+
+function loadLanguageConfig() {
+  return fetch('/api/languages')
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+      LANG_CONFIG = data;
+      log('Loaded language config: ' + Object.keys(data.languages).length + ' languages');
+      populateLanguageDropdown();
+      updateVoiceOptions();
+      updateCompatibility();
+    })
+    .catch(function(e) {
+      log('Failed to load language config: ' + e + ' (falling back to static HTML options)');
+    });
+}
+
+function populateLanguageDropdown() {
+  if (!LANG_CONFIG) return;
+  var sel = document.getElementById('lang-select');
+  var currentValue = sel.value;
+  // Keep the "Auto-detect (multi)" option as the first entry.
   sel.innerHTML = '';
-  (TTS_VOICES[provider] || TTS_VOICES.openai).forEach(function(pair, idx) {
+  var multiOpt = document.createElement('option');
+  multiOpt.value = 'multi';
+  multiOpt.textContent = 'Auto-detect (EN/ES/FR)';
+  sel.appendChild(multiOpt);
+  Object.keys(LANG_CONFIG.languages).forEach(function(code) {
+    var entry = LANG_CONFIG.languages[code];
     var opt = document.createElement('option');
-    opt.value = pair[0];
-    opt.textContent = pair[1];
+    opt.value = code;
+    opt.textContent = entry.display;
+    sel.appendChild(opt);
+  });
+  // Restore previous selection if still valid.
+  if (Array.from(sel.options).some(function(o) { return o.value === currentValue; })) {
+    sel.value = currentValue;
+  }
+}
+
+// Build the voice list for a given (language, provider) combination by
+// reading the catalogs in LANG_CONFIG. Returns an array of {id, name}
+// objects, or [] when the combo is unsupported.
+function voicesForLangProvider(lang, provider) {
+  if (!LANG_CONFIG) return [];
+  // Auto-detect: use the default language's catalog so the user sees
+  // *some* voices — AutoTTSLanguageSwitcher swaps the voice ID prefix
+  // at runtime per detected utterance language.
+  var effLang = (lang === 'multi') ? LANG_CONFIG.default : lang;
+  var entry = LANG_CONFIG.languages[effLang];
+  if (!entry) return [];
+  var ttsCfg = entry.tts[provider];
+  if (!ttsCfg || !ttsCfg.supported) return [];
+
+  if (provider === 'openai') return LANG_CONFIG.voices.openai;
+  if (provider === 'cartesia') return LANG_CONFIG.voices.cartesia;
+  if (provider === 'google') {
+    var locale = ttsCfg.locale;
+    return LANG_CONFIG.voices.google_chirp3_characters.map(function(c) {
+      return { id: locale + '-Chirp3-HD-' + c.id, name: c.name + ' (' + locale + ')' };
+    });
+  }
+  return [];
+}
+
+function updateVoiceOptions() {
+  if (!LANG_CONFIG) return;
+  var lang = document.getElementById('lang-select').value;
+  var provider = document.getElementById('tts-provider-select').value;
+  var voices = voicesForLangProvider(lang, provider);
+
+  var sel = document.getElementById('voice-select');
+  var prevValue = sel.value;
+  sel.innerHTML = '';
+  voices.forEach(function(v, idx) {
+    var opt = document.createElement('option');
+    opt.value = v.id;
+    opt.textContent = v.name;
     if (idx === 0) opt.selected = true;
     sel.appendChild(opt);
   });
+  // Preserve previous voice if still in the list (avoids visual jitter
+  // when the user just changed language but voice is unchanged).
+  if (Array.from(sel.options).some(function(o) { return o.value === prevValue; })) {
+    sel.value = prevValue;
+  }
 }
+
+// Compatibility check: when the user picks a (lang, STT, TTS) combo
+// that any one of the engines can't handle, surface an error banner
+// and disable Start + Test Speaker rather than letting them hit a 400
+// (or worse, a silently mistagged transcript that confuses the LLM)
+// at runtime. Auto-detect ("multi") is always allowed because the
+// bot runtime handles language switching.
+//
+// Checked in order: STT first (because if STT mistags the language,
+// the rest of the pipeline cascades wrong), then TTS.
+function updateCompatibility() {
+  if (!LANG_CONFIG) {
+    setCompatible(true, '');
+    return;
+  }
+  var lang = document.getElementById('lang-select').value;
+  var sttProvider = document.getElementById('stt-select').value;
+  var ttsProvider = document.getElementById('tts-provider-select').value;
+
+  if (lang === 'multi') {
+    setCompatible(true, '');
+    return;
+  }
+
+  var entry = LANG_CONFIG.languages[lang];
+  if (!entry) {
+    setCompatible(true, '');
+    return;
+  }
+
+  var sttProviderName = {
+    whisper: 'OpenAI Whisper',
+    deepgram: 'Deepgram Nova-3',
+    gladia: 'Gladia Solaria-1',
+    google: 'Google STT (latest_long)',
+    'google-chirp2': 'Google Chirp 2'
+  }[sttProvider] || sttProvider;
+  var ttsProviderName = {
+    openai: 'OpenAI tts-1',
+    google: 'Google Chirp 3 HD',
+    cartesia: 'Cartesia Sonic-3'
+  }[ttsProvider] || ttsProvider;
+
+  // STT check first.
+  var sttCode = entry.stt[sttProvider];
+  if (!sttCode) {
+    setCompatible(false,
+      sttProviderName + ' does not support ' + entry.display + '. ' +
+      'Pick a different STT model (e.g. Gladia Solaria-1) or a different language.'
+    );
+    return;
+  }
+
+  // TTS check second.
+  var ttsCfg = entry.tts[ttsProvider];
+  if (!ttsCfg || !ttsCfg.supported) {
+    setCompatible(false,
+      ttsProviderName + ' does not support ' + entry.display + '. ' +
+      'Pick a different TTS provider or language.'
+    );
+    return;
+  }
+
+  setCompatible(true, '');
+}
+
+function setCompatible(ok, message) {
+  var startBtn = document.getElementById('btn-start');
+  var testBtn = document.getElementById('btn-test-speaker');
+  var banner = document.getElementById('compat-error');
+  if (ok) {
+    if (startBtn) startBtn.disabled = false;
+    if (testBtn) testBtn.disabled = false;
+    if (banner) { banner.style.display = 'none'; banner.textContent = ''; }
+  } else {
+    if (startBtn) startBtn.disabled = true;
+    if (testBtn) testBtn.disabled = true;
+    if (banner) { banner.style.display = 'block'; banner.textContent = '⚠️ ' + message; }
+  }
+}
+
+// Backwards-compat shim: legacy code paths still call setVoiceOptions(provider).
+// New code should call updateVoiceOptions() directly.
+function setVoiceOptions(provider) {
+  updateVoiceOptions();
+}
+
+// Load the config now and again whenever the page becomes visible
+// (covers tab-restore after long inactivity).
+loadLanguageConfig();
+// STT model dropdown — trigger compat check when it changes (e.g. user
+// flips from Gladia to Google Chirp 2 for a Romanian session → banner
+// + disabled Start).
+document.getElementById('stt-select').addEventListener('change', function() {
+  updateCompatibility();
+});
+
 document.getElementById('tts-provider-select').addEventListener('change', function() {
   var provider = this.value;
-  setVoiceOptions(provider);
+  updateVoiceOptions();
+  updateCompatibility();
   if (callObject) {
     log('Switching TTS provider to: ' + provider);
     callObject.sendAppMessage({ type: 'voxtera-tts-provider', provider: provider }, '*');

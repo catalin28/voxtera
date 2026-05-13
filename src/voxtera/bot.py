@@ -50,7 +50,7 @@ from voxtera.controllers import LLM_MODEL
 from voxtera.conversation_logger import log_user_query
 from voxtera.pipeline import build_pipeline
 from voxtera.prompts import resolve_greeting
-from voxtera.stt import STT_MODEL_DEEPGRAM, STT_MODEL_GOOGLE, STT_MODEL_WHISPER
+from voxtera.stt import STT_MODEL_DEEPGRAM, STT_MODEL_GLADIA, STT_MODEL_GOOGLE, STT_MODEL_WHISPER
 from voxtera.trace import TraceForwarder
 from voxtera.trace_server import TuneServer, resolve_port
 from voxtera.tts import TTS_MODEL
@@ -234,6 +234,7 @@ def main() -> int:
     logger.info("Voxtera starting up. Bot name: {}", settings.bot_name)
     stt_model = {
         "deepgram": STT_MODEL_DEEPGRAM,
+        "gladia": STT_MODEL_GLADIA,
         "google": STT_MODEL_GOOGLE,
     }.get(settings.stt_provider, STT_MODEL_WHISPER)
     logger.info(

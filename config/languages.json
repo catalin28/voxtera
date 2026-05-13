@@ -1,0 +1,836 @@
+{
+  "version": 1,
+  "default": "en",
+  "voices": {
+    "google_chirp3_characters": [
+      {
+        "id": "Charon",
+        "name": "Charon (deep male)"
+      },
+      {
+        "id": "Aoede",
+        "name": "Aoede (warm female)"
+      },
+      {
+        "id": "Kore",
+        "name": "Kore (gentle female)"
+      },
+      {
+        "id": "Leda",
+        "name": "Leda (cheerful female)"
+      },
+      {
+        "id": "Orus",
+        "name": "Orus (formal male)"
+      },
+      {
+        "id": "Puck",
+        "name": "Puck (energetic male)"
+      },
+      {
+        "id": "Zephyr",
+        "name": "Zephyr (calm male)"
+      }
+    ],
+    "openai": [
+      {
+        "id": "nova",
+        "name": "Nova"
+      },
+      {
+        "id": "alloy",
+        "name": "Alloy"
+      },
+      {
+        "id": "echo",
+        "name": "Echo"
+      },
+      {
+        "id": "fable",
+        "name": "Fable"
+      },
+      {
+        "id": "onyx",
+        "name": "Onyx"
+      },
+      {
+        "id": "shimmer",
+        "name": "Shimmer"
+      },
+      {
+        "id": "ash",
+        "name": "Ash"
+      },
+      {
+        "id": "coral",
+        "name": "Coral"
+      },
+      {
+        "id": "sage",
+        "name": "Sage"
+      },
+      {
+        "id": "verse",
+        "name": "Verse"
+      }
+    ],
+    "cartesia": [
+      {
+        "id": "f786b574-daa5-4673-aa0c-cbe3e8534c02",
+        "name": "Katie (American, stable, multilingual)"
+      }
+    ]
+  },
+  "languages": {
+    "en": {
+      "display": "English",
+      "native": "English",
+      "translation_name": "English",
+      "stt": {
+        "gladia": "en",
+        "whisper": "en",
+        "deepgram": "en",
+        "google": "en-US",
+        "google-chirp2": "en-US"
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "en-US"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "EN"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "fr": {
+      "display": "French / Français",
+      "native": "Français",
+      "translation_name": "French",
+      "stt": {
+        "gladia": "fr",
+        "whisper": "fr",
+        "deepgram": "fr",
+        "google": "fr-FR",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "fr-FR"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "FR"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "es": {
+      "display": "Spanish / Español",
+      "native": "Español",
+      "translation_name": "Spanish",
+      "stt": {
+        "gladia": "es",
+        "whisper": "es",
+        "deepgram": "es",
+        "google": "es-ES",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "es-ES"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "ES"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "de": {
+      "display": "German / Deutsch",
+      "native": "Deutsch",
+      "translation_name": "German",
+      "stt": {
+        "gladia": "de",
+        "whisper": "de",
+        "deepgram": "de",
+        "google": "de-DE",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "de-DE"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "DE"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "it": {
+      "display": "Italian / Italiano",
+      "native": "Italiano",
+      "translation_name": "Italian",
+      "stt": {
+        "gladia": "it",
+        "whisper": "it",
+        "deepgram": "it",
+        "google": "it-IT",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "it-IT"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "IT"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "pt": {
+      "display": "Portuguese / Português",
+      "native": "Português",
+      "translation_name": "Portuguese",
+      "stt": {
+        "gladia": "pt",
+        "whisper": "pt",
+        "deepgram": "pt",
+        "google": "pt-PT",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "pt-PT"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "PT"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "ro": {
+      "display": "Romanian / Română",
+      "native": "Română",
+      "translation_name": "Romanian",
+      "stt": {
+        "gladia": "ro",
+        "whisper": "ro",
+        "deepgram": null,
+        "google": "ro-RO",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "ro-RO"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "RO"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "tr": {
+      "display": "Turkish / Türkçe",
+      "native": "Türkçe",
+      "translation_name": "Turkish",
+      "stt": {
+        "gladia": "tr",
+        "whisper": "tr",
+        "deepgram": "tr",
+        "google": "tr-TR",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "tr-TR"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "TR"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "nl": {
+      "display": "Dutch / Nederlands",
+      "native": "Nederlands",
+      "translation_name": "Dutch",
+      "stt": {
+        "gladia": "nl",
+        "whisper": "nl",
+        "deepgram": "nl",
+        "google": "nl-NL",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "nl-NL"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "NL"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "ja": {
+      "display": "Japanese / 日本語",
+      "native": "日本語",
+      "translation_name": "Japanese",
+      "stt": {
+        "gladia": "ja",
+        "whisper": "ja",
+        "deepgram": "ja",
+        "google": "ja-JP",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "ja-JP"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "JA"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "hi": {
+      "display": "Hindi / हिन्दी",
+      "native": "हिन्दी",
+      "translation_name": "Hindi",
+      "stt": {
+        "gladia": "hi",
+        "whisper": "hi",
+        "deepgram": "hi",
+        "google": "hi-IN",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "hi-IN"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "HI"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "ru": {
+      "display": "Russian / Русский",
+      "native": "Русский",
+      "translation_name": "Russian",
+      "stt": {
+        "gladia": "ru",
+        "whisper": "ru",
+        "deepgram": "ru",
+        "google": "ru-RU",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "ru-RU"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "RU"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "ar": {
+      "display": "Arabic / العربية",
+      "native": "العربية",
+      "translation_name": "Arabic",
+      "stt": {
+        "gladia": "ar",
+        "whisper": "ar",
+        "deepgram": null,
+        "google": "ar-XA",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "ar-XA"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "AR"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "zh": {
+      "display": "Chinese / 中文",
+      "native": "中文",
+      "translation_name": "Chinese",
+      "stt": {
+        "gladia": "zh",
+        "whisper": "zh",
+        "deepgram": "zh-CN",
+        "google": "zh-CN",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "zh-CN"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "ZH"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "ko": {
+      "display": "Korean / 한국어",
+      "native": "한국어",
+      "translation_name": "Korean",
+      "stt": {
+        "gladia": "ko",
+        "whisper": "ko",
+        "deepgram": null,
+        "google": "ko-KR",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "ko-KR"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "KO"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "pl": {
+      "display": "Polish / Polski",
+      "native": "Polski",
+      "translation_name": "Polish",
+      "stt": {
+        "gladia": "pl",
+        "whisper": "pl",
+        "deepgram": null,
+        "google": "pl-PL",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "pl-PL"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "PL"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "bg": {
+      "display": "Bulgarian / Български",
+      "native": "Български",
+      "translation_name": "Bulgarian",
+      "stt": {
+        "gladia": "bg",
+        "whisper": "bg",
+        "deepgram": null,
+        "google": "bg-BG",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "bg-BG"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "BG"
+        },
+        "openai": {
+          "supported": false
+        }
+      }
+    },
+    "cs": {
+      "display": "Czech / Čeština",
+      "native": "Čeština",
+      "translation_name": "Czech",
+      "stt": {
+        "gladia": "cs",
+        "whisper": "cs",
+        "deepgram": null,
+        "google": "cs-CZ",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "cs-CZ"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "CS"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "da": {
+      "display": "Danish / Dansk",
+      "native": "Dansk",
+      "translation_name": "Danish",
+      "stt": {
+        "gladia": "da",
+        "whisper": "da",
+        "deepgram": "da",
+        "google": "da-DK",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "da-DK"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "DA"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "el": {
+      "display": "Greek / Ελληνικά",
+      "native": "Ελληνικά",
+      "translation_name": "Greek",
+      "stt": {
+        "gladia": "el",
+        "whisper": "el",
+        "deepgram": null,
+        "google": "el-GR",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "el-GR"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "EL"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "fi": {
+      "display": "Finnish / Suomi",
+      "native": "Suomi",
+      "translation_name": "Finnish",
+      "stt": {
+        "gladia": "fi",
+        "whisper": "fi",
+        "deepgram": null,
+        "google": "fi-FI",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "fi-FI"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "FI"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "he": {
+      "display": "Hebrew / עברית",
+      "native": "עברית",
+      "translation_name": "Hebrew",
+      "stt": {
+        "gladia": "he",
+        "whisper": "he",
+        "deepgram": null,
+        "google": "he-IL",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "he-IL"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "HE"
+        },
+        "openai": {
+          "supported": false
+        }
+      }
+    },
+    "hu": {
+      "display": "Hungarian / Magyar",
+      "native": "Magyar",
+      "translation_name": "Hungarian",
+      "stt": {
+        "gladia": "hu",
+        "whisper": "hu",
+        "deepgram": null,
+        "google": "hu-HU",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "hu-HU"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "HU"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "id": {
+      "display": "Indonesian / Bahasa",
+      "native": "Bahasa Indonesia",
+      "translation_name": "Indonesian",
+      "stt": {
+        "gladia": "id",
+        "whisper": "id",
+        "deepgram": null,
+        "google": "id-ID",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "id-ID"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "ID"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "no": {
+      "display": "Norwegian / Norsk",
+      "native": "Norsk",
+      "translation_name": "Norwegian",
+      "stt": {
+        "gladia": "no",
+        "whisper": "no",
+        "deepgram": null,
+        "google": "nb-NO",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "nb-NO"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "NO"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "sv": {
+      "display": "Swedish / Svenska",
+      "native": "Svenska",
+      "translation_name": "Swedish",
+      "stt": {
+        "gladia": "sv",
+        "whisper": "sv",
+        "deepgram": "sv",
+        "google": "sv-SE",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "sv-SE"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "SV"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "th": {
+      "display": "Thai / ไทย",
+      "native": "ไทย",
+      "translation_name": "Thai",
+      "stt": {
+        "gladia": "th",
+        "whisper": "th",
+        "deepgram": null,
+        "google": "th-TH",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "th-TH"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "TH"
+        },
+        "openai": {
+          "supported": false
+        }
+      }
+    },
+    "uk": {
+      "display": "Ukrainian / Українська",
+      "native": "Українська",
+      "translation_name": "Ukrainian",
+      "stt": {
+        "gladia": "uk",
+        "whisper": "uk",
+        "deepgram": null,
+        "google": "uk-UA",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "uk-UA"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "UK"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "vi": {
+      "display": "Vietnamese / Tiếng Việt",
+      "native": "Tiếng Việt",
+      "translation_name": "Vietnamese",
+      "stt": {
+        "gladia": "vi",
+        "whisper": "vi",
+        "deepgram": null,
+        "google": "vi-VN",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "vi-VN"
+        },
+        "cartesia": {
+          "supported": true,
+          "pipecat_enum": "VI"
+        },
+        "openai": {
+          "supported": true
+        }
+      }
+    },
+    "hy": {
+      "display": "Armenian / Հայերեն",
+      "native": "Հայերեն",
+      "translation_name": "Armenian",
+      "stt": {
+        "gladia": "hy",
+        "whisper": "hy",
+        "deepgram": null,
+        "google": "hy-AM",
+        "google-chirp2": null
+      },
+      "tts": {
+        "google": {
+          "supported": true,
+          "locale": "hy-AM"
+        },
+        "cartesia": {
+          "supported": false,
+          "pipecat_enum": null
+        },
+        "openai": {
+          "supported": false
+        }
+      }
+    }
+  }
+}

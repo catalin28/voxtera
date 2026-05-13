@@ -59,6 +59,48 @@ GREETINGS: dict[str, str] = {
         "Merhaba, ben Voxtera, seyahat asistanınızım. "
         "Yolculuğunuz hakkında her şeyi bana sorabilirsiniz."
     ),
+    "ro": (
+        "Bună, sunt Voxtera, asistentul tău de călătorie. " "Întreabă-mă orice despre călătoria ta."
+    ),
+    "hy": (
+        "Բարև, ես Վոքստերան եմ՝ ձեր ճանապարհորդական օգնականը։ "
+        "Հարցրեք ինձ որևէ բան ձեր ճանապարհորդության մասին։"
+    ),
+    "hi": ("नमस्ते, मैं वोक्सटेरा हूँ, आपका यात्रा सहायक। " "अपनी यात्रा के बारे में मुझसे कुछ भी पूछें।"),
+    "pl": (
+        "Cześć, jestem Voxtera, twoim asystentem podróży. "
+        "Zapytaj mnie o wszystko, co dotyczy twojej podróży."
+    ),
+    "bg": (
+        "Здравейте, аз съм Voxtera, вашият помощник за пътуване. "
+        "Питайте ме всичко за вашето пътуване."
+    ),
+    "cs": (
+        "Ahoj, jsem Voxtera, váš cestovní asistent. " "Zeptejte se mě na cokoli ohledně vaší cesty."
+    ),
+    "da": ("Hej, jeg er Voxtera, din rejseassistent. " "Spørg mig om hvad som helst om din rejse."),
+    "el": (
+        "Γεια σας, είμαι ο Voxtera, ο ταξιδιωτικός σας βοηθός. "
+        "Ρωτήστε με οτιδήποτε για το ταξίδι σας."
+    ),
+    "fi": ("Hei, olen Voxtera, matkustusavustajasi. " "Kysy minulta mitä tahansa matkastasi."),
+    "he": ("שלום, אני Voxtera, עוזר הנסיעות שלך. " "שאל אותי כל דבר על הטיול שלך."),
+    "hu": (
+        "Szia, én vagyok Voxtera, az utazási asszisztensed. " "Kérdezz tőlem bármit az utazásodról."
+    ),
+    "id": (
+        "Halo, saya Voxtera, asisten perjalanan Anda. " "Tanyakan apa saja tentang perjalanan Anda."
+    ),
+    "no": ("Hei, jeg er Voxtera, din reiseassistent. " "Spør meg om hva som helst om reisen din."),
+    "sv": ("Hej, jag är Voxtera, din reseassistent. " "Fråga mig vad som helst om din resa."),
+    "th": ("สวัสดี ฉันคือ Voxtera ผู้ช่วยการเดินทางของคุณ " "ถามฉันได้ทุกอย่างเกี่ยวกับการเดินทางของคุณ"),
+    "uk": (
+        "Привіт, я Voxtera, ваш помічник у подорожах. " "Запитайте мене будь-що про вашу подорож."
+    ),
+    "vi": (
+        "Xin chào, tôi là Voxtera, trợ lý du lịch của bạn. "
+        "Hãy hỏi tôi bất cứ điều gì về chuyến đi của bạn."
+    ),
 }
 
 DEFAULT_LANGUAGE = "en"

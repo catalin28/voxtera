@@ -34,6 +34,10 @@ from voxtera.stt_thresholds import STTThresholds
 STT_MODEL_WHISPER = "whisper-1"
 # Deepgram Nova-3 multilingual streaming model.
 STT_MODEL_DEEPGRAM = "nova-3-general"
+# Gladia Solaria-1: streaming, 99+ languages with native code-switching.
+# This is also Pipecat's default for GladiaSTTService, but we set it
+# explicitly so a future Pipecat upgrade can't silently change the model.
+STT_MODEL_GLADIA = "solaria-1"
 # Google Speech-to-Text V2 streaming model name.
 #
 # `latest_long` is the conservative default: broadly available across all
@@ -342,6 +346,180 @@ def _build_deepgram_stt(settings: Settings) -> FrameProcessor | None:
     return stt
 
 
+def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
+    """Build the Gladia Solaria-1 STT service if its credentials are present.
+
+    Three operating modes, selected by ``settings.gladia_languages`` and
+    ``settings.gladia_code_switching``:
+
+    * **Auto-detect across all languages** (default, empty list): no
+      ``language_config`` is passed. Gladia evaluates each utterance against
+      all 99 supported languages. Like-for-like with Whisper auto-detect, but
+      with true streaming. Note: per Gladia's own docs and observed behavior,
+      this mode is more prone to mistranscription than a constrained set —
+      the model spends compute on language ID rather than transcription
+      quality.
+    * **Detect within a constrained set** (``gladia_languages`` non-empty,
+      ``gladia_code_switching=False``): Gladia picks ONE language per
+      utterance from the supplied list. This is Gladia's documented
+      best-accuracy mode and the recommended default for tourism (top
+      5-15 languages).
+    * **Code-switching within a constrained set** (``gladia_languages``
+      non-empty AND ``gladia_code_switching=True``): allows mid-utterance
+      language changes like "where is the *gare*?". Requires the list to
+      contain ≥2 codes — Gladia silently emits no transcripts if
+      code_switching is enabled with a single-language list (a contradictory
+      config the API accepts but cannot honor).
+
+    Gladia's server-side VAD (``enable_vad``) is left off; the pipeline's
+    Silero VAD handles end-of-utterance detection, matching how the
+    Whisper and Google builders are wired.
+    """
+    if not settings.gladia_api_key:
+        return None
+    try:
+        from pipecat.frames.frames import StartFrame
+        from pipecat.services.gladia.config import LanguageConfig
+        from pipecat.services.gladia.stt import GladiaSTTService
+        from pipecat.services.stt_service import WebsocketSTTService
+    except ImportError:
+        logger.warning(
+            "[stt] gladia STT extras not installed — install with: " "uv add 'pipecat-ai[gladia]'"
+        )
+        return None
+
+    class _LazyConnectGladiaSTTService(GladiaSTTService):
+        """Gladia STT that defers the WebSocket connection until activated.
+
+        Why this exists: Voxtera's daily-mode pipeline builds *all* STT
+        providers with valid credentials as parallel branches so the
+        browser can switch between them at runtime. Pipecat requires every
+        FrameProcessor to receive ``StartFrame`` first, so we can't gate
+        StartFrame at the branch level (that breaks the invariant for
+        inactive branches and produces "StartFrame not received yet"
+        errors on every other frame type).
+
+        Instead, this subclass accepts ``StartFrame`` normally (satisfies
+        Pipecat) but skips the implicit ``_connect()`` call. The
+        ``STTRouter`` then explicitly calls ``lazy_connect`` /
+        ``lazy_disconnect`` when this branch becomes active / inactive,
+        so only one Gladia session is open at any time. This dodges the
+        Free Trial's 1-concurrent-session cap and is also better resource
+        hygiene on paid plans.
+        """
+
+        async def start(self, frame: StartFrame) -> None:
+            # Skip GladiaSTTService.start (which immediately calls
+            # ``self._connect()``); go straight to the websocket-service
+            # parent so the StartFrame is still accepted and per-frame
+            # initialisation completes.
+            await WebsocketSTTService.start(self, frame)
+
+        async def lazy_connect(self) -> None:
+            """Open the Gladia WebSocket session. Called by STTRouter when
+            this branch transitions inactive→active. Idempotent.
+            """
+            if self._session_url:
+                return
+            logger.info("[stt] gladia: lazy_connect — opening session")
+            await self._connect()
+
+        async def lazy_disconnect(self) -> None:
+            """Close the Gladia WebSocket session and clear session state
+            so the next ``lazy_connect`` opens a fresh session. Idempotent.
+            """
+            if not self._session_url:
+                return
+            logger.info(
+                "[stt] gladia: lazy_disconnect — closing session {}",
+                self._session_id,
+            )
+            await self._disconnect()
+            # Clear session URL/id so the next ``lazy_connect`` POSTs a
+            # fresh /v2/live init rather than trying to reconnect to a
+            # session Gladia has already torn down.
+            self._session_url = None
+            self._session_id = None
+
+    languages = list(settings.gladia_languages)
+    code_switching = settings.gladia_code_switching
+    if code_switching and len(languages) < 2:
+        # Silently degrade rather than ship a config that produces no
+        # transcripts. Gladia accepts but doesn't honor code_switching=True
+        # with a single-language list; we'd rather have working detection.
+        logger.warning(
+            "[stt] gladia: code_switching=True requires >=2 languages "
+            "(got {!r}); disabling code_switching",
+            languages,
+        )
+        code_switching = False
+
+    language_config: LanguageConfig | None = None
+    if languages:
+        language_config = LanguageConfig(
+            languages=languages,
+            code_switching=code_switching,
+        )
+        mode_desc = f"detect-within={languages}" + (" + code-switching" if code_switching else "")
+    else:
+        mode_desc = "auto-detect (all 99 languages)"
+
+    # Use Pipecat 1.0.0's canonical Settings API directly instead of the
+    # deprecated ``params=GladiaInputParams(...)`` path. The deprecation path
+    # silently produced no transcripts when language_config was supplied;
+    # building the Settings object directly avoids that codepath entirely.
+    settings_kwargs: dict[str, object] = {"model": STT_MODEL_GLADIA}
+    if language_config is not None:
+        settings_kwargs["language_config"] = language_config
+
+    stt = _LazyConnectGladiaSTTService(
+        api_key=settings.gladia_api_key,
+        region=settings.gladia_region,
+        settings=GladiaSTTService.Settings(**settings_kwargs),
+    )
+
+    # Explicit connect/disconnect logging. Pipecat's GladiaSTTService logs
+    # an ERROR-level message itself if the /v2/live init returns a non-2xx
+    # status (see GladiaSTTService._setup_gladia), so we don't duplicate
+    # that. These two handlers cover the *silent* failure modes — auth
+    # revoked mid-session, WebSocket dropped, server-side timeout — that
+    # otherwise just stop producing transcripts with no obvious cause.
+    @stt.event_handler("on_connected")
+    async def _gladia_on_connected(service):  # noqa: ARG001 — required signature
+        logger.info("[stt] gladia connected (session_id={})", stt._session_id)
+
+    @stt.event_handler("on_disconnected")
+    async def _gladia_on_disconnected(service):  # noqa: ARG001 — required signature
+        logger.warning(
+            "[stt] gladia disconnected (session_id={}); Pipecat will attempt "
+            "to reconnect on the next audio frame",
+            stt._session_id,
+        )
+
+    # One-shot diagnostic: log the JSON Pipecat will POST to Gladia's
+    # /v2/live init endpoint. If transcripts are still missing after this
+    # refactor, this line tells us whether the request body is wrong
+    # (client side) or whether Gladia is accepting it but not emitting
+    # transcripts (server side). Safe to keep — only fires at boot.
+    try:
+        prepared = stt._prepare_settings()
+        logger.info("[stt] gladia init payload preview: {}", prepared)
+    except Exception as exc:  # noqa: BLE001 — diagnostic only, never block startup
+        logger.debug("[stt] could not preview gladia init payload: {}", exc)
+    # Initialise the language-tracking slot. Pipecat's GladiaSTTService
+    # exposes per-utterance language in transcript frames; downstream
+    # (AutoTTSLanguageSwitcher in routing.py) reads this attribute the
+    # same way it does for Deepgram and Google.
+    stt.last_detected_language = None  # type: ignore[attr-defined]
+    logger.info(
+        "[stt] gladia available (model={}, region={}, mode={})",
+        STT_MODEL_GLADIA,
+        settings.gladia_region,
+        mode_desc,
+    )
+    return stt
+
+
 def _build_google_stt(settings: Settings) -> FrameProcessor | None:
     """Build the Google STT service if its credentials are present and valid."""
     if not settings.google_application_credentials:
@@ -430,6 +608,7 @@ def _build_google_chirp2_stt(settings: Settings) -> FrameProcessor | None:
 _STT_BUILDERS: dict[str, Callable[[Settings], FrameProcessor | None]] = {
     "whisper": _build_whisper_stt,
     "deepgram": _build_deepgram_stt,
+    "gladia": _build_gladia_stt,
     "google": _build_google_stt,
     "google-chirp2": _build_google_chirp2_stt,
 }
@@ -445,11 +624,17 @@ def _build_stt(settings: Settings) -> tuple[FrameProcessor, bool]:
     builder = _STT_BUILDERS.get(provider)
     if builder is None:
         raise RuntimeError(
-            f"Unknown STT_PROVIDER={provider!r}. Use one of: whisper, deepgram, google."
+            f"Unknown STT_PROVIDER={provider!r}. "
+            "Use one of: whisper, deepgram, gladia, google, google-chirp2."
         )
     stt = builder(settings)
     if stt is None:
         raise RuntimeError(f"STT_PROVIDER={provider!r} is missing required credentials.")
+    # Deepgram is the only provider with built-in turn detection that fully
+    # replaces Silero VAD. Gladia offers server-side VAD too (enable_vad=True)
+    # but we deliberately don't use it — Voxtera's Silero VAD is tuned per-mic
+    # via VAD_MIN_VOLUME/VAD_CONFIDENCE, so Gladia goes through the same path
+    # as Whisper and Google.
     needs_vad = provider != "deepgram"
     return stt, needs_vad
 

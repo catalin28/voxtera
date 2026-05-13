@@ -30,15 +30,31 @@ TTS_MODEL_GOOGLE = "chirp3-hd"
 TTS_GOOGLE_DEFAULT_VOICE = "en-US-Chirp3-HD-Charon"
 TTS_GOOGLE_DEFAULT_LANGUAGE = "en-US"
 
+# Cartesia Sonic-3 streaming TTS — 90 ms time-to-first-audio, 42 languages.
+# Model is set from settings.cartesia_model (default "sonic-3"); the constant
+# below is the display label surfaced in the dashboard's session_providers
+# panel via voxtera.observability.
+TTS_MODEL_CARTESIA = "sonic-3"
+# Default Cartesia voice: "Katie" (American English, stable). Cartesia's
+# own docs recommend her for voice agents (calm, realistic). The HTML
+# voice combo overrides this at runtime via voxtera-voice messages.
+TTS_CARTESIA_DEFAULT_VOICE = "f786b574-daa5-4673-aa0c-cbe3e8534c02"
+
 # OpenAI tts-1 voices (provider-namespaced).
 _VALID_OPENAI_TTS_VOICES: frozenset[str] = frozenset(
     {"alloy", "ash", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"}
 )
 # Google Chirp 3 HD voice IDs we expose in the UI. The full catalogue has
 # many more; this is a curated multilingual subset that all support the same
-# locales (en-US, ro-RO, fr-FR, etc.). Adding more is just an entry here.
+# locales. Adding more is just an entry here.
+# NOTE: AutoTTSLanguageSwitcher (controllers.py) dynamically reconstructs
+# voice IDs at runtime when the guest's language changes (e.g.
+# en-US-Chirp3-HD-Charon → tr-TR-Chirp3-HD-Charon on Turkish detection),
+# so this set is only consulted on manual selection via the UI dropdown
+# or the DEFAULT_TTS_VOICE env var, NOT on automatic language switching.
 _VALID_GOOGLE_TTS_VOICES: frozenset[str] = frozenset(
     {
+        # English (en-US)
         "en-US-Chirp3-HD-Charon",
         "en-US-Chirp3-HD-Aoede",
         "en-US-Chirp3-HD-Kore",
@@ -46,6 +62,29 @@ _VALID_GOOGLE_TTS_VOICES: frozenset[str] = frozenset(
         "en-US-Chirp3-HD-Orus",
         "en-US-Chirp3-HD-Puck",
         "en-US-Chirp3-HD-Zephyr",
+        # Turkish (tr-TR) — for Istanbul partner / Turkish-speaking guests.
+        # Same Chirp 3 HD character set; locale prefix changes only.
+        "tr-TR-Chirp3-HD-Charon",
+        "tr-TR-Chirp3-HD-Aoede",
+        "tr-TR-Chirp3-HD-Kore",
+        "tr-TR-Chirp3-HD-Leda",
+        "tr-TR-Chirp3-HD-Orus",
+        "tr-TR-Chirp3-HD-Puck",
+        "tr-TR-Chirp3-HD-Zephyr",
+    }
+)
+# Cartesia Sonic-3 voice UUIDs. Starter set — extend as we curate from
+# https://play.cartesia.ai/voices. Adding a voice here is the only place
+# you need to register it on the Python side; the HTML demo.html voice
+# combo independently lists what's shown in the UI.
+# NOTE: Cartesia Sonic-3 voices are multilingual — a single voice ID
+# produces audio in any of the model's 42 supported languages when the
+# ``language`` parameter is set per-utterance. Unlike Google Chirp 3 HD,
+# we DO NOT need a separate voice ID per locale.
+_VALID_CARTESIA_TTS_VOICES: frozenset[str] = frozenset(
+    {
+        # Katie — American English, stable (recommended for voice agents).
+        "f786b574-daa5-4673-aa0c-cbe3e8534c02",
     }
 )
 
@@ -100,6 +139,7 @@ def _build_google_tts(settings: Settings) -> FrameProcessor | None:
         return None
     try:
         from pipecat.services.google.tts import GoogleTTSService
+        from pipecat.services.tts_service import TextAggregationMode
     except ImportError:
         logger.warning(
             "[tts] google TTS extras not installed — install with: uv add 'pipecat-ai[google]'"
@@ -115,34 +155,114 @@ def _build_google_tts(settings: Settings) -> FrameProcessor | None:
 
     tts = GoogleTTSService(
         credentials_path=str(creds_path),
+        # text_aggregation_mode=TOKEN streams individual LLM tokens to the
+        # Google Chirp 3 HD gRPC endpoint as they arrive, instead of the
+        # default SENTENCE mode which waits for a period/period before flushing.
+        # Measured impact: cuts the LLM→TTS gap from ~500ms (sentence wait)
+        # to <100ms (immediate stream). Chirp 3 HD's gRPC streaming
+        # synthesize handles partial input cleanly, so audio starts arriving
+        # at transport_out within ~250ms of the LLM's first token rather than
+        # waiting for the full sentence. Total perceived-latency saving
+        # ~400ms on a typical one-sentence reply.
+        text_aggregation_mode=TextAggregationMode.TOKEN,
         settings=GoogleTTSService.Settings(
             voice=voice,
             language=TTS_GOOGLE_DEFAULT_LANGUAGE,
         ),
     )
-    logger.info("[tts] google chirp3-hd available (voice={})", voice)
+    logger.info("[tts] google chirp3-hd available (voice={}, mode=token-stream)", voice)
+    return tts
+
+
+def _build_cartesia_tts(settings: Settings) -> FrameProcessor | None:
+    """Build the Cartesia Sonic-3 streaming TTS if its credentials are present.
+
+    Sonic-3 is Cartesia's flagship streaming TTS model with ~90 ms
+    time-to-first-audio across 42 languages — the fastest TTS shipping
+    today. Voices are multilingual: a single voice ID produces audio in
+    any supported language when ``language`` is set per-utterance.
+
+    Pipecat 1.0.0's canonical API is used (``settings=CartesiaTTSService
+    .Settings(...)``); the older ``voice_id=`` / ``model=`` init kwargs
+    are deprecated and emit warnings. Sample rate is pinned to 24 kHz
+    to match the rest of the pipeline (same reason as OpenAI tts-1 —
+    avoid downstream resampling mismatch).
+    """
+    if not settings.cartesia_api_key:
+        return None
+    try:
+        from pipecat.services.cartesia.tts import CartesiaTTSService
+        from pipecat.services.tts_service import TextAggregationMode
+        from pipecat.transcriptions.language import Language
+    except ImportError:
+        logger.warning(
+            "[tts] cartesia TTS extras not installed — install with: "
+            "uv add 'pipecat-ai[cartesia]'"
+        )
+        return None
+
+    # Voice selection priority:
+    # 1. DEFAULT_TTS_VOICE env, if it's a known Cartesia UUID
+    # 2. Hardcoded fallback (Katie)
+    # The HTML voice combo overrides at runtime via voxtera-voice messages
+    # regardless of which one is used at boot.
+    voice = settings.default_tts_voice
+    if voice not in _VALID_CARTESIA_TTS_VOICES:
+        voice = TTS_CARTESIA_DEFAULT_VOICE
+
+    tts = CartesiaTTSService(
+        api_key=settings.cartesia_api_key,
+        # Pin sample rate to 24 kHz to match the rest of the pipeline.
+        # Cartesia's streaming endpoint produces audio at the requested
+        # rate; mis-matching this with the pipeline causes the same
+        # "chipmunk speed" resampling bug we hit with OpenAI tts-1 in
+        # the 2026-05-05 Brave/Safari incident (see _build_openai_tts).
+        sample_rate=24000,
+        # text_aggregation_mode=TOKEN streams LLM tokens to Cartesia as
+        # they arrive instead of waiting for sentence-ending punctuation.
+        # Saves ~200-300 ms of perceived latency per turn — same trick
+        # we use in the Google builder.
+        text_aggregation_mode=TextAggregationMode.TOKEN,
+        settings=CartesiaTTSService.Settings(
+            model=settings.cartesia_model,
+            voice=voice,
+            language=Language.EN,
+        ),
+    )
+    logger.info(
+        "[tts] cartesia available (model={}, voice={}, mode=token-stream)",
+        settings.cartesia_model,
+        voice,
+    )
     return tts
 
 
 _TTS_BUILDERS: dict[str, Callable[[Settings], FrameProcessor | None]] = {
     "openai": _build_openai_tts,
     "google": _build_google_tts,
+    "cartesia": _build_cartesia_tts,
 }
 
 
 def _voices_for_tts_provider(provider: str) -> frozenset[str]:
     if provider == "google":
         return _VALID_GOOGLE_TTS_VOICES
+    if provider == "cartesia":
+        return _VALID_CARTESIA_TTS_VOICES
     return _VALID_OPENAI_TTS_VOICES
 
 
 def _default_voice_for_tts_provider(provider: str) -> str:
     if provider == "google":
         return TTS_GOOGLE_DEFAULT_VOICE
+    if provider == "cartesia":
+        return TTS_CARTESIA_DEFAULT_VOICE
     return "nova"
 
 
 # Combined catalog used wherever we need to validate against any provider's
 # voice IDs (e.g. CLI argument validation that doesn't yet know which
 # provider will be active).
-_VALID_TTS_VOICES: frozenset[str] = _VALID_OPENAI_TTS_VOICES | _VALID_GOOGLE_TTS_VOICES
+_VALID_TTS_VOICES: frozenset[str] = (
+    _VALID_OPENAI_TTS_VOICES | _VALID_GOOGLE_TTS_VOICES | _VALID_CARTESIA_TTS_VOICES
+)

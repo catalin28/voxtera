@@ -2,7 +2,7 @@
 
 Serves static files for the demo page and exposes:
 
-- ``POST /api/tts-test`` — real OpenAI / Google TTS so the browser can
+- ``POST /api/tts-test`` — real OpenAI / Google / Cartesia TTS so the browser can
   play the bot's greeting in the selected voice and language.
 - ``POST /api/chat`` — full conversational endpoint that uses the Voxtera
   system prompt, RAG retrieval over hotel knowledge, and OpenAI GPT for
@@ -57,6 +57,11 @@ from voxtera.admin import (  # noqa: E402
     DailyAPIError,
     eject_participants,
     list_room_participants,
+)
+from voxtera.lang_config import (  # noqa: E402
+    LANG_CONFIG,
+    google_locale_for,
+    translation_name_for,
 )
 from voxtera.prompts.greetings import GREETINGS  # noqa: E402
 from voxtera.prompts.system_prompt import SYSTEM_PROMPT  # noqa: E402
@@ -561,62 +566,53 @@ _logging_sink = LoggingSink()
 # ---------------------------------------------------------------------------
 _TOOLS = build_openai_tools(_hotel_config)
 
-# Language code → full name map for the LLM translation prompt.
-_LANG_NAMES: dict[str, str] = {
-    "en": "English",
-    "fr": "French",
-    "es": "Spanish",
-    "de": "German",
-    "it": "Italian",
-    "pt": "Portuguese",
-    "ro": "Romanian",
-    "tr": "Turkish",
-    "nl": "Dutch",
-    "ja": "Japanese",
-    "hi": "Hindi",
-    "ru": "Russian",
-    "ar": "Arabic",
-    "zh": "Chinese",
-    "ko": "Korean",
-    "pl": "Polish",
-    "bg": "Bulgarian",
-    "cs": "Czech",
-    "da": "Danish",
-    "el": "Greek",
-    "fi": "Finnish",
-    "he": "Hebrew",
-    "hu": "Hungarian",
-    "id": "Indonesian",
-    "no": "Norwegian",
-    "sv": "Swedish",
-    "th": "Thai",
-    "uk": "Ukrainian",
-    "vi": "Vietnamese",
-    "az": "Azerbaijani",
-}
+# NOTE: language-code maps used to live here (_GOOGLE_LOCALE_MAP and
+# _LANG_NAMES). They've moved to ``config/languages.json`` and are now
+# accessed via :mod:`voxtera.lang_config`. Adding a new language is a
+# one-line JSON edit instead of touching five Python dicts.
 
 
 def _translate_greeting(text: str, lang: str, model: str) -> str:
-    """Use an OpenAI LLM to translate the greeting into the target language."""
+    """Translate the greeting into ``lang`` using whichever provider owns ``model``.
+
+    Routes by model-name prefix:
+    * ``claude-*`` → Anthropic SDK
+    * everything else (``gpt-*``, ``o1-*``, ``o3-*``) → OpenAI SDK
+
+    Previously this was hardcoded to the OpenAI client, which 404'd whenever
+    the demo's LLM dropdown was set to a Claude model and the target language
+    wasn't in the hardcoded ``GREETINGS`` dict (the translation path is only
+    hit on cache miss).
+    """
     import os
+
+    lang_name = translation_name_for(lang)
+    prompt = (
+        f"Translate the following greeting into {lang_name}. "
+        "Return ONLY the translated text, nothing else.\n\n"
+        f"{text}"
+    )
+
+    if model.lower().startswith("claude"):
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        response = client.messages.create(
+            model=model,
+            max_tokens=256,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        # Anthropic returns content as a list of content blocks; we want the
+        # text from the first block.
+        return response.content[0].text.strip()
 
     import openai
 
     client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-    lang_name = _LANG_NAMES.get(lang, lang)
     response = client.chat.completions.create(
         model=model,
         max_tokens=256,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"Translate the following greeting into {lang_name}. "
-                    "Return ONLY the translated text, nothing else.\n\n"
-                    f"{text}"
-                ),
-            }
-        ],
+        messages=[{"role": "user", "content": prompt}],
     )
     return response.choices[0].message.content.strip()
 
@@ -807,21 +803,100 @@ def _tts_openai(text: str, voice: str) -> bytes:
     return response.content
 
 
+def _tts_cartesia(text: str, voice: str, language: str = "en") -> bytes:
+    """Generate speech via Cartesia Sonic-3 HTTP API and return raw MP3 bytes.
+
+    This is the synchronous /tts/bytes endpoint used by the demo's
+    "Test Speaker" button and /api/chat fallback. The live voice bot
+    uses Pipecat's WebSocket-streaming ``CartesiaTTSService`` for
+    sub-100 ms TTFA; this HTTP path waits for the full audio buffer
+    before returning, which is fine for a one-shot smoke test but would
+    add ~1 s of latency in a real voice loop.
+    """
+    api_key = os.environ.get("CARTESIA_API_KEY")
+    if not api_key:
+        raise RuntimeError("CARTESIA_API_KEY is not set — cannot synthesize Cartesia speech")
+    model = os.environ.get("CARTESIA_MODEL", "sonic-3")
+
+    # Cartesia expects a 2-letter ISO 639-1 language code; strip any locale
+    # suffix (e.g. "en-US" → "en") so callers can pass either form.
+    lang_code = language.split("-")[0] if "-" in language else language
+
+    payload = json.dumps(
+        {
+            "model_id": model,
+            "voice": {"mode": "id", "id": voice},
+            "language": lang_code,
+            "transcript": text,
+            "output_format": {
+                "container": "mp3",
+                "encoding": "mp3",
+                "sample_rate": 22050,
+            },
+        }
+    ).encode()
+
+    req = urllib.request.Request(
+        "https://api.cartesia.ai/tts/bytes",
+        data=payload,
+        headers={
+            "X-API-Key": api_key,
+            "Cartesia-Version": "2025-04-16",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as exc:
+        # Surface Cartesia's error body to the demo UI so voice-ID typos
+        # and quota issues are debuggable from the browser console.
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Cartesia TTS error {exc.code}: {body}") from exc
+
+
 def _tts_google(text: str, voice: str, language: str) -> bytes:
-    """Generate speech via Google Chirp 3 HD and return raw MP3 bytes."""
+    """Generate speech via Google Chirp 3 HD and return raw MP3 bytes.
+
+    Resolves the BCP-47 locale from the requested ISO 639-1 ``language``
+    (e.g. ``ro`` → ``ro-RO``) and rewrites the voice ID's locale prefix
+    so it matches — Google's API rejects requests where the voice locale
+    differs from the requested locale. This mirrors what
+    :class:`voxtera.controllers.AutoTTSLanguageSwitcher` does at runtime
+    for the live bot.
+    """
     import os
 
     from google.cloud import texttospeech
 
-    os.environ.setdefault(
-        "GOOGLE_APPLICATION_CREDENTIALS",
-        os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", ""),
-    )
+    creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+    if creds and not os.path.isabs(creds):
+        # Resolve relative paths from the project root (parent of demo-hotel/)
+        creds = str(Path(__file__).resolve().parent.parent / creds)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds
+
+    # Resolve BCP-47 locale via the shared language config. Falls back to
+    # ``<code>-US`` for the rare case where the requested language isn't
+    # registered — keeps Test Speaker functional even on unknown codes.
+    if "-" in language:
+        locale_code = language
+    else:
+        locale_code = google_locale_for(language.lower()) or f"{language}-US"
+
+    # Rewrite the voice ID's locale prefix to match the requested locale.
+    # Chirp 3 HD voice IDs follow the pattern "<locale>-Chirp3-HD-<character>";
+    # we keep the character (Charon, Aoede, etc.) and swap the prefix.
+    voice_id = voice
+    if "Chirp3-HD-" in voice:
+        character = voice.split("Chirp3-HD-")[-1]
+        voice_id = f"{locale_code}-Chirp3-HD-{character}"
+
     client = texttospeech.TextToSpeechClient()
     synthesis_input = texttospeech.SynthesisInput(text=text)
     voice_params = texttospeech.VoiceSelectionParams(
-        language_code=language if "-" in language else f"{language}-US",
-        name=voice,
+        language_code=locale_code,
+        name=voice_id,
     )
     audio_config = texttospeech.AudioConfig(
         audio_encoding=texttospeech.AudioEncoding.MP3,
@@ -852,6 +927,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         # Admin endpoints first; everything else falls through to the static
         # file handler in SimpleHTTPRequestHandler.
+        if self.path == "/api/languages":
+            return self._handle_languages()
         if self.path == "/api/admin/health":
             return self._handle_admin_health()
         if self.path == "/api/admin/sessions":
@@ -1147,18 +1224,127 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         """POST /api/start-session — spawn a bot and wait for its ready event.
 
         Flow:
-          1. If a session is already in flight → 409 Busy.
+          1. Ask Daily who is in the room right now (source of truth).
+             If anyone is there → 409 Busy.
           2. Reserve a session slot, spawn ``python -m voxtera.bot``,
              attach a reaper thread.
           3. Block on the session's queue (``q.get(timeout=15)``) until the
              bot POSTs ``{type:"ready"}`` to ``/api/bot-event`` from inside
              its ``on_joined`` Daily handler.
           4. Return ``{room_url, session_id}`` so the browser can join.
+
+        The busy check used to read ``REGISTRY.is_busy()``, an in-memory slot
+        freed only when the bot subprocess exits. That slot leaks whenever
+        the bot hangs on shutdown, which made Start reject every subsequent
+        click until the launcher was restarted — even though the Daily room
+        was empty. Asking Daily directly removes that whole failure mode.
         """
-        if REGISTRY.is_busy():
+        # ------------------------------------------------------------------
+        # Busy gate — Daily presence is the source of truth.
+        # ``live`` semantics:
+        #   list  → Daily answered; empty means the room is free.
+        #   None  → Daily REST was unreachable; fall back to local registry
+        #           so we don't spawn unlimited bots during a Daily outage.
+        # ------------------------------------------------------------------
+        live: list | None
+        try:
+            if _DAILY_API_KEY and _DAILY_ROOM_NAME:
+                live = list_room_participants(
+                    api_key=_DAILY_API_KEY,
+                    room_name=_DAILY_ROOM_NAME,
+                )
+            else:
+                # No Daily creds configured — skip the remote check and
+                # rely on the in-memory registry below.
+                print("[launcher] DAILY_API_KEY/ROOM not set — skipping presence check")
+                live = None
+        except DailyAPIError as exc:
+            print(f"[launcher] daily presence check failed: {exc}")
+            live = None
+
+        # Split the participants into humans and orphan bots. The bot's own
+        # display name (``BOT_NAME``, default "Voxtera") joining the room
+        # does NOT count as "the demo is in use" — that's just our process
+        # from a previous run that never left cleanly. Only a real guest
+        # constitutes an active session.
+        if live:
+            humans = [p for p in live if p.user_name != _BOT_NAME]
+            orphan_bots = [p for p in live if p.user_name == _BOT_NAME]
+
+            if humans:
+                label = ",".join(p.user_name or p.id for p in humans) or "unknown"
+                print(
+                    f"[launcher] /api/start-session rejected — Daily room has "
+                    f"{len(humans)} human participant(s): {label}"
+                )
+                self._send_json(
+                    409,
+                    {
+                        "error": "busy",
+                        "active_session": label,
+                        "participant_count": len(humans),
+                        "source": "daily",
+                    },
+                )
+                return
+
+            # Only the bot is there. Eject it so the freshly spawned bot
+            # doesn't share the room with its own ghost — Daily would bill
+            # for both, and the old process is no longer wired to anything.
+            if orphan_bots:
+                ids = [p.id for p in orphan_bots if p.id]
+                print(
+                    f"[launcher] ejecting {len(ids)} orphan bot(s) before spawn: "
+                    f"{','.join(ids) or '(no ids)'}"
+                )
+                try:
+                    eject_participants(
+                        api_key=_DAILY_API_KEY,  # type: ignore[arg-type]
+                        room_name=_DAILY_ROOM_NAME,  # type: ignore[arg-type]
+                        participant_ids=ids,
+                    )
+                except DailyAPIError as exc:
+                    # Eject failed — refuse to spawn rather than risk
+                    # double-bot in the room. Operator can clear it from
+                    # the admin page.
+                    print(f"[launcher] orphan-bot eject failed: {exc}")
+                    self._send_json(
+                        502,
+                        {
+                            "error": "orphan_eject_failed",
+                            "detail": str(exc),
+                            "active_session": "Voxtera",
+                            "source": "daily",
+                        },
+                    )
+                    return
+
+        # Daily says nobody real is in the room. If the in-memory registry
+        # still holds a slot, it's stale (bot subprocess hung on shutdown);
+        # reap it so the spawn below can grab a fresh slot.
+        if (
+            live == [] or (live and not [p for p in live if p.user_name != _BOT_NAME])
+        ) and REGISTRY.is_busy():
+            stale = REGISTRY.active_session()
+            print(
+                f"[launcher] daily presence empty but slot {stale} still held — "
+                f"reaping stale slot"
+            )
+            if stale:
+                REGISTRY.reap(stale)
+
+        # Daily was unreachable — fall back to the legacy in-memory gate so a
+        # Daily blip doesn't allow concurrent spawns.
+        if live is None and REGISTRY.is_busy():
             active = REGISTRY.active_session()
-            print(f"[launcher] /api/start-session rejected — session {active} is active")
-            self._send_json(409, {"error": "busy", "active_session": active})
+            print(
+                f"[launcher] daily unreachable — falling back to local registry, "
+                f"session {active} active"
+            )
+            self._send_json(
+                409,
+                {"error": "busy", "active_session": active, "source": "local"},
+            )
             return
 
         session_id = uuid.uuid4().hex
@@ -1530,6 +1716,25 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return
         self._send_json(200, {"session_id": session_id, "deleted": True})
 
+    def _handle_languages(self):
+        """GET /api/languages — full language config for the demo UI.
+
+        Returns the contents of ``config/languages.json`` as JSON so the
+        frontend can build the language + voice dropdowns dynamically and
+        validate language↔TTS compatibility before enabling the Start
+        button.
+        """
+        body = json.dumps(LANG_CONFIG).encode("utf-8")
+        self.send_response(200)
+        self._cors_headers()
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        # Demo languages don't change between requests within a run;
+        # cache aggressively to avoid the disk read on every page load.
+        self.send_header("Cache-Control", "public, max-age=300")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _handle_tts_test(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
@@ -1549,6 +1754,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
             if provider == "google":
                 audio = _tts_google(text, voice, lang)
+            elif provider == "cartesia":
+                audio = _tts_cartesia(text, voice, lang)
             else:
                 audio = _tts_openai(text, voice)
 
@@ -1597,6 +1804,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 if tts_provider == "google":
                     audio = _tts_google(reply, voice, language)
+                elif tts_provider == "cartesia":
+                    audio = _tts_cartesia(reply, voice, language)
                 else:
                     audio = _tts_openai(reply, voice)
                 audio_b64 = base64.b64encode(audio).decode("ascii")

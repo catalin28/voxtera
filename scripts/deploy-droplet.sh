@@ -119,11 +119,25 @@ if [[ "$SKIP_SYNC" == "false" ]]; then
     --exclude '.ruff_cache/' \
     --exclude 'logs/*.jsonl' \
     --exclude 'logs/*.db*' \
+    --exclude '.env' \
     ./ "${HOST}:${REMOTE_APP_DIR}/"
 
   ssh "${HOST}" "chown -R '${REMOTE_USER}:${REMOTE_USER}' '${REMOTE_APP_DIR}'"
 else
   echo "==> Skipping file sync"
+fi
+
+if [[ -f .env ]]; then
+  echo "==> Deploying .env to ${HOST}:${REMOTE_ENV_FILE}"
+  ssh "${HOST}" "mkdir -p '$(dirname "${REMOTE_ENV_FILE}")'"
+  scp .env "${HOST}:${REMOTE_ENV_FILE}"
+  # Rewrite any relative path values that need to be absolute on the server.
+  # GOOGLE_APPLICATION_CREDENTIALS is relative locally (project root) but
+  # serve.py runs from demo-hotel/, so it must be absolute on the server.
+  ssh "${HOST}" "sed -i 's|GOOGLE_APPLICATION_CREDENTIALS=\.secrets/|GOOGLE_APPLICATION_CREDENTIALS=${REMOTE_APP_DIR}/.secrets/|g' '${REMOTE_ENV_FILE}'"
+  ssh "${HOST}" "chown root:'${REMOTE_USER}' '${REMOTE_ENV_FILE}' && chmod 640 '${REMOTE_ENV_FILE}'"
+else
+  echo "==> No local .env found, skipping env file deploy"
 fi
 
 echo "==> Installing/updating dependencies"
@@ -137,8 +151,15 @@ else
 fi
 
 echo "==> Restarting services"
-ssh "${HOST}" "systemctl stop '${UI_SERVICE_NAME}' || true; fuser -k 8080/tcp 2>/dev/null || true; sleep 1"
-ssh "${HOST}" "systemctl restart '${SERVICE_NAME}'"
+# Stop backend first and wait long enough for Telegram to release the getUpdates
+# long-poll (Telegram's server holds the connection open for ~25s). Without this
+# pause the new instance starts polling before the old one's session expires,
+# causing a 409 Conflict that blocks Telegram notifications for minutes.
+ssh "${HOST}" "systemctl stop '${SERVICE_NAME}' || true"
+ssh "${HOST}" "systemctl stop '${UI_SERVICE_NAME}' || true; fuser -k 8080/tcp 2>/dev/null || true"
+echo "    Waiting 30s for Telegram long-poll to expire..."
+sleep 30
+ssh "${HOST}" "systemctl start '${SERVICE_NAME}'"
 ssh "${HOST}" "systemctl start '${UI_SERVICE_NAME}'"
 
 echo "==> Health checks"

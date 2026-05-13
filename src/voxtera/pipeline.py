@@ -226,6 +226,7 @@ from voxtera.observability import (  # noqa: E402
     UserTranscriptBroadcaster,
 )
 from voxtera.prompts import SYSTEM_PROMPT, resolve_greeting  # noqa: E402
+from voxtera.prompts.greetings import GREETINGS  # noqa: E402
 from voxtera.routing import STTGate, STTRouter, TTSGate, TTSRouter  # noqa: E402
 from voxtera.stt import _STT_BUILDERS, _build_stt  # noqa: E402
 from voxtera.trace import emit as _trace_emit  # noqa: E402
@@ -424,7 +425,20 @@ def build_pipeline(
             await launcher_client.post_event("ready")
             asyncio.create_task(_warmup_tts_providers(settings))
             if _rag_retriever is not None:
-                asyncio.create_task(_rag_retriever.warmup(hotel_id=settings.hotel_id))
+                # Two-phase RAG warm-up:
+                # (1) chunk_cache: loads + normalises the embedding matrix
+                #     so the first real query skips the SQLite read.
+                # (2) result_cache: pre-runs DEFAULT_WARMUP_QUERIES so the
+                #     bot answers common questions in ~0ms RAG time instead
+                #     of paying 1.5s for the first CPU embedding pass.
+                # Both run as background tasks — they don't block the bot
+                # joining the room, but warmup_queries depends on chunk_cache
+                # being populated, so chain them.
+                async def _do_rag_warmup() -> None:
+                    await _rag_retriever.warmup(hotel_id=settings.hotel_id)
+                    await _rag_retriever.warmup_queries(hotel_id=settings.hotel_id)
+
+                asyncio.create_task(_do_rag_warmup())
 
         # Fast-exit on Guest leave — only for on-demand mode.
         #
@@ -536,7 +550,8 @@ def build_pipeline(
             if not stt_branches:
                 raise RuntimeError(
                     "No STT provider could be built. Set at least one of "
-                    "OPENAI_API_KEY, DEEPGRAM_API_KEY, or GOOGLE_APPLICATION_CREDENTIALS."
+                    "OPENAI_API_KEY, DEEPGRAM_API_KEY, GLADIA_API_KEY, "
+                    "or GOOGLE_APPLICATION_CREDENTIALS."
                 )
             initial_provider = (
                 settings.stt_provider
@@ -582,9 +597,28 @@ def build_pipeline(
     else:
         llm = AnthropicLLMService(
             api_key=settings.anthropic_api_key,
-            settings=AnthropicLLMService.Settings(model=LLM_MODEL),
+            settings=AnthropicLLMService.Settings(
+                model=LLM_MODEL,
+                # Anthropic prompt caching: caches the system prompt + tool
+                # schemas across turns for the duration of a 5-minute window.
+                # The system prompt is ~350 words (plus the actions fragment
+                # ~250 words and any hotel addendum), which is ~1500 tokens.
+                # Without caching every turn re-tokenizes and re-processes
+                # that prefix; with caching, TTFT drops ~100-200ms after the
+                # first turn warms the cache.
+                enable_prompt_caching=True,
+                # Bound the reply length at 250 tokens (~180 words). Combined
+                # with the brevity rules in the system prompt, real replies
+                # land at 8-30 words; this cap mainly prevents pathological
+                # runaway generation. Lower than the default 4096 cuts the
+                # tail-latency variance on rare long responses.
+                max_tokens=250,
+            ),
         )
-        logger.info("[llm] using Anthropic model {}", LLM_MODEL)
+        logger.info(
+            "[llm] using Anthropic model {} (prompt-caching=on, max_tokens=250)",
+            LLM_MODEL,
+        )
 
     # Build TTS providers. In Daily mode we build every provider with valid
     # credentials and run them as gated parallel branches like STT, so the
@@ -769,6 +803,16 @@ def build_pipeline(
         )
         if _probing:
             processors.append(PipelineProbe("after_transcript_timer"))
+    # AutoTTSLanguageSwitcher must observe TranscriptionFrame BEFORE the
+    # context aggregator + LLM consume it. Previously this was placed
+    # later in the pipeline (after the LLM) and silently never fired —
+    # leaving Google Chirp 3 HD speaking Romanian text with the en-US
+    # voice on every turn. Placing it here means: STT emits transcript →
+    # switcher sees frame.language → updates TTS voice ID locale → THEN
+    # context aggregator + LLM consume the frame and produce the reply,
+    # which now goes to the locale-correct TTS.
+    if settings.transport_mode == "daily" and tts_router is not None:
+        processors.append(AutoTTSLanguageSwitcher(tts_router=tts_router))
     processors.append(context_aggregator.user())
     if _probing:
         processors.append(PipelineProbe("after_ctx_user"))
@@ -828,11 +872,12 @@ def build_pipeline(
                 tts_router=tts_router,
             )
         )
-        if tts_router is not None:
-            # Automatically update Google TTS language when STT detects the
-            # guest has switched language. Chirp 3 HD is multilingual so the
-            # same voice character works across locales.
-            processors.append(AutoTTSLanguageSwitcher(tts_router=tts_router))
+        # NOTE: AutoTTSLanguageSwitcher used to be added here. It was moved
+        # earlier in the pipeline (right after the STT branches, before
+        # context_aggregator.user()) because the LLM was consuming
+        # TranscriptionFrame before this position, leaving the switcher
+        # silently inactive across the entire session. See the comment at
+        # the earlier insertion point for the full rationale.
         # Greeting controller: defers the startup greeting until the browser
         # sends {type: 'voxtera-ready'} after the transcript page is visible,
         # so the bot never speaks into an empty room.
@@ -842,7 +887,15 @@ def build_pipeline(
             greeting_lang,
             settings.greeting_language,
         )
-        processors.append(GreetingController(greeting_text=greeting_text))
+        # Pass the full GREETINGS map so the controller can swap the greeting
+        # to the user's selected language when the browser sends
+        # voxtera-language before voxtera-ready (see GreetingController).
+        processors.append(
+            GreetingController(
+                greeting_text=greeting_text,
+                greetings_map=GREETINGS,
+            )
+        )
     if tts_router is not None:
         # Daily mode: parallel TTS branches gated by the router.
         processors.append(tts_router)

@@ -17,6 +17,8 @@ trivially observable if it ever resurfaces.
 
 from __future__ import annotations
 
+import asyncio
+
 from loguru import logger
 from pipecat.frames.frames import (
     InputAudioRawFrame,
@@ -43,6 +45,23 @@ except Exception:  # daily-python not available on Windows
 from voxtera.stt import _STT_BUILDERS
 from voxtera.tts import _TTS_BUILDERS
 from voxtera.tunables import update_current as _update_knob_current
+
+
+def _schedule_branch_transition(coro) -> None:
+    """Fire-and-forget an async lazy-connect call from sync code.
+
+    ``STTRouter._activate`` is sync but ``lazy_connect``/``lazy_disconnect``
+    on lazy STT services are async (they open/close WebSockets). We
+    schedule them on the running event loop if one exists, otherwise drop
+    the coroutine — at boot time before the pipeline has started there's
+    no loop and no STT to connect to either.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        coro.close()
+        return
+    loop.create_task(coro)
 
 
 class STTGate(FrameProcessor):
@@ -153,18 +172,34 @@ class STTRouter(FrameProcessor):
             was_on = branch["input_gate"].active
             branch["input_gate"].active = on
             branch["output_gate"].active = on
+            stt = branch["stt"]
             # Just deactivated: reset segmented-STT state so any audio that
             # was buffered mid-utterance (and never got a VAD-stopped because
             # the gate is now closed) doesn't get prepended to the next
             # activation's first transcription. Streaming STTs don't have
             # this buffer so the hasattr checks make this a no-op for them.
             if was_on and not on:
-                stt = branch["stt"]
                 buf = getattr(stt, "_audio_buffer", None)
                 if buf is not None and hasattr(buf, "clear"):
                     buf.clear()
                 if hasattr(stt, "_user_speaking"):
                     stt._user_speaking = False
+                # Lazy-disconnect hook: streaming STTs that subclass with a
+                # lazy_disconnect() method (currently only Gladia, to dodge
+                # its 1-session free-tier cap) close their WebSocket here.
+                # No-op for default STTs.
+                lazy_dc = getattr(stt, "lazy_disconnect", None)
+                if callable(lazy_dc):
+                    _schedule_branch_transition(lazy_dc())
+            elif not was_on and on:
+                # Lazy-connect hook: opens the streaming STT's WebSocket
+                # only when this branch becomes active. No-op for default
+                # STTs (their WebSocket was already opened on StartFrame
+                # at boot, which is fine for providers without a session
+                # cap).
+                lazy_c = getattr(stt, "lazy_connect", None)
+                if callable(lazy_c):
+                    _schedule_branch_transition(lazy_c())
         self._active = name
 
     async def process_frame(self, frame, direction: FrameDirection) -> None:

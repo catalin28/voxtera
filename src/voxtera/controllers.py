@@ -326,20 +326,82 @@ class LanguageSwitcher(FrameProcessor):
 
 
 class AutoTTSLanguageSwitcher(FrameProcessor):
-    """Automatically updates Google TTS language when STT detects a language change.
+    """Automatically updates TTS language when STT detects a language change.
 
     Observes :class:`TranscriptionFrame`, maps the detected language to a
-    BCP-47 code, and pushes a :class:`TTSUpdateSettingsFrame` downstream to
-    update the active Google TTS language. Chirp 3 HD voices are fully
-    multilingual; the voice character (e.g. "Charon") is preserved while the
-    locale prefix is updated so the full voice ID becomes e.g.
-    ``ro-RO-Chirp3-HD-Charon`` when Romanian is detected.
+    BCP-47 code, and pushes a :class:`TTSUpdateSettingsFrame` downstream so
+    the active TTS service produces audio in the guest's language.
 
-    Only acts when the active TTS provider is Google. OpenAI tts-1 handles
-    multilingual synthesis natively without explicit language settings.
-    When the TTS provider switches back to Google, the tracked language is
-    reset so the first transcription always re-applies the correct locale.
+    Provider-specific behavior:
+
+    * **Google Chirp 3 HD**: voice IDs are locale-prefixed
+      (``en-US-Chirp3-HD-Charon``), so the locale prefix is rewritten while
+      preserving the voice character (e.g. → ``ro-RO-Chirp3-HD-Charon``
+      for Romanian).
+    * **Cartesia Sonic-3**: voices are inherently multilingual — the same
+      voice ID produces audio in any of Sonic-3's 42 supported languages
+      when the ``language`` parameter is updated. Only the language is
+      changed; the voice ID stays the same. Languages outside the
+      42-language list are silently skipped (TTS keeps producing in the
+      previously-set language) and logged at info level.
+    * **OpenAI tts-1**: not handled here. tts-1 detects language natively
+      from the input text and doesn't accept an explicit language parameter.
+
+    When the TTS provider switches via ``voxtera-tts-provider``, the
+    tracked language is reset so the first transcription after the switch
+    always re-applies the correct locale to the new service.
     """
+
+    # Cartesia Sonic-3 supported languages (ISO 639-1). Source: Cartesia
+    # docs (https://docs.cartesia.ai/build-with-cartesia/tts-models/latest).
+    # Sonic-3 voices are multilingual: the same voice ID produces audio in
+    # any of these languages when the ``language`` parameter is set.
+    _CARTESIA_LANGUAGES: frozenset[str] = frozenset(
+        {
+            "en",
+            "fr",
+            "de",
+            "es",
+            "pt",
+            "zh",
+            "ja",
+            "hi",
+            "it",
+            "ko",
+            "nl",
+            "pl",
+            "ru",
+            "sv",
+            "tr",
+            "tl",
+            "bg",
+            "ro",
+            "ar",
+            "cs",
+            "el",
+            "fi",
+            "hr",
+            "ms",
+            "sk",
+            "da",
+            "ta",
+            "uk",
+            "hu",
+            "no",
+            "vi",
+            "bn",
+            "th",
+            "he",
+            "ka",
+            "id",
+            "te",
+            "gu",
+            "kn",
+            "ml",
+            "mr",
+            "pa",
+        }
+    )
 
     # Whisper full names, BCP-47 short codes, and BCP-47 full codes all map
     # to the canonical BCP-47 code expected by Google TTS.
@@ -443,9 +505,33 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
     def __init__(self, tts_router: TTSRouter) -> None:
         super().__init__()
         self._tts_router = tts_router
-        # BCP-47 code currently set on the Google TTS service. None means
-        # "unknown / needs to be applied on next transcription".
+        # BCP-47 code currently set on the active TTS service. None means
+        # "unknown / needs to be applied on next transcription". Shared
+        # across Google and Cartesia because both providers receive the
+        # same BCP-47 normalization upstream — only the downstream
+        # Settings shape differs.
         self._current_lang: str | None = None
+
+    @classmethod
+    def _cartesia_lang_for_bcp47(cls, bcp47: str):
+        """Convert a BCP-47 code to a Pipecat ``Language`` enum supported
+        by Cartesia Sonic-3, or ``None`` if Sonic-3 doesn't support it.
+
+        Returns a Pipecat ``Language`` member (e.g. ``Language.RO``).
+        Done lazily via ``getattr`` so the import only fires when Cartesia
+        is actually active.
+        """
+        if not bcp47:
+            return None
+        code = bcp47.split("-")[0].lower()
+        if code not in cls._CARTESIA_LANGUAGES:
+            return None
+        try:
+            from pipecat.transcriptions.language import Language
+
+            return getattr(Language, code.upper(), None)
+        except ImportError:
+            return None
 
     @staticmethod
     def _resolve_lang(lang_val: object) -> str | None:
@@ -490,34 +576,70 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
         elif (
             isinstance(frame, TranscriptionFrame)
             and direction == FrameDirection.DOWNSTREAM
-            and self._tts_router.active_provider == "google"
+            and self._tts_router.active_provider in ("google", "cartesia")
         ):
             bcp47 = self._resolve_lang(getattr(frame, "language", None))
             if bcp47 and bcp47 != self._current_lang:
+                active_provider = self._tts_router.active_provider
                 try:
-                    from pipecat.services.google.tts import GoogleTTSService
-
                     active_tts = self._tts_router.active_tts
-                    # Read the current voice name from the live TTS settings.
-                    settings_obj = getattr(active_tts, "_settings", None)
-                    current_voice = getattr(settings_obj, "voice", None) or TTS_GOOGLE_DEFAULT_VOICE
-                    new_voice = self._chirp3_voice_for_lang(current_voice, bcp47)
-                    logger.info(
-                        "[tts-lang] detected={!r} → Google TTS language={!r} voice={!r}",
-                        bcp47,
-                        bcp47,
-                        new_voice,
-                    )
-                    await self.push_frame(
-                        TTSUpdateSettingsFrame(
-                            delta=GoogleTTSService.Settings(voice=new_voice, language=bcp47),
-                            service=active_tts,
-                        ),
-                        FrameDirection.DOWNSTREAM,
-                    )
-                    self._current_lang = bcp47
+                    if active_provider == "google":
+                        from pipecat.services.google.tts import GoogleTTSService
+
+                        # Read the current voice name from the live TTS settings.
+                        settings_obj = getattr(active_tts, "_settings", None)
+                        current_voice = (
+                            getattr(settings_obj, "voice", None) or TTS_GOOGLE_DEFAULT_VOICE
+                        )
+                        new_voice = self._chirp3_voice_for_lang(current_voice, bcp47)
+                        logger.info(
+                            "[tts-lang] detected={!r} → Google TTS language={!r} voice={!r}",
+                            bcp47,
+                            bcp47,
+                            new_voice,
+                        )
+                        await self.push_frame(
+                            TTSUpdateSettingsFrame(
+                                delta=GoogleTTSService.Settings(voice=new_voice, language=bcp47),
+                                service=active_tts,
+                            ),
+                            FrameDirection.DOWNSTREAM,
+                        )
+                        self._current_lang = bcp47
+                    else:  # cartesia
+                        cartesia_lang = self._cartesia_lang_for_bcp47(bcp47)
+                        if cartesia_lang is None:
+                            logger.info(
+                                "[tts-lang] cartesia: {!r} not in Sonic-3's 42-language "
+                                "list, keeping current TTS language",
+                                bcp47,
+                            )
+                            # Update tracked lang anyway so we don't retry every
+                            # frame for the same unsupported language.
+                            self._current_lang = bcp47
+                        else:
+                            from pipecat.services.cartesia.tts import CartesiaTTSService
+
+                            logger.info(
+                                "[tts-lang] detected={!r} → Cartesia language={!r} "
+                                "(voice unchanged)",
+                                bcp47,
+                                getattr(cartesia_lang, "value", cartesia_lang),
+                            )
+                            await self.push_frame(
+                                TTSUpdateSettingsFrame(
+                                    delta=CartesiaTTSService.Settings(language=cartesia_lang),
+                                    service=active_tts,
+                                ),
+                                FrameDirection.DOWNSTREAM,
+                            )
+                            self._current_lang = bcp47
                 except Exception as exc:
-                    logger.warning("[tts-lang] failed to update TTS language: {}", exc)
+                    logger.warning(
+                        "[tts-lang] failed to update {} TTS language: {}",
+                        active_provider,
+                        exc,
+                    )
 
         await self.push_frame(frame, direction)
 
@@ -613,6 +735,10 @@ class ModelSwitcher(FrameProcessor):
                             from pipecat.services.google.tts import GoogleTTSService
 
                             delta = GoogleTTSService.Settings(voice=voice)
+                        elif active_provider == "cartesia":
+                            from pipecat.services.cartesia.tts import CartesiaTTSService
+
+                            delta = CartesiaTTSService.Settings(voice=voice)
                         else:
                             delta = OpenAITTSService.Settings(voice=voice)
                         await self.push_frame(
@@ -642,11 +768,33 @@ class GreetingController(FrameProcessor):
     prevents two rapid voxtera-ready events (browser reload, tab focus race)
     from queuing two overlapping greetings, which otherwise sounds like a
     heavy echo on the welcome message.
+
+    Greeting language resolution:
+
+    The boot-time ``greeting_text`` is used as the default. When the browser
+    sends ``voxtera-language`` before ``voxtera-ready`` (which the demo
+    page does in the Start handler), the greeting is re-resolved from the
+    optional ``greetings_map`` so the user hears the welcome message in
+    the language they selected. If the selected language isn't in the
+    map (e.g. an exotic language we don't have a hardcoded greeting for),
+    the bot falls back to the default ``greeting_text``.
     """
 
-    def __init__(self, greeting_text: str, *, debounce_secs: float = 3.0) -> None:
+    def __init__(
+        self,
+        greeting_text: str,
+        *,
+        debounce_secs: float = 3.0,
+        greetings_map: dict[str, str] | None = None,
+    ) -> None:
         super().__init__()
         self._greeting_text = greeting_text
+        # Per-language greeting catalog. Used to re-resolve the greeting
+        # text when the browser sends voxtera-language before
+        # voxtera-ready. None means "static greeting, ignore language
+        # switches" (preserves the original behaviour for callers that
+        # don't pass a map).
+        self._greetings_map = greetings_map
         # Debounce window: if voxtera-ready fires twice within this many
         # seconds, don't queue a second greeting.
         self._debounce_secs = debounce_secs
@@ -658,22 +806,44 @@ class GreetingController(FrameProcessor):
         if isinstance(frame, DailyInputTransportMessageFrame):
             msg = frame.message
             logger.info("[greeting] received DailyInputTransportMessageFrame: {}", msg)
-            if isinstance(msg, dict) and msg.get("type") == "voxtera-ready":
-                now = time.monotonic()
-                if (
-                    self._last_greeting_at is not None
-                    and (now - self._last_greeting_at) < self._debounce_secs
-                ):
-                    logger.warning(
-                        "[greeting] dropped duplicate voxtera-ready "
-                        "({:.2f}s after previous) to avoid overlapping greetings",
-                        now - self._last_greeting_at,
-                    )
-                else:
-                    self._last_greeting_at = now
-                    logger.info("[greeting] user ready — playing startup greeting")
-                    await self.push_frame(
-                        TTSSpeakFrame(text=self._greeting_text), FrameDirection.DOWNSTREAM
-                    )
+            if isinstance(msg, dict):
+                # Update greeting text based on the user's selected language
+                # BEFORE voxtera-ready fires. The demo page sends these in
+                # order: voxtera-stt → voxtera-language → voxtera-model →
+                # voxtera-tts-provider → voxtera-voice → voxtera-ready.
+                if msg.get("type") == "voxtera-language" and self._greetings_map:
+                    lang = msg.get("language", "")
+                    # "multi" = auto-detect; no preference, keep default.
+                    if lang and lang != "multi":
+                        new_text = self._greetings_map.get(lang)
+                        if new_text and new_text != self._greeting_text:
+                            logger.info("[greeting] updating greeting to language={!r}", lang)
+                            self._greeting_text = new_text
+                        elif not new_text:
+                            logger.info(
+                                "[greeting] no hardcoded greeting for language={!r}, "
+                                "keeping current",
+                                lang,
+                            )
+                elif msg.get("type") == "voxtera-ready":
+                    now = time.monotonic()
+                    if (
+                        self._last_greeting_at is not None
+                        and (now - self._last_greeting_at) < self._debounce_secs
+                    ):
+                        logger.warning(
+                            "[greeting] dropped duplicate voxtera-ready "
+                            "({:.2f}s after previous) to avoid overlapping greetings",
+                            now - self._last_greeting_at,
+                        )
+                    else:
+                        self._last_greeting_at = now
+                        logger.info(
+                            "[greeting] user ready — playing startup greeting " "({} chars)",
+                            len(self._greeting_text),
+                        )
+                        await self.push_frame(
+                            TTSSpeakFrame(text=self._greeting_text), FrameDirection.DOWNSTREAM
+                        )
 
         await self.push_frame(frame, direction)
