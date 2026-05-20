@@ -17,6 +17,7 @@ Houses everything STT-specific that used to live in ``voxtera.bot``:
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import AsyncIterable, Callable
 from pathlib import Path
@@ -346,6 +347,56 @@ def _build_deepgram_stt(settings: Settings) -> FrameProcessor | None:
     return stt
 
 
+# Custom-vocabulary file for Gladia STT. Biases recognition toward
+# hotel-concierge domain terms so domain words ("breakfast", "amenities",
+# venue names) stop being mis-transcribed ("breakfast" -> "blacksmith").
+# Lives at <repo>/config/stt_vocabulary.json — see that file's _README.
+_STT_VOCABULARY_PATH = Path(__file__).resolve().parents[2] / "config" / "stt_vocabulary.json"
+
+
+def _load_stt_vocabulary(hotel_id: str) -> list[str]:
+    """Load and flatten the Gladia custom-vocabulary term list.
+
+    Reads ``config/stt_vocabulary.json``: flattens every array under
+    ``categories`` and appends the proper nouns registered for ``hotel_id``
+    under ``hotel_proper_nouns``. Returns a de-duplicated, order-preserving
+    list of terms — or ``[]`` (logged) if the file is missing or malformed,
+    so STT runs un-biased rather than failing to start.
+    """
+    try:
+        data = json.loads(_STT_VOCABULARY_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        logger.info("[stt] no custom-vocabulary file at {}", _STT_VOCABULARY_PATH)
+        return []
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning(
+            "[stt] custom-vocabulary file unreadable ({}): {}", _STT_VOCABULARY_PATH, exc
+        )
+        return []
+
+    terms: list[str] = []
+    categories = data.get("categories")
+    if isinstance(categories, dict):
+        for entries in categories.values():
+            if isinstance(entries, list):
+                terms.extend(str(t) for t in entries)
+    proper_nouns = data.get("hotel_proper_nouns")
+    if isinstance(proper_nouns, dict):
+        hotel_nouns = proper_nouns.get(hotel_id)
+        if isinstance(hotel_nouns, list):
+            terms.extend(str(t) for t in hotel_nouns)
+
+    # De-duplicate while preserving first-seen order.
+    seen: set[str] = set()
+    unique: list[str] = []
+    for term in terms:
+        if term and term not in seen:
+            seen.add(term)
+            unique.append(term)
+    logger.info("[stt] custom vocabulary: {} terms loaded (hotel_id={!r})", len(unique), hotel_id)
+    return unique
+
+
 def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     """Build the Gladia Solaria-1 STT service if its credentials are present.
 
@@ -379,7 +430,11 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
         return None
     try:
         from pipecat.frames.frames import StartFrame
-        from pipecat.services.gladia.config import LanguageConfig
+        from pipecat.services.gladia.config import (
+            CustomVocabularyConfig,
+            LanguageConfig,
+            RealtimeProcessingConfig,
+        )
         from pipecat.services.gladia.stt import GladiaSTTService
         from pipecat.services.stt_service import WebsocketSTTService
     except ImportError:
@@ -538,6 +593,17 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     settings_kwargs: dict[str, object] = {"model": STT_MODEL_GLADIA}
     if language_config is not None:
         settings_kwargs["language_config"] = language_config
+
+    # Custom vocabulary — bias Gladia toward hotel-concierge domain terms so
+    # domain words ("breakfast", "amenities", the hotel's venue names) stop
+    # being mis-transcribed. Travels once in the session-init payload, not
+    # per utterance. Skipped silently when the vocabulary file is absent.
+    vocabulary = _load_stt_vocabulary(settings.hotel_id)
+    if vocabulary:
+        settings_kwargs["realtime_processing"] = RealtimeProcessingConfig(
+            custom_vocabulary=True,
+            custom_vocabulary_config=CustomVocabularyConfig(vocabulary=vocabulary),
+        )
 
     stt = _LazyConnectGladiaSTTService(
         api_key=settings.gladia_api_key,
