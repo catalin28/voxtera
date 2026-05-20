@@ -40,11 +40,12 @@ class Settings:
     # RMS per chunk. 0.02 is a generous floor that still rejects pure silence.
     vad_min_volume: float = 0.02
     vad_confidence: float = 0.5
-    # SmartTurn ONNX end-of-turn model CPU count. Pipecat's default is 1,
-    # which dominates the STT→LLM gap (~700-900ms on a single core). We
-    # auto-detect via os.cpu_count() in load_settings(). Override via
-    # SMART_TURN_CPU_COUNT. Going above physical cores rarely helps and can
-    # hurt due to context-switch overhead.
+    # SmartTurn ONNX end-of-turn model thread count. This stage dominates the
+    # STT→LLM latency gap, and the thread count is the main lever on it: too
+    # few threads and inference is slow, more threads than the box has cores
+    # and they thrash. Auto-detected from the server's core count at startup
+    # by _auto_smart_turn_cpu_count(); the SMART_TURN_CPU_COUNT env var is an
+    # optional explicit override (mainly for testing).
     smart_turn_cpu_count: int = 2
     # `auto` -> detect from OS locale; explicit code (e.g. `fr`) overrides.
     greeting_language: str = "auto"
@@ -174,6 +175,42 @@ def _require(name: str) -> str:
     return value
 
 
+def _effective_cpu_count() -> int:
+    """Number of CPU cores actually available to *this process*.
+
+    Prefers ``os.sched_getaffinity`` (Linux) because it respects CPU-affinity
+    and cgroup limits — so it stays correct when the bot runs inside a
+    constrained container (e.g. Pipecat Cloud, Docker with a CPU quota).
+    ``os.sched_getaffinity`` does not exist on macOS or Windows, so on those
+    platforms (e.g. a local M1 dev box) this falls back to ``os.cpu_count``.
+    The ``OSError`` arm is belt-and-braces in case the syscall itself fails.
+    """
+    try:
+        return len(os.sched_getaffinity(0))  # type: ignore[attr-defined]
+    except (AttributeError, OSError):
+        return os.cpu_count() or 2
+
+
+def _auto_smart_turn_cpu_count() -> int:
+    """Choose a SmartTurn ONNX thread count from the host's core count.
+
+    Detected fresh at startup so the bot self-tunes to whatever server it is
+    deployed on. SmartTurn inference is a short per-turn burst, so it can use
+    most of the cores while it runs:
+
+    * 1 core   -> 1
+    * 2 cores  -> 2  (verified sweet spot on a 2-vCPU droplet — using both
+                      cores roughly halves inference vs. a single thread)
+    * 3+ cores -> cores - 1  (leave one core free for the audio loop)
+    * capped at 4 — the model stops getting faster past ~4 threads and extra
+      threads only add context-switch contention.
+    """
+    cores = _effective_cpu_count()
+    if cores <= 2:
+        return max(1, cores)
+    return min(4, cores - 1)
+
+
 def load_settings() -> Settings:
     """Load settings from `os.environ`.
 
@@ -196,10 +233,12 @@ def load_settings() -> Settings:
         vad_start_secs=float(os.environ.get("VAD_START_SECS", "0.2")),
         vad_min_volume=float(os.environ.get("VAD_MIN_VOLUME", "0.02")),
         vad_confidence=float(os.environ.get("VAD_CONFIDENCE", "0.5")),
-        # Auto-detect cores; clamp to [1, 4]. Above 4 the ONNX model gets
-        # no faster but steals time from the audio loop. Env var overrides.
+        # SmartTurn thread count — auto-detected from the server's core count
+        # at startup (see _auto_smart_turn_cpu_count). SMART_TURN_CPU_COUNT
+        # still works as an explicit override, but leaving it unset is
+        # recommended so the bot self-tunes to whatever box it runs on.
         smart_turn_cpu_count=int(
-            os.environ.get("SMART_TURN_CPU_COUNT") or max(1, min(4, (os.cpu_count() or 2) - 1))
+            os.environ.get("SMART_TURN_CPU_COUNT") or _auto_smart_turn_cpu_count()
         ),
         greeting_language=os.environ.get("GREETING_LANGUAGE", "auto"),
         input_mode=os.environ.get("INPUT_MODE", "hybrid").lower(),
