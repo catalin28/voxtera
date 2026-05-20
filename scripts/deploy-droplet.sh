@@ -151,21 +151,30 @@ else
 fi
 
 echo "==> Restarting services"
-# Stop backend first and wait long enough for Telegram to release the getUpdates
-# long-poll (Telegram's server holds the connection open for ~25s). Without this
-# pause the new instance starts polling before the old one's session expires,
-# causing a 409 Conflict that blocks Telegram notifications for minutes.
+# In on-demand (serve.py) mode, the standalone bot service must NEVER run
+# alongside the UI launcher — both would join the same Daily room and the
+# standalone bot would hold the Gladia STT session, causing 429 errors on
+# every user session.  We stop + disable it unconditionally on every deploy.
 ssh "${HOST}" "systemctl stop '${SERVICE_NAME}' || true"
+ssh "${HOST}" "systemctl disable '${SERVICE_NAME}' || true"
+# Kill UI service and any stale process on port 8080, then restart.
 ssh "${HOST}" "systemctl stop '${UI_SERVICE_NAME}' || true; fuser -k 8080/tcp 2>/dev/null || true"
 echo "    Waiting 30s for Telegram long-poll to expire..."
 sleep 30
-ssh "${HOST}" "systemctl start '${SERVICE_NAME}'"
 ssh "${HOST}" "systemctl start '${UI_SERVICE_NAME}'"
 
 echo "==> Health checks"
-ssh "${HOST}" "systemctl --no-pager --full status '${SERVICE_NAME}' | head -n 25"
 ssh "${HOST}" "systemctl --no-pager --full status '${UI_SERVICE_NAME}' | head -n 25"
-ssh "${HOST}" "journalctl -u '${SERVICE_NAME}' -n 40 --no-pager | egrep '\\[rag\\]|error|FATAL|Fatal' || true"
+ssh "${HOST}" "journalctl -u '${UI_SERVICE_NAME}' -n 20 --no-pager | egrep 'error|FATAL|Fatal' || true"
+
+echo "==> Conflict guard — verifying standalone bot is NOT running"
+BOT_ACTIVE=$(ssh "${HOST}" "systemctl is-active '${SERVICE_NAME}' 2>/dev/null || true")
+if [[ "$BOT_ACTIVE" == "active" ]]; then
+  echo "ERROR: ${SERVICE_NAME} is still active! This will cause a dual-bot conflict." >&2
+  echo "       Run: ssh ${HOST} systemctl stop ${SERVICE_NAME} && systemctl disable ${SERVICE_NAME}" >&2
+  exit 1
+fi
+echo "    OK — ${SERVICE_NAME} is not running (status: ${BOT_ACTIVE})"
 
 echo "==> Deploy complete"
 echo "Open: https://143.198.35.136.sslip.io/demo.html"
