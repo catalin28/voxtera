@@ -184,6 +184,7 @@
         <option value="openai" selected>OpenAI tts-1</option>
         <option value="google">Google Chirp 3 HD</option>
         <option value="cartesia">Cartesia Sonic-3 (90ms TTFA)</option>
+        <option value="elevenlabs">ElevenLabs Flash v2.5 (75ms TTFA)</option>
       </select>
     </div>
     <div class="model-picker">
@@ -697,6 +698,24 @@ document.getElementById('btn-start').onclick = async function() {
       log('participant-joined: user_name=' + (p && p.user_name) +
           ' userName=' + (p && p.userName) +
           ' local=' + (p && p.local));
+      // When the bot joins, (re-)send all config messages + voxtera-ready.
+      // This is the authoritative trigger for the greeting — the .join().then()
+      // send below is a best-effort early attempt but often lost because the
+      // bot pipeline isn't ready yet when the browser first joins.
+      if (isBotParticipant(p)) {
+        var lang = document.getElementById('lang-select').value;
+        var llmModel = document.getElementById('llm-select').value;
+        var ttsProvider = document.getElementById('tts-provider-select').value;
+        var ttsVoice = document.getElementById('voice-select').value;
+        var sttProvider = document.getElementById('stt-select').value;
+        log('[participant-joined] bot arrived — sending config + voxtera-ready');
+        callObject.sendAppMessage({ type: 'voxtera-stt', provider: sttProvider }, '*');
+        callObject.sendAppMessage({ type: 'voxtera-language', language: lang }, '*');
+        callObject.sendAppMessage({ type: 'voxtera-model', model: llmModel }, '*');
+        callObject.sendAppMessage({ type: 'voxtera-tts-provider', provider: ttsProvider }, '*');
+        callObject.sendAppMessage({ type: 'voxtera-voice', voice: ttsVoice }, '*');
+        callObject.sendAppMessage({ type: 'voxtera-ready' }, '*');
+      }
     });
 
     callObject.on('participant-left', function(evt) {
@@ -948,8 +967,13 @@ function voicesForLangProvider(lang, provider) {
   var ttsCfg = entry.tts[provider];
   if (!ttsCfg || !ttsCfg.supported) return [];
 
-  if (provider === 'openai') return LANG_CONFIG.voices.openai;
-  if (provider === 'cartesia') return LANG_CONFIG.voices.cartesia;
+  // `|| []` guards against a stale server-side language config that
+  // predates a provider's voice catalog (e.g. an old serve.py process
+  // serving a cached LANG_CONFIG without voices.elevenlabs) — without it,
+  // updateVoiceOptions() would crash on `undefined.forEach`.
+  if (provider === 'openai') return LANG_CONFIG.voices.openai || [];
+  if (provider === 'cartesia') return LANG_CONFIG.voices.cartesia || [];
+  if (provider === 'elevenlabs') return LANG_CONFIG.voices.elevenlabs || [];
   if (provider === 'google') {
     var locale = ttsCfg.locale;
     return LANG_CONFIG.voices.google_chirp3_characters.map(function(c) {
@@ -1021,7 +1045,8 @@ function updateCompatibility() {
   var ttsProviderName = {
     openai: 'OpenAI tts-1',
     google: 'Google Chirp 3 HD',
-    cartesia: 'Cartesia Sonic-3'
+    cartesia: 'Cartesia Sonic-3',
+    elevenlabs: 'ElevenLabs Flash v2.5'
   }[ttsProvider] || ttsProvider;
 
   // STT check first.

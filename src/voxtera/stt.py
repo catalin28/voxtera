@@ -408,18 +408,32 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
         hygiene on paid plans.
         """
 
+        _pending_connect: bool = False
+
         async def start(self, frame: StartFrame) -> None:
             # Skip GladiaSTTService.start (which immediately calls
             # ``self._connect()``); go straight to the websocket-service
             # parent so the StartFrame is still accepted and per-frame
             # initialisation completes.
             await WebsocketSTTService.start(self, frame)
+            # If lazy_connect was requested before start() (e.g. STTRouter
+            # activated this branch during __init__), sample_rate is now set
+            # so we can safely connect.
+            if self._pending_connect:
+                self._pending_connect = False
+                await self._connect()
 
         async def lazy_connect(self) -> None:
             """Open the Gladia WebSocket session. Called by STTRouter when
             this branch transitions inactive→active. Idempotent.
             """
             if self._session_url:
+                return
+            # If start() hasn't been called yet, sample_rate is 0 and Gladia
+            # will reject the session init. Defer until start() runs.
+            if self.sample_rate == 0:
+                logger.info("[stt] gladia: lazy_connect deferred (awaiting StartFrame)")
+                self._pending_connect = True
                 return
             logger.info("[stt] gladia: lazy_connect — opening session")
             await self._connect()
@@ -440,6 +454,59 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
             # session Gladia has already torn down.
             self._session_url = None
             self._session_id = None
+
+        async def reconfigure_languages(
+            self,
+            languages: list[str],
+            *,
+            code_switching: bool = False,
+        ) -> None:
+            """Update Gladia's ``language_config`` and rebuild the session.
+
+            Pipecat's :class:`GladiaSTTService._update_settings` stores a
+            settings delta but does NOT reapply it to the active
+            WebSocket — see the upstream TODO in
+            ``pipecat/services/gladia/stt.py``. Without an explicit
+            reconnect, the live session keeps transcribing against
+            whatever ``language_config`` was used at session-open time, so
+            a runtime ``voxtera-language`` change to ``"ro"`` would have
+            no effect and Gladia would keep producing garbled English
+            transcripts of Romanian audio.
+
+            This helper closes the current Gladia session (if any),
+            mutates ``self._settings.language_config`` in place, and
+            reopens — the next ``/v2/live`` POST picks up the new
+            languages. Honors the same ``code_switching`` guard as the
+            boot-time builder (silently downgrades to ``False`` when fewer
+            than 2 languages are given).
+            """
+            was_connected = bool(self._session_url)
+            if was_connected:
+                await self.lazy_disconnect()
+
+            if languages:
+                if code_switching and len(languages) < 2:
+                    logger.warning(
+                        "[stt] gladia.reconfigure_languages: code_switching=True "
+                        "needs >=2 languages (got {!r}); disabling",
+                        languages,
+                    )
+                    code_switching = False
+                self._settings.language_config = LanguageConfig(
+                    languages=languages,
+                    code_switching=code_switching,
+                )
+            else:
+                self._settings.language_config = None
+
+            logger.info(
+                "[stt] gladia.reconfigure_languages: languages={!r} code_switching={}",
+                languages,
+                code_switching,
+            )
+
+            if was_connected:
+                await self.lazy_connect()
 
     languages = list(settings.gladia_languages)
     code_switching = settings.gladia_code_switching
@@ -475,6 +542,7 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     stt = _LazyConnectGladiaSTTService(
         api_key=settings.gladia_api_key,
         region=settings.gladia_region,
+        sample_rate=16000,
         settings=GladiaSTTService.Settings(**settings_kwargs),
     )
 

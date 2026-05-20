@@ -79,6 +79,32 @@
         "id": "f786b574-daa5-4673-aa0c-cbe3e8534c02",
         "name": "Katie (American, stable, multilingual)"
       }
+    ],
+    "elevenlabs": [
+      {
+        "id": "21m00Tcm4TlvDq8ikWAM",
+        "name": "Rachel (American, calm, multilingual)"
+      },
+      {
+        "id": "pNInz6obpgDQGcFmaJgB",
+        "name": "Adam (American, deep male, multilingual)"
+      },
+      {
+        "id": "goT3UYdM9bhm0n2lmKQx",
+        "name": "Edward (British, dark, seductive)"
+      },
+      {
+        "id": "hpp4J3VqNfWAUOO0d1Us",
+        "name": "Bella"
+      },
+      {
+        "id": "cgSgspJ2msm6clMCkdW9",
+        "name": "Jessica"
+      },
+      {
+        "id": "iP95p4xoKVk53GoZ742B",
+        "name": "Chris"
+      }
     ]
   },
   "languages": {
@@ -103,6 +129,9 @@
           "pipecat_enum": "EN"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -129,6 +158,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -153,6 +185,9 @@
           "pipecat_enum": "ES"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -179,6 +214,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -203,6 +241,9 @@
           "pipecat_enum": "IT"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -229,6 +270,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -253,6 +297,9 @@
           "pipecat_enum": "RO"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -279,6 +326,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -303,6 +353,9 @@
           "pipecat_enum": "NL"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -329,6 +382,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -353,6 +409,9 @@
           "pipecat_enum": "HI"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -379,6 +438,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -403,6 +465,9 @@
           "pipecat_enum": "AR"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -429,6 +494,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -453,6 +521,9 @@
           "pipecat_enum": "KO"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -479,6 +550,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -504,6 +578,9 @@
         },
         "openai": {
           "supported": false
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -528,6 +605,9 @@
           "pipecat_enum": "CS"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -554,6 +634,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -578,6 +661,9 @@
           "pipecat_enum": "EL"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -604,6 +690,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -628,6 +717,9 @@
           "pipecat_enum": "HE"
         },
         "openai": {
+          "supported": false
+        },
+        "elevenlabs": {
           "supported": false
         }
       }
@@ -654,6 +746,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -678,6 +773,9 @@
           "pipecat_enum": "ID"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -704,6 +802,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -728,6 +829,9 @@
           "pipecat_enum": "SV"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -754,6 +858,9 @@
         },
         "openai": {
           "supported": false
+        },
+        "elevenlabs": {
+          "supported": false
         }
       }
     },
@@ -778,6 +885,9 @@
           "pipecat_enum": "UK"
         },
         "openai": {
+          "supported": true
+        },
+        "elevenlabs": {
           "supported": true
         }
       }
@@ -804,6 +914,9 @@
         },
         "openai": {
           "supported": true
+        },
+        "elevenlabs": {
+          "supported": true
         }
       }
     },
@@ -828,6 +941,9 @@
           "pipecat_enum": null
         },
         "openai": {
+          "supported": false
+        },
+        "elevenlabs": {
           "supported": false
         }
       }

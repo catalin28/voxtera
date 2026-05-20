@@ -1,13 +1,22 @@
 """RAGContextInjector — Pipecat FrameProcessor that enriches LLM context with RAG results.
 
 Intercepts every ``LLMContextFrame`` flowing downstream, extracts the latest
-user message, queries the retriever, and (if results are found) prepends a
-system message with the relevant hotel excerpts.  The LLM therefore "sees"
-the excerpts as contextual information it can draw on.
+user message, queries the retriever, and (if results are found) appends the
+relevant hotel excerpts to that user message.  The LLM therefore "sees" the
+excerpts as contextual information attached to the question they answer.
+
+Why append to the user message rather than inject a separate system message:
+a separate system message that is rebuilt every turn changes the cached
+prompt prefix on every turn, which makes Anthropic prompt caching miss 100%
+of the time (0 cache reads, full re-prefill each turn). By baking each
+turn's excerpts into that turn's user message and never rewriting earlier
+turns, the conversation history stays byte-stable — so the cached prefix
+holds and caching actually hits.
 
 Safety guarantees:
 * On retrieval timeout: log WARNING, push context unmodified.
 * On any exception: log ERROR, push context unmodified.
+* Idempotent: never injects twice into the same user message.
 * Never raises — the voice pipeline must keep flowing.
 """
 
@@ -59,21 +68,39 @@ class RAGContextInjector(FrameProcessor):
     # ------------------------------------------------------------------
 
     async def _inject_context(self, frame: LLMContextFrame) -> None:
-        """Retrieve chunks and prepend them as a system message."""
+        """Retrieve chunks and append them to the current user message.
+
+        The excerpts are appended to the *latest* user message, not inserted
+        as a separate system message. Earlier turns are left byte-for-byte
+        untouched, so the cached prompt prefix stays stable and Anthropic
+        prompt caching can hit.
+        """
         context = frame.context
         messages = context.messages
 
-        # Find the latest user message.
-        user_text = ""
-        for msg in reversed(messages):
+        # Find the latest user message (index + content).
+        user_idx: int | None = None
+        for i in range(len(messages) - 1, -1, -1):
+            msg = messages[i]
             if isinstance(msg, dict) and msg.get("role") == "user":
-                content = msg.get("content", "")
-                if isinstance(content, str):
-                    user_text = content
+                user_idx = i
                 break
 
-        if not user_text:
+        if user_idx is None:
             return
+
+        user_msg = messages[user_idx]
+        content = user_msg.get("content", "")
+        if not isinstance(content, str) or not content.strip():
+            return
+
+        # Idempotency guard: if this message already carries excerpts (e.g.
+        # the context frame is reprocessed), do not inject again. The
+        # preamble string is the marker.
+        if _RAG_PREAMBLE in content:
+            return
+
+        user_text = content
 
         t0 = time.monotonic()
         try:
@@ -110,28 +137,16 @@ class RAGContextInjector(FrameProcessor):
         if not results:
             return
 
-        # Build a single system message with all retrieved excerpts.
+        # Build the excerpt block and append it to the current user message.
+        # ONLY this message is rewritten — every earlier turn stays immutable
+        # so the cached prefix holds turn-to-turn (see module docstring).
         parts = [_RAG_PREAMBLE, ""]
         for chunk in results:
             parts.append(chunk.text)
             parts.append("")
+        rag_block = "\n".join(parts).strip()
 
-        rag_message: dict[str, str] = {"role": "system", "content": "\n".join(parts).strip()}
-
-        # Remove any previously injected RAG message (from a prior turn) so we
-        # don't accumulate stale context across the conversation.
-        messages[:] = [
-            m
-            for m in messages
-            if not (isinstance(m, dict) and _RAG_PREAMBLE in str(m.get("content", "")))
-        ]
-
-        # Insert right after the first system message (the main system prompt)
-        # so the LLM sees: system prompt → RAG excerpts → conversation history.
-        insert_idx = 1
-        for i, msg in enumerate(messages):
-            if isinstance(msg, dict) and msg.get("role") == "system":
-                insert_idx = i + 1
-                break
-
-        messages.insert(insert_idx, rag_message)  # type: ignore[arg-type]
+        messages[user_idx] = {
+            **user_msg,
+            "content": f"{content}\n\n{rag_block}",
+        }

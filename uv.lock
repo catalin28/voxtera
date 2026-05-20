@@ -2179,6 +2179,9 @@ deepgram = [
     { name = "deepgram-sdk" },
     { name = "websockets" },
 ]
+elevenlabs = [
+    { name = "websockets" },
+]
 gladia = [
     { name = "websockets" },
 ]
@@ -3310,7 +3313,7 @@ dependencies = [
     { name = "loguru" },
     { name = "openai" },
     { name = "pillow" },
-    { name = "pipecat-ai", extra = ["anthropic", "deepgram", "gladia", "google", "local", "openai"] },
+    { name = "pipecat-ai", extra = ["anthropic", "deepgram", "elevenlabs", "gladia", "google", "local", "openai"] },
     { name = "pipecat-ai", extra = ["daily"], marker = "sys_platform != 'win32'" },
     { name = "pymupdf" },
     { name = "pyrnnoise" },
@@ -3335,7 +3338,7 @@ requires-dist = [
     { name = "loguru", specifier = ">=0.7.2" },
     { name = "openai", specifier = ">=1.0" },
     { name = "pillow", specifier = ">=10.0" },
-    { name = "pipecat-ai", extras = ["anthropic", "deepgram", "gladia", "google", "local", "openai", "silero"], specifier = ">=0.0.85" },
+    { name = "pipecat-ai", extras = ["anthropic", "deepgram", "elevenlabs", "gladia", "google", "local", "openai", "silero"], specifier = ">=0.0.85" },
     { name = "pipecat-ai", extras = ["daily"], marker = "sys_platform != 'win32'", specifier = ">=0.0.85" },
     { name = "pymupdf", specifier = ">=1.24" },
     { name = "pyrnnoise", specifier = ">=0.4.3" },

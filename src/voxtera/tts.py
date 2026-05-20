@@ -16,6 +16,11 @@ from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.services.openai.tts import OpenAITTSService
 
 from voxtera.config import Settings
+from voxtera.lang_config import (
+    chirp3_voice_characters,
+    google_locale_for,
+    language_codes,
+)
 
 # tts-1 is faster; tts-1-hd is higher quality. Used by `_build_openai_tts`
 # and surfaced in startup logs.
@@ -40,39 +45,49 @@ TTS_MODEL_CARTESIA = "sonic-3"
 # voice combo overrides this at runtime via voxtera-voice messages.
 TTS_CARTESIA_DEFAULT_VOICE = "f786b574-daa5-4673-aa0c-cbe3e8534c02"
 
+# ElevenLabs streaming TTS — ~75 ms time-to-first-audio with Flash v2.5,
+# 32 languages. Model is set from settings.elevenlabs_model (default
+# "eleven_flash_v2_5"); the constant below is the display label surfaced
+# in the dashboard's session_providers panel via voxtera.observability.
+TTS_MODEL_ELEVENLABS = "eleven_flash_v2_5"
+# Default ElevenLabs voice: "Rachel" — ElevenLabs' canonical multilingual
+# voice, widely used in voice-agent demos. Like Cartesia, ElevenLabs voices
+# are inherently multilingual: a single voice ID produces audio in any of
+# Flash v2.5's 32 supported languages when ``language`` is set per-utterance.
+# Override at runtime via the HTML voice combo (voxtera-voice messages).
+TTS_ELEVENLABS_DEFAULT_VOICE = "21m00Tcm4TlvDq8ikWAM"
+
 # OpenAI tts-1 voices (provider-namespaced).
 _VALID_OPENAI_TTS_VOICES: frozenset[str] = frozenset(
     {"alloy", "ash", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"}
 )
-# Google Chirp 3 HD voice IDs we expose in the UI. The full catalogue has
-# many more; this is a curated multilingual subset that all support the same
-# locales. Adding more is just an entry here.
+
+
+# Google Chirp 3 HD voice IDs we expose in the UI. The set is derived from
+# config/languages.json (single source of truth shared with the demo
+# frontend): for every language that flags ``tts.google.supported = true``,
+# we generate ``{locale}-Chirp3-HD-{character}`` for each character in
+# ``voices.google_chirp3_characters``. Adding a new language/voice happens
+# in one JSON file, not here.
+#
 # NOTE: AutoTTSLanguageSwitcher (controllers.py) dynamically reconstructs
 # voice IDs at runtime when the guest's language changes (e.g.
 # en-US-Chirp3-HD-Charon → tr-TR-Chirp3-HD-Charon on Turkish detection),
 # so this set is only consulted on manual selection via the UI dropdown
 # or the DEFAULT_TTS_VOICE env var, NOT on automatic language switching.
-_VALID_GOOGLE_TTS_VOICES: frozenset[str] = frozenset(
-    {
-        # English (en-US)
-        "en-US-Chirp3-HD-Charon",
-        "en-US-Chirp3-HD-Aoede",
-        "en-US-Chirp3-HD-Kore",
-        "en-US-Chirp3-HD-Leda",
-        "en-US-Chirp3-HD-Orus",
-        "en-US-Chirp3-HD-Puck",
-        "en-US-Chirp3-HD-Zephyr",
-        # Turkish (tr-TR) — for Istanbul partner / Turkish-speaking guests.
-        # Same Chirp 3 HD character set; locale prefix changes only.
-        "tr-TR-Chirp3-HD-Charon",
-        "tr-TR-Chirp3-HD-Aoede",
-        "tr-TR-Chirp3-HD-Kore",
-        "tr-TR-Chirp3-HD-Leda",
-        "tr-TR-Chirp3-HD-Orus",
-        "tr-TR-Chirp3-HD-Puck",
-        "tr-TR-Chirp3-HD-Zephyr",
-    }
-)
+def _build_valid_google_tts_voices() -> frozenset[str]:
+    characters = [c["id"] for c in chirp3_voice_characters()]
+    voices: set[str] = set()
+    for code in language_codes():
+        locale = google_locale_for(code)
+        if locale is None:
+            continue
+        for character in characters:
+            voices.add(f"{locale}-Chirp3-HD-{character}")
+    return frozenset(voices)
+
+
+_VALID_GOOGLE_TTS_VOICES: frozenset[str] = _build_valid_google_tts_voices()
 # Cartesia Sonic-3 voice UUIDs. Starter set — extend as we curate from
 # https://play.cartesia.ai/voices. Adding a voice here is the only place
 # you need to register it on the Python side; the HTML demo.html voice
@@ -85,6 +100,27 @@ _VALID_CARTESIA_TTS_VOICES: frozenset[str] = frozenset(
     {
         # Katie — American English, stable (recommended for voice agents).
         "f786b574-daa5-4673-aa0c-cbe3e8534c02",
+    }
+)
+# ElevenLabs voice IDs. Like Cartesia, ElevenLabs voices are multilingual:
+# a single voice ID handles all of Flash v2.5's 32 supported languages
+# when the per-utterance ``language`` is set. Starter set — extend as we
+# curate from https://elevenlabs.io/app/voice-library. The HTML demo.html
+# voice combo independently lists what's shown in the UI.
+_VALID_ELEVENLABS_TTS_VOICES: frozenset[str] = frozenset(
+    {
+        # Rachel — calm, warm American English; ElevenLabs' canonical default.
+        "21m00Tcm4TlvDq8ikWAM",
+        # Adam — deep, mature American English; useful as a male counterpart.
+        "pNInz6obpgDQGcFmaJgB",
+        # Edward — British, dark, seductive, low.
+        "goT3UYdM9bhm0n2lmKQx",
+        # Bella — curated multilingual voice.
+        "hpp4J3VqNfWAUOO0d1Us",
+        # Jessica — curated multilingual voice.
+        "cgSgspJ2msm6clMCkdW9",
+        # Chris — curated multilingual voice.
+        "iP95p4xoKVk53GoZ742B",
     }
 )
 
@@ -237,10 +273,73 @@ def _build_cartesia_tts(settings: Settings) -> FrameProcessor | None:
     return tts
 
 
+def _build_elevenlabs_tts(settings: Settings) -> FrameProcessor | None:
+    """Build the ElevenLabs streaming TTS if its credentials are present.
+
+    ElevenLabs Flash v2.5 (the default) provides ~75 ms time-to-first-audio
+    across 32 languages — the lowest-latency premium TTS available. Like
+    Cartesia, voices are inherently multilingual: a single voice ID produces
+    audio in any supported language when ``language`` is set per-utterance.
+
+    Uses Pipecat's WebSocket-streaming variant (``ElevenLabsTTSService``),
+    not the HTTP variant — streaming is required to hit the advertised
+    sub-100ms TTFA. Sample rate is pinned to 24 kHz to match the rest of
+    the pipeline (same reason as OpenAI/Cartesia — avoid the chipmunk-speed
+    resampling bug we hit on 2026-05-05).
+    """
+    if not settings.elevenlabs_api_key:
+        return None
+    try:
+        from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+        from pipecat.services.tts_service import TextAggregationMode
+    except ImportError:
+        logger.warning(
+            "[tts] elevenlabs TTS extras not installed — install with: "
+            "uv add 'pipecat-ai[elevenlabs]'"
+        )
+        return None
+
+    # Voice selection priority:
+    # 1. DEFAULT_TTS_VOICE env, if it's a known ElevenLabs voice ID
+    # 2. ELEVENLABS_VOICE_ID env (the dedicated knob)
+    # 3. Hardcoded fallback (Rachel)
+    # The HTML voice combo overrides at runtime via voxtera-voice messages
+    # regardless of which one is used at boot.
+    voice = settings.default_tts_voice
+    if voice not in _VALID_ELEVENLABS_TTS_VOICES:
+        voice = (
+            settings.elevenlabs_voice_id
+            if settings.elevenlabs_voice_id in _VALID_ELEVENLABS_TTS_VOICES
+            else TTS_ELEVENLABS_DEFAULT_VOICE
+        )
+
+    tts = ElevenLabsTTSService(
+        api_key=settings.elevenlabs_api_key,
+        voice_id=voice,
+        model=settings.elevenlabs_model,
+        # Pin sample rate to 24 kHz to match the rest of the pipeline.
+        # ElevenLabs supports pcm_8000..pcm_48000; 24 kHz keeps parity with
+        # OpenAI/Cartesia and avoids downstream resampling mismatches.
+        sample_rate=24000,
+        # text_aggregation_mode=TOKEN streams LLM tokens to ElevenLabs as
+        # they arrive instead of waiting for sentence-ending punctuation.
+        # Saves ~200-300 ms of perceived latency per turn — same trick we
+        # use in the Google and Cartesia builders.
+        text_aggregation_mode=TextAggregationMode.TOKEN,
+    )
+    logger.info(
+        "[tts] elevenlabs available (model={}, voice={}, mode=token-stream)",
+        settings.elevenlabs_model,
+        voice,
+    )
+    return tts
+
+
 _TTS_BUILDERS: dict[str, Callable[[Settings], FrameProcessor | None]] = {
     "openai": _build_openai_tts,
     "google": _build_google_tts,
     "cartesia": _build_cartesia_tts,
+    "elevenlabs": _build_elevenlabs_tts,
 }
 
 
@@ -249,6 +348,8 @@ def _voices_for_tts_provider(provider: str) -> frozenset[str]:
         return _VALID_GOOGLE_TTS_VOICES
     if provider == "cartesia":
         return _VALID_CARTESIA_TTS_VOICES
+    if provider == "elevenlabs":
+        return _VALID_ELEVENLABS_TTS_VOICES
     return _VALID_OPENAI_TTS_VOICES
 
 
@@ -257,6 +358,8 @@ def _default_voice_for_tts_provider(provider: str) -> str:
         return TTS_GOOGLE_DEFAULT_VOICE
     if provider == "cartesia":
         return TTS_CARTESIA_DEFAULT_VOICE
+    if provider == "elevenlabs":
+        return TTS_ELEVENLABS_DEFAULT_VOICE
     return "nova"
 
 
@@ -264,5 +367,8 @@ def _default_voice_for_tts_provider(provider: str) -> str:
 # voice IDs (e.g. CLI argument validation that doesn't yet know which
 # provider will be active).
 _VALID_TTS_VOICES: frozenset[str] = (
-    _VALID_OPENAI_TTS_VOICES | _VALID_GOOGLE_TTS_VOICES | _VALID_CARTESIA_TTS_VOICES
+    _VALID_OPENAI_TTS_VOICES
+    | _VALID_GOOGLE_TTS_VOICES
+    | _VALID_CARTESIA_TTS_VOICES
+    | _VALID_ELEVENLABS_TTS_VOICES
 )

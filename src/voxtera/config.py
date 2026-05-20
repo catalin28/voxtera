@@ -40,6 +40,12 @@ class Settings:
     # RMS per chunk. 0.02 is a generous floor that still rejects pure silence.
     vad_min_volume: float = 0.02
     vad_confidence: float = 0.5
+    # SmartTurn ONNX end-of-turn model CPU count. Pipecat's default is 1,
+    # which dominates the STT→LLM gap (~700-900ms on a single core). We
+    # auto-detect via os.cpu_count() in load_settings(). Override via
+    # SMART_TURN_CPU_COUNT. Going above physical cores rarely helps and can
+    # hurt due to context-switch overhead.
+    smart_turn_cpu_count: int = 2
     # `auto` -> detect from OS locale; explicit code (e.g. `fr`) overrides.
     greeting_language: str = "auto"
     # voice = mic only (current default), text = keyboard only,
@@ -59,13 +65,20 @@ class Settings:
     # RAG: inject hotel knowledge into LLM context before each turn.
     rag_enabled: bool = False
     hotel_id: str = "demo"
+    # Number of chunks RAG injects into the LLM context. Each chunk costs
+    # ~100-500 prefill tokens. Lowering from 5 to 3 typically saves 50-100ms
+    # on llm_ttft with negligible accuracy loss for concentrated hotel KBs.
+    rag_top_k: int = 3
+    # Minimum cosine similarity for a chunk to be returned. 0.25 is permissive;
+    # raise toward 0.4 for stricter filtering.
+    rag_min_score: float = 0.25
     # STT provider selection: whisper | deepgram | google
     stt_provider: str = "whisper"
-    # TTS provider selection: openai | google
-    # When transport_mode=daily and Google credentials are configured, both
-    # providers are built and the active one is selected at runtime via the
-    # browser UI (voxtera-tts-provider message). This field only sets the
-    # initial selection.
+    # TTS provider selection: openai | google | cartesia | elevenlabs
+    # When transport_mode=daily and the relevant credentials are configured,
+    # all providers are built and the active one is selected at runtime via
+    # the browser UI (voxtera-tts-provider message). This field only sets
+    # the initial selection.
     tts_provider: str = "openai"
     # Set to False to skip building the Google Chirp 3 HD TTS branch entirely
     # (e.g. when the Cloud Text-to-Speech API is not yet enabled in your GCP
@@ -108,6 +121,19 @@ class Settings:
     # Cartesia TTS model. "sonic-3" is the latest (90ms TTFA, 42 languages).
     # Pin to a snapshot like "sonic-3-2026-01-12" for production stability.
     cartesia_model: str = "sonic-3"
+    # ElevenLabs API key (required when tts_provider=elevenlabs). Flash v2.5
+    # is the real-time-grade model with ~75ms TTFA across 32 languages.
+    elevenlabs_api_key: str | None = field(default=None, repr=False)
+    # ElevenLabs TTS model. "eleven_flash_v2_5" = 75ms TTFA, 32 languages
+    # (cheapest at $0.05/1K chars). "eleven_turbo_v2_5" = mid-tier quality.
+    # Note: only the *_v2_5 models support per-utterance language codes; v3
+    # and multilingual_v2 detect language from text only.
+    elevenlabs_model: str = "eleven_flash_v2_5"
+    # ElevenLabs voice ID to use at boot. Single multilingual voice IDs are
+    # the norm (one voice handles all 32 languages). Browse the library at
+    # https://elevenlabs.io/app/voice-library — pick a voice and copy its ID.
+    # Default = "Rachel" (21m00Tcm4TlvDq8ikWAM), ElevenLabs' canonical voice.
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
     # Daily WebRTC config for browser-based transport.
     daily_api_key: str | None = field(default=None, repr=False)
     daily_domain: str | None = None
@@ -170,6 +196,11 @@ def load_settings() -> Settings:
         vad_start_secs=float(os.environ.get("VAD_START_SECS", "0.2")),
         vad_min_volume=float(os.environ.get("VAD_MIN_VOLUME", "0.02")),
         vad_confidence=float(os.environ.get("VAD_CONFIDENCE", "0.5")),
+        # Auto-detect cores; clamp to [1, 4]. Above 4 the ONNX model gets
+        # no faster but steals time from the audio loop. Env var overrides.
+        smart_turn_cpu_count=int(
+            os.environ.get("SMART_TURN_CPU_COUNT") or max(1, min(4, (os.cpu_count() or 2) - 1))
+        ),
         greeting_language=os.environ.get("GREETING_LANGUAGE", "auto"),
         input_mode=os.environ.get("INPUT_MODE", "hybrid").lower(),
         transport_mode=os.environ.get("TRANSPORT_MODE", "local").lower(),
@@ -179,6 +210,8 @@ def load_settings() -> Settings:
         pipeline_idle_timeout_secs=idle_timeout_secs,
         rag_enabled=os.environ.get("RAG_ENABLED", "false").lower() in ("1", "true", "yes"),
         hotel_id=os.environ.get("HOTEL_ID", "demo"),
+        rag_top_k=int(os.environ.get("RAG_TOP_K", "3")),
+        rag_min_score=float(os.environ.get("RAG_MIN_SCORE", "0.25")),
         stt_provider=os.environ.get("STT_PROVIDER", "whisper").lower(),
         tts_provider=os.environ.get("TTS_PROVIDER", "openai").lower(),
         google_tts_enabled=os.environ.get("GOOGLE_TTS_ENABLED", "true").lower()
@@ -202,6 +235,9 @@ def load_settings() -> Settings:
         google_application_credentials=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
         cartesia_api_key=os.environ.get("CARTESIA_API_KEY"),
         cartesia_model=os.environ.get("CARTESIA_MODEL", "sonic-3"),
+        elevenlabs_api_key=os.environ.get("ELEVENLABS_API_KEY"),
+        elevenlabs_model=os.environ.get("ELEVENLABS_MODEL", "eleven_flash_v2_5"),
+        elevenlabs_voice_id=os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM"),
         daily_api_key=os.environ.get("DAILY_API_KEY"),
         daily_domain=os.environ.get("DAILY_DOMAIN"),
         daily_room_name=os.environ.get("DAILY_ROOM_NAME"),

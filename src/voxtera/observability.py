@@ -27,12 +27,14 @@ from pipecat.frames.frames import (
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
     LLMTextFrame,
+    MetricsFrame,
     TranscriptionFrame,
     TTSStartedFrame,
     TTSStoppedFrame,
     VADUserStartedSpeakingFrame,
     VADUserStoppedSpeakingFrame,
 )
+from pipecat.metrics.metrics import LLMUsageMetricsData
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 try:
@@ -44,7 +46,12 @@ from voxtera.conversation_logger import log_bot_reply, log_user_query
 from voxtera.stt import STT_MODEL_DEEPGRAM, STT_MODEL_GOOGLE, STT_MODEL_WHISPER
 from voxtera.trace import emit as _trace_emit
 from voxtera.trace import tracker as _trace_tracker
-from voxtera.tts import TTS_MODEL, TTS_MODEL_GOOGLE
+from voxtera.tts import (
+    TTS_MODEL,
+    TTS_MODEL_CARTESIA,
+    TTS_MODEL_ELEVENLABS,
+    TTS_MODEL_GOOGLE,
+)
 
 # Per-provider STT/TTS model identifiers, built from the canonical constants
 # in voxtera.stt and voxtera.tts so the trace stream's session_providers
@@ -63,6 +70,8 @@ _STT_MODEL_BY_PROVIDER = {
 _TTS_MODEL_BY_PROVIDER = {
     "openai": TTS_MODEL,
     "google": TTS_MODEL_GOOGLE,
+    "cartesia": TTS_MODEL_CARTESIA,
+    "elevenlabs": TTS_MODEL_ELEVENLABS,
 }
 
 
@@ -295,6 +304,52 @@ class PipelineTracer(FrameProcessor):
         # this processor and don't bubble back. ``TTSStageTimer`` (positioned
         # right after the TTS service in pipeline.py) handles them and stamps
         # the ``tts_started`` anchor on the shared TurnTracker.
+
+        elif isinstance(frame, MetricsFrame):
+            # Pipecat emits MetricsFrame after each LLM turn with token usage,
+            # including Anthropic's prompt-cache stats. Surface them so we can
+            # tell whether enable_prompt_caching=True is actually hitting.
+            #
+            # Classification per turn (cr = cache_read, cc = cache_creation):
+            #  - cr  > 0              →  HIT — the cache served part/all of the
+            #                           prefix. A working cache still writes the
+            #                           few new tokens of the latest turn, so
+            #                           cc > 0 alongside cr > 0 is the NORMAL hit
+            #                           case — do NOT require cc == 0.
+            #  - cr == 0 and cc > 0   →  MISS — prefix written, nothing reused.
+            #  - cr == 0 and cc == 0  →  OFF — caching disabled, or prefix below
+            #                           Anthropic's 1024-token minimum.
+            for item in frame.data or []:
+                if isinstance(item, LLMUsageMetricsData):
+                    usage = item.value
+                    cr = getattr(usage, "cache_read_input_tokens", 0) or 0
+                    cc = getattr(usage, "cache_creation_input_tokens", 0) or 0
+                    pt = getattr(usage, "prompt_tokens", 0) or 0
+                    ct = getattr(usage, "completion_tokens", 0) or 0
+                    state = "HIT" if cr > 0 else "MISS" if cc > 0 else "OFF"
+                    logger.info(
+                        "[{}] llm-cache {} | prompt={} cache_read={}"
+                        " cache_creation={} completion={}",
+                        self._label,
+                        state,
+                        pt,
+                        cr,
+                        cc,
+                        ct,
+                    )
+                    _trace_emit(
+                        "stage",
+                        source=self._label,
+                        turn_id=_trace_tracker().current(),
+                        data={
+                            "stage": "llm_cache",
+                            "state": state,
+                            "prompt_tokens": pt,
+                            "cache_read_input_tokens": cr,
+                            "cache_creation_input_tokens": cc,
+                            "completion_tokens": ct,
+                        },
+                    )
 
         elif isinstance(frame, BotStartedSpeakingFrame):
             now = time.monotonic()

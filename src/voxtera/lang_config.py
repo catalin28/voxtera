@@ -176,6 +176,11 @@ def cartesia_voices() -> list[dict[str, str]]:
     return list(LANG_CONFIG.get("voices", {}).get("cartesia", []))
 
 
+def elevenlabs_voices() -> list[dict[str, str]]:
+    """ElevenLabs voices (multilingual, locale-agnostic)."""
+    return list(LANG_CONFIG.get("voices", {}).get("elevenlabs", []))
+
+
 def google_voice_id(locale: str, character: str) -> str:
     """Construct a full Chirp 3 HD voice ID from locale + character.
 
@@ -197,6 +202,8 @@ def voices_for_language(code: str, provider: str) -> list[dict[str, str]]:
         return openai_voices()
     if provider == "cartesia":
         return cartesia_voices()
+    if provider == "elevenlabs":
+        return elevenlabs_voices()
     if provider == "google":
         locale = google_locale_for(code)
         if locale is None:

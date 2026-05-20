@@ -224,6 +224,11 @@ def _provider_supports_language(provider: str, lang: str) -> bool:
     if provider == "whisper":
         # Whisper's language coverage is broader than the demo dropdown.
         return lang in _VALID_STT_LANGUAGES
+    if provider == "gladia":
+        # Gladia Solaria-1 advertises 99+ languages with native
+        # auto-detection. Treat the same broad set as Whisper as
+        # supported — anything we expose in the UI dropdown.
+        return lang in _VALID_STT_LANGUAGES
     return False
 
 
@@ -308,6 +313,25 @@ class LanguageSwitcher(FrameProcessor):
                             from pipecat.services.deepgram.stt import DeepgramSTTService
 
                             delta = DeepgramSTTService.Settings(language=lang)
+                        elif active_provider == "gladia":
+                            # Pipecat's GladiaSTTService._update_settings stores
+                            # a settings delta but does NOT reapply it to the
+                            # live websocket (see upstream TODO in
+                            # pipecat/services/gladia/stt.py), so the standard
+                            # STTUpdateSettingsFrame path is a no-op. Instead,
+                            # call the lazy-connect subclass's helper to close
+                            # and reopen the session with new language_config.
+                            reconfigure = getattr(active_stt, "reconfigure_languages", None)
+                            if reconfigure is None:
+                                logger.warning(
+                                    "[lang-switch] gladia service missing "
+                                    "reconfigure_languages — language change "
+                                    "won't take effect on the live socket"
+                                )
+                            else:
+                                await reconfigure([lang], code_switching=False)
+                            await self.push_frame(frame, direction)
+                            return
                         else:
                             next_settings = {"language": lang}
                             await self.push_frame(
@@ -344,6 +368,12 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
       changed; the voice ID stays the same. Languages outside the
       42-language list are silently skipped (TTS keeps producing in the
       previously-set language) and logged at info level.
+    * **ElevenLabs Flash v2.5**: same pattern as Cartesia — voices are
+      multilingual, only the per-utterance ``language`` parameter is updated.
+      Languages outside Flash v2.5's 32-language list are silently skipped.
+      Note: this only works on the ``eleven_flash_v2_5`` and
+      ``eleven_turbo_v2_5`` models — older models (v2, multilingual_v2)
+      detect language from text and ignore the parameter.
     * **OpenAI tts-1**: not handled here. tts-1 detects language natively
       from the input text and doesn't accept an explicit language parameter.
 
@@ -400,6 +430,49 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
             "ml",
             "mr",
             "pa",
+        }
+    )
+
+    # ElevenLabs Flash v2.5 / Turbo v2.5 supported languages (ISO 639-1).
+    # Source: Pipecat's language_to_elevenlabs_language() LANGUAGE_MAP in
+    # pipecat.services.elevenlabs.tts (matches the 32 languages listed at
+    # https://elevenlabs.io/docs/overview/capabilities/text-to-speech).
+    # ElevenLabs voices are multilingual: the same voice ID produces audio
+    # in any of these languages when ``language`` is set per-utterance.
+    _ELEVENLABS_LANGUAGES: frozenset[str] = frozenset(
+        {
+            "ar",
+            "bg",
+            "cs",
+            "da",
+            "de",
+            "el",
+            "en",
+            "es",
+            "fi",
+            "fil",
+            "fr",
+            "hi",
+            "hr",
+            "hu",
+            "id",
+            "it",
+            "ja",
+            "ko",
+            "ms",
+            "nl",
+            "no",
+            "pl",
+            "pt",
+            "ro",
+            "ru",
+            "sk",
+            "sv",
+            "ta",
+            "tr",
+            "uk",
+            "vi",
+            "zh",
         }
     )
 
@@ -533,6 +606,32 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
         except ImportError:
             return None
 
+    @classmethod
+    def _elevenlabs_lang_for_bcp47(cls, bcp47: str):
+        """Convert a BCP-47 code to a Pipecat ``Language`` enum supported
+        by ElevenLabs Flash v2.5 / Turbo v2.5, or ``None`` if unsupported.
+
+        Same pattern as :meth:`_cartesia_lang_for_bcp47`. Lazy import so
+        the dep only loads when ElevenLabs is actually active.
+
+        Special case: Filipino is ``Language.FIL`` (not ``FI``, which is
+        Finnish), so we map "fil" before the generic upper-case lookup.
+        """
+        if not bcp47:
+            return None
+        code = bcp47.split("-")[0].lower()
+        if code not in cls._ELEVENLABS_LANGUAGES:
+            return None
+        try:
+            from pipecat.transcriptions.language import Language
+
+            # Filipino has a 3-letter ISO 639-2 code in the Language enum.
+            if code == "fil":
+                return getattr(Language, "FIL", None)
+            return getattr(Language, code.upper(), None)
+        except ImportError:
+            return None
+
     @staticmethod
     def _resolve_lang(lang_val: object) -> str | None:
         """Map any language representation to a BCP-47 code, or None if unknown."""
@@ -576,7 +675,7 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
         elif (
             isinstance(frame, TranscriptionFrame)
             and direction == FrameDirection.DOWNSTREAM
-            and self._tts_router.active_provider in ("google", "cartesia")
+            and self._tts_router.active_provider in ("google", "cartesia", "elevenlabs")
         ):
             bcp47 = self._resolve_lang(getattr(frame, "language", None))
             if bcp47 and bcp47 != self._current_lang:
@@ -606,7 +705,7 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
                             FrameDirection.DOWNSTREAM,
                         )
                         self._current_lang = bcp47
-                    else:  # cartesia
+                    elif active_provider == "cartesia":
                         cartesia_lang = self._cartesia_lang_for_bcp47(bcp47)
                         if cartesia_lang is None:
                             logger.info(
@@ -629,6 +728,34 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
                             await self.push_frame(
                                 TTSUpdateSettingsFrame(
                                     delta=CartesiaTTSService.Settings(language=cartesia_lang),
+                                    service=active_tts,
+                                ),
+                                FrameDirection.DOWNSTREAM,
+                            )
+                            self._current_lang = bcp47
+                    else:  # elevenlabs
+                        eleven_lang = self._elevenlabs_lang_for_bcp47(bcp47)
+                        if eleven_lang is None:
+                            logger.info(
+                                "[tts-lang] elevenlabs: {!r} not in Flash v2.5's "
+                                "32-language list, keeping current TTS language",
+                                bcp47,
+                            )
+                            # Update tracked lang anyway so we don't retry every
+                            # frame for the same unsupported language.
+                            self._current_lang = bcp47
+                        else:
+                            from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+
+                            logger.info(
+                                "[tts-lang] detected={!r} → ElevenLabs language={!r} "
+                                "(voice unchanged)",
+                                bcp47,
+                                getattr(eleven_lang, "value", eleven_lang),
+                            )
+                            await self.push_frame(
+                                TTSUpdateSettingsFrame(
+                                    delta=ElevenLabsTTSService.Settings(language=eleven_lang),
                                     service=active_tts,
                                 ),
                                 FrameDirection.DOWNSTREAM,
@@ -739,6 +866,14 @@ class ModelSwitcher(FrameProcessor):
                             from pipecat.services.cartesia.tts import CartesiaTTSService
 
                             delta = CartesiaTTSService.Settings(voice=voice)
+                        elif active_provider == "elevenlabs":
+                            from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+
+                            # ElevenLabs treats voice as a URL field, so changing
+                            # it forces a websocket reconnect under the hood (see
+                            # ElevenLabsTTSSettings.URL_FIELDS). That's handled
+                            # by pipecat — we just push the new value.
+                            delta = ElevenLabsTTSService.Settings(voice=voice)
                         else:
                             delta = OpenAITTSService.Settings(voice=voice)
                         await self.push_frame(

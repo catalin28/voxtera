@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 import time as _time
 
 from loguru import logger
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import (
@@ -56,11 +57,19 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
+)
 from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+from pipecat.turns.user_turn_strategies import (
+    UserTurnStrategies,
+    default_user_turn_start_strategies,
+)
 
 
 class PipelineProbe(FrameProcessor):
@@ -274,6 +283,50 @@ async def _warmup_tts_providers(settings: Settings) -> None:
         logger.debug("[tts-warmup] warmup skipped (non-fatal): {}", exc)
 
 
+async def _warmup_anthropic_llm(settings: Settings, model: str) -> None:
+    """Fire a minimal request to Anthropic at session start to:
+
+    1. Establish the TLS connection + warm the httpx connection pool.
+    2. Trigger Anthropic's per-model cold-start (first request after idle is
+       ~100-200 ms slower than steady-state).
+
+    Note: this does NOT pre-populate the prompt cache for our system prompt,
+    because the cache key includes the full prefix and the RAG/user messages
+    differ on real turns. The benefit is purely TLS/connection-pool warmup
+    plus model wake — measurable savings on the first real turn (~150-250 ms),
+    negligible after that.
+    """
+    if not settings.anthropic_api_key:
+        logger.debug("[llm-warmup] no Anthropic API key — skipping")
+        return
+
+    def _call() -> None:
+        body = json.dumps(
+            {
+                "model": model,
+                "max_tokens": 1,
+                "messages": [{"role": "user", "content": "."}],
+            }
+        ).encode()
+        req = Request(
+            "https://api.anthropic.com/v1/messages",
+            data=body,
+            headers={
+                "x-api-key": settings.anthropic_api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+        )
+        with urlopen(req, timeout=10) as resp:  # noqa: S310
+            resp.read()
+
+    try:
+        await asyncio.to_thread(_call)
+        logger.info("[llm-warmup] Anthropic {} pre-warmed", model)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[llm-warmup] warmup skipped (non-fatal): {}", exc)
+
+
 def _eject_stale_bots(settings: Settings) -> None:
     """Remove leftover participants from previous runs via the Daily REST API.
 
@@ -424,6 +477,7 @@ def build_pipeline(
             )
             await launcher_client.post_event("ready")
             asyncio.create_task(_warmup_tts_providers(settings))
+            asyncio.create_task(_warmup_anthropic_llm(settings, LLM_MODEL))
             if _rag_retriever is not None:
                 # Two-phase RAG warm-up:
                 # (1) chunk_cache: loads + normalises the embedding matrix
@@ -662,7 +716,8 @@ def build_pipeline(
         builder = _TTS_BUILDERS.get(settings.tts_provider)
         if builder is None:
             raise RuntimeError(
-                f"Unknown TTS_PROVIDER={settings.tts_provider!r}. " "Use one of: openai, google."
+                f"Unknown TTS_PROVIDER={settings.tts_provider!r}. "
+                f"Use one of: {', '.join(_TTS_BUILDERS)}."
             )
         built = builder(settings)
         if built is None:
@@ -684,7 +739,25 @@ def build_pipeline(
         system_text = SYSTEM_PROMPT
     messages: list[dict[str, str]] = [{"role": "system", "content": system_text}]
     context = LLMContext(messages)
-    context_aggregator = LLMContextAggregatorPair(context)
+
+    # Override Pipecat's default user-turn-stop strategy so we control the
+    # CPU thread count used by the SmartTurn ONNX model. Pipecat's default
+    # builds LocalSmartTurnAnalyzerV3() with cpu_count=1, which dominates
+    # the STT→LLM gap (700-900 ms inference on a single core). Trace data
+    # showed 1100-1250 ms for that bucket; bumping cpu_count to 2 on a
+    # 2-vCPU droplet roughly halves it.
+    _smart_turn = LocalSmartTurnAnalyzerV3(cpu_count=settings.smart_turn_cpu_count)
+    _user_turn_strategies = UserTurnStrategies(
+        start=default_user_turn_start_strategies(),
+        stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=_smart_turn)],
+    )
+    context_aggregator = LLMContextAggregatorPair(
+        context,
+        user_params=LLMUserAggregatorParams(user_turn_strategies=_user_turn_strategies),
+    )
+    logger.info(
+        "[turn-detector] LocalSmartTurnAnalyzerV3 cpu_count={}", settings.smart_turn_cpu_count
+    )
 
     if action_runtime is not None:
         # Register the create_ticket tool on the LLM service AND attach
@@ -838,9 +911,14 @@ def build_pipeline(
         db_path.parent.mkdir(parents=True, exist_ok=True)
         store = ChunksStore(db_path)
         store.init_schema()
-        retriever = Retriever(store)
+        retriever = Retriever(store, top_k=settings.rag_top_k, min_score=settings.rag_min_score)
         _rag_retriever = retriever  # expose to _on_joined closure for warmup
         rag_injector = RAGContextInjector(retriever, hotel_id=settings.hotel_id)
+        logger.info(
+            "[rag] retriever top_k={} min_score={}",
+            settings.rag_top_k,
+            settings.rag_min_score,
+        )
         processors.append(rag_injector)
         if _probing:
             processors.append(PipelineProbe("after_rag"))
@@ -941,6 +1019,11 @@ def build_pipeline(
             # Must match the Daily transport rate above — Pipecat resamples
             # the 24 kHz TTS frames up to 48 kHz before hitting the transport.
             audio_out_sample_rate=48000,
+            # Enable usage metrics so LLM services emit MetricsFrame with
+            # prompt-cache stats (cache_read/cache_creation_input_tokens).
+            # PipelineTracer logs these to verify caching effectiveness.
+            enable_metrics=True,
+            enable_usage_metrics=True,
         ),
         enable_rtvi=False,
         cancel_on_idle_timeout=settings.pipeline_idle_timeout_secs is not None,

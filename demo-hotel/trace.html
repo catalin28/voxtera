@@ -166,6 +166,9 @@
      Takes precedence over .active (so the eye lands on the offending
      stage even when audio is flowing through it). */
   .node.dropping { border-color: var(--amber); background: #3a2f1a; }
+  /* A stage with no probe frames yet. Shown dimmed + dashed so the graph
+     always represents the FULL pipeline instead of silently omitting it. */
+  .node.nodata { opacity: 0.4; border-style: dashed; }
   .node .name {
     font-size: 11px; font-weight: 600;
     color: var(--text); margin-bottom: 4px;
@@ -513,6 +516,7 @@
       <div class="vital"><div class="label">LLM TTFT (last)</div><div class="value" id="v-llm-ttft">—</div></div>
       <div class="vital"><div class="label">LLM full (last)</div><div class="value" id="v-llm-full">—</div></div>
       <div class="vital"><div class="label">TTS TTFT (last)</div><div class="value" id="v-tts-ttft">—</div></div>
+      <div class="vital"><div class="label">LLM cache (last)</div><div class="value" id="v-cache">—</div></div>
       <div class="vital"><div class="label">Errors (5min)</div><div class="value" id="v-errors">0</div></div>
       <div class="vital"><div class="label">Active providers</div><div class="value" id="v-providers" style="font-size:13px">—</div></div>
     </div>
@@ -940,7 +944,8 @@ function handleFrameDrop(ev) {
 }
 
 function handleStage(ev) {
-  const { stage, duration_ms } = ev.data || {};
+  const d = ev.data || {};
+  const { stage, duration_ms } = d;
   if (!stage) return;
   stageLatencies.push({ turn_id: ev.turn_id, stage, duration_ms });
   if (stageLatencies.length > 200) stageLatencies.shift();
@@ -954,7 +959,17 @@ function handleStage(ev) {
         delete turns[dropped];
       }
     }
-    turns[ev.turn_id].stages[stage] = duration_ms;
+    if (stage === 'llm_cache') {
+      // The llm_cache "stage" event carries Anthropic prompt-cache token
+      // counts, not a duration — stash them on the turn for the cache card.
+      turns[ev.turn_id].cache = {
+        state: d.state || 'OFF',
+        read: d.cache_read_input_tokens || 0,
+        creation: d.cache_creation_input_tokens || 0,
+      };
+    } else {
+      turns[ev.turn_id].stages[stage] = duration_ms;
+    }
   }
 }
 
@@ -1041,12 +1056,16 @@ function renderPipeline() {
   }
   el.classList.remove('empty');
   const now = Date.now();
+  // Render EVERY pipeline stage, always. Stages with no probe data yet are
+  // shown dimmed ("no data") rather than omitted. Omitting them made the
+  // graph misrepresent the pipeline — a whole stage (e.g. TTS) could vanish
+  // — and left arrows pointing into the gaps.
   const html = PIPELINE_NODES.map((name, i) => {
     const fc = frameCounts[name];
-    if (!fc) return '';
-    const ageMs = now - fc.lastTs;
-    const isActive = ageMs < 1500;
-    const isStale = ageMs > 8000 && fc.count > 0;
+    const hasData = !!fc;
+    const ageMs = hasData ? now - fc.lastTs : Infinity;
+    const isActive = hasData && ageMs < 1500;
+    const isStale = hasData && ageMs > 8000 && fc.count > 0;
 
     // Look up drops for this stage. The DropAccumulator emits with the
     // bare stage name (e.g. "leakage_guard"); the pipeline probe is
@@ -1057,12 +1076,13 @@ function renderPipeline() {
     const isDropping = dropInfo && dropInfo.total > 0 && dropAgeMs < 3000;
 
     const cls = ['node'];
+    if (!hasData) cls.push('nodata');
     if (isDropping) cls.push('dropping');
     else if (isActive) cls.push('active');
     if (isStale) cls.push('stale');
 
     // Build a per-reason breakdown tooltip so hover gives diagnosis detail.
-    let titleAttr = name;
+    let titleAttr = hasData ? name : `${name} — no probe frames observed yet`;
     let dropLine = '';
     if (dropInfo && dropInfo.total > 0) {
       const reasons = Object.entries(dropInfo.byReason)
@@ -1073,15 +1093,17 @@ function renderPipeline() {
       dropLine = `<div class="drops${staleCls}" title="${escapeAttr(titleAttr)}">⚠ ${dropInfo.total} ${verb}</div>`;
     }
 
+    // Arrow after every node except the last. Now that every node always
+    // renders, this index check is gap-free and never dangles.
     const arrow = i < PIPELINE_NODES.length - 1 ? '<div class="arrow">▶</div>' : '';
     return `<div class="${cls.join(' ')}" title="${escapeAttr(titleAttr)}">
       <div class="pulse"></div>
       <div class="name">${stageName}</div>
-      <div class="count">${fc.count} frames</div>
+      <div class="count">${hasData ? fc.count + ' frames' : 'no data'}</div>
       ${dropLine}
     </div>${arrow}`;
-  }).filter(s => s).join('');
-  el.innerHTML = html || 'No probe events yet.';
+  }).join('');
+  el.innerHTML = html;
 }
 
 function escapeAttr(s) {
@@ -1111,6 +1133,22 @@ function renderVitals() {
     setVital('v-llm-ttft', lastTurn.stages?.llm_ttft ?? null, 'ms');
     setVital('v-llm-full', lastTurn.stages?.llm_full ?? null, 'ms');
     setVital('v-tts-ttft', lastTurn.stages?.tts_ttft ?? null, 'ms');
+
+    // LLM cache card. A turn is a HIT whenever it read any tokens from
+    // cache — it almost always also writes the small new delta, and that
+    // is still a hit. Green = HIT, red = MISS, neutral = OFF.
+    const cacheEl = document.getElementById('v-cache');
+    const cacheCard = cacheEl.closest('.vital');
+    cacheCard.classList.remove('good', 'warn', 'bad');
+    const c = lastTurn.cache;
+    if (c) {
+      cacheEl.innerHTML = `${c.state}<span class="unit">${c.read}r / ${c.creation}w</span>`;
+      cacheCard.title = `cache read ${c.read} tokens / cache write ${c.creation} tokens`;
+      if (c.state === 'HIT') cacheCard.classList.add('good');
+      else if (c.state === 'MISS') cacheCard.classList.add('bad');
+    } else {
+      cacheEl.textContent = '—';
+    }
   }
 
   document.getElementById('v-errors').textContent = errors.length;

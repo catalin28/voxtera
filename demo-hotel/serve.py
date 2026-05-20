@@ -2,8 +2,8 @@
 
 Serves static files for the demo page and exposes:
 
-- ``POST /api/tts-test`` — real OpenAI / Google / Cartesia TTS so the browser can
-  play the bot's greeting in the selected voice and language.
+- ``POST /api/tts-test`` — real OpenAI / Google / Cartesia / ElevenLabs TTS so
+  the browser can play the bot's greeting in the selected voice and language.
 - ``POST /api/chat`` — full conversational endpoint that uses the Voxtera
   system prompt, RAG retrieval over hotel knowledge, and OpenAI GPT for
   the LLM response.  Returns JSON with ``text`` and optional base64 TTS
@@ -854,6 +854,59 @@ def _tts_cartesia(text: str, voice: str, language: str = "en") -> bytes:
         # and quota issues are debuggable from the browser console.
         body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Cartesia TTS error {exc.code}: {body}") from exc
+
+
+def _tts_elevenlabs(text: str, voice: str, language: str = "en") -> bytes:
+    """Generate speech via the ElevenLabs HTTP TTS API and return raw MP3 bytes.
+
+    This is the synchronous one-shot endpoint used by the demo's "Test
+    Speaker" button and the /api/chat fallback. The live voice bot uses
+    Pipecat's WebSocket-streaming ``ElevenLabsTTSService`` for ~75 ms TTFA;
+    this HTTP path waits for the full audio buffer before returning, which
+    is fine for a smoke test but would add latency in a real voice loop.
+    """
+    api_key = os.environ.get("ELEVENLABS_API_KEY")
+    if not api_key:
+        raise RuntimeError("ELEVENLABS_API_KEY is not set — cannot synthesize ElevenLabs speech")
+    model = os.environ.get("ELEVENLABS_MODEL", "eleven_flash_v2_5")
+
+    # Fall back to the default voice (Rachel) if the caller sent an empty
+    # voice — e.g. when the demo's voice dropdown hasn't populated yet
+    # because the server is serving a stale in-memory language config.
+    if not voice:
+        voice = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+
+    # ElevenLabs expects a 2-letter ISO 639-1 code; strip any locale suffix
+    # (e.g. "en-US" → "en"). Only the *_v2_5 models accept language_code —
+    # passing it to older models (multilingual_v2, v3) returns a 400, so
+    # gate the field on the model name.
+    lang_code = language.split("-")[0] if "-" in language else language
+    body_obj: dict = {"text": text, "model_id": model}
+    if model.endswith("_v2_5"):
+        body_obj["language_code"] = lang_code
+
+    payload = json.dumps(body_obj).encode()
+    # output_format=mp3_22050_32 works on the free tier and matches the
+    # Cartesia test path's 22.05 kHz; higher MP3 bitrates need a paid plan.
+    req = urllib.request.Request(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice}?output_format=mp3_22050_32",
+        data=payload,
+        headers={
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as exc:
+        # Surface ElevenLabs' error body to the demo UI so voice-ID typos,
+        # unsupported-language errors, and quota issues are debuggable
+        # from the browser console.
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"ElevenLabs TTS error {exc.code}: {body}") from exc
 
 
 def _tts_google(text: str, voice: str, language: str) -> bytes:
@@ -1756,6 +1809,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 audio = _tts_google(text, voice, lang)
             elif provider == "cartesia":
                 audio = _tts_cartesia(text, voice, lang)
+            elif provider == "elevenlabs":
+                audio = _tts_elevenlabs(text, voice, lang)
             else:
                 audio = _tts_openai(text, voice)
 
@@ -1806,6 +1861,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                     audio = _tts_google(reply, voice, language)
                 elif tts_provider == "cartesia":
                     audio = _tts_cartesia(reply, voice, language)
+                elif tts_provider == "elevenlabs":
+                    audio = _tts_elevenlabs(reply, voice, language)
                 else:
                     audio = _tts_openai(reply, voice)
                 audio_b64 = base64.b64encode(audio).decode("ascii")
