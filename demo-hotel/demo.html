@@ -158,8 +158,8 @@
              us-central1 region. Pick it manually to test. -->
         <option value="whisper">Whisper (OpenAI)</option>
         <option value="deepgram">Deepgram Nova-3</option>
-        <option value="gladia">Gladia Solaria-1 (99+ langs)</option>
-        <option value="google" selected>Google (latest_long)</option>
+        <option value="gladia" selected>Gladia Solaria-1 (99+ langs)</option>
+        <option value="google">Google (latest_long)</option>
         <option value="google-chirp2">Google Chirp 2 (low-latency)</option>
       </select>
     </div>
@@ -181,10 +181,10 @@
              multilingual voice consistency, but its 24kHz output broke
              Safari's MediaStreamAudioSourceNode rendering in our 2026-05-05
              test. Pick Chirp 3 HD manually when testing latency. -->
-        <option value="openai" selected>OpenAI tts-1</option>
+        <option value="openai">OpenAI tts-1</option>
         <option value="google">Google Chirp 3 HD</option>
         <option value="cartesia">Cartesia Sonic-3 (90ms TTFA)</option>
-        <option value="elevenlabs">ElevenLabs Flash v2.5 (75ms TTFA)</option>
+        <option value="elevenlabs" selected>ElevenLabs Flash v2.5 (75ms TTFA)</option>
       </select>
     </div>
     <div class="model-picker">
@@ -192,18 +192,9 @@
       <select id="voice-select">
         <!-- Populated by setVoiceOptions(provider) on TTS-provider change.
              Static defaults below match the page-load TTS provider above
-             (OpenAI tts-1). When the user picks Google Chirp 3 HD from the
-             provider combobox, this list is replaced with Chirp 3 HD voices. -->
-        <option value="nova" selected>Nova</option>
-        <option value="alloy">Alloy</option>
-        <option value="echo">Echo</option>
-        <option value="fable">Fable</option>
-        <option value="onyx">Onyx</option>
-        <option value="shimmer">Shimmer</option>
-        <option value="ash">Ash</option>
-        <option value="coral">Coral</option>
-        <option value="sage">Sage</option>
-        <option value="verse">Verse</option>
+             (Cartesia Sonic-3). When the user picks a different provider
+             this list is replaced dynamically. -->
+        <option value="21m00Tcm4TlvDq8ikWAM" selected>Rachel (American, calm, multilingual)</option>
       </select>
     </div>
     <div class="model-picker">
@@ -286,6 +277,9 @@ var SESSION_ID = null;
 var callObject = null;
 var isMuted = false;
 var userEndedSession = false;
+// Set to true once voxtera-ready is sent (after audio is confirmed attached).
+// Reset to false on session end so reconnects work correctly.
+var greetingReadySent = false;
 var remoteAudioEl = document.getElementById('remote-audio');
 var audioCtx = null;
 var activeSource = null;
@@ -477,12 +471,18 @@ document.getElementById('btn-start').onclick = async function() {
     ensureAudioContext();
 
     function attachRemoteAudio(track, source) {
+      log('[attach] called from=' + source
+        + ' track.id=' + (track && track.id ? track.id.substring(0,8) : 'null')
+        + ' enabled=' + (track && track.enabled)
+        + ' readyState=' + (track && track.readyState)
+        + ' | attachedTrackId=' + (attachedTrackId ? attachedTrackId.substring(0,8) : 'null')
+        + ' greetingReadySent=' + greetingReadySent);
       if (!track || !track.enabled || track.readyState !== 'live') {
-        log('Skipping track from ' + source + ' (enabled=' + (track && track.enabled) + ', readyState=' + (track && track.readyState) + ')');
+        log('[attach] SKIP from ' + source + ' (enabled=' + (track && track.enabled) + ', readyState=' + (track && track.readyState) + ')');
         return;
       }
       if (attachedTrackId === track.id) {
-        log('Track already attached (id=' + track.id + ') — skipping duplicate attach from ' + source);
+        log('[attach] SKIP — already attached (id=' + track.id.substring(0,8) + ') from ' + source);
         return;
       }
       // Daily fires several overlapping events (participant-updated,
@@ -493,7 +493,7 @@ document.getElementById('btn-start').onclick = async function() {
       // and you hear the bot voice twice with a delay. Only allow a new
       // attach if the previously-attached track has actually ended.
       if (attachedTrack && attachedTrack.readyState === 'live') {
-        log('Active track still live (id=' + attachedTrack.id + ') — ignoring new attach for ' + track.id + ' from ' + source);
+        log('[attach] SKIP — active track still live (attached.id=' + attachedTrack.id.substring(0,8) + ') ignoring new attach for ' + track.id.substring(0,8) + ' from ' + source);
         return;
       }
       // Disconnect previous WebAudio source if any
@@ -518,6 +518,17 @@ document.getElementById('btn-start').onclick = async function() {
           attachedTrackId = track.id;
           attachedTrack = track;
           log('[safari] WebAudio attached OK (ctx.state=' + ctx.state + ')');
+          // Audio is now connected — tell the bot to play the greeting.
+          // Deferred to this point so the bot only starts speaking once the
+          // browser can actually receive audio. Earlier sends (participant-joined,
+          // join.then) fired before srcObject was set, so the greeting was lost.
+          if (!greetingReadySent && callObject) {
+            greetingReadySent = true;
+            log('[greeting] sending voxtera-ready after WebAudio attach — track=' + track.id.substring(0,8));
+            callObject.sendAppMessage({ type: 'voxtera-ready' }, '*');
+          } else {
+            log('[greeting] voxtera-ready SKIPPED (WebAudio path) — greetingReadySent=' + greetingReadySent + ' callObject=' + !!callObject);
+          }
           // WebKit "primer" workaround: Safari's MediaStreamAudioSourceNode
           // silently produces zeros for a WebRTC track unless the SAME
           // stream is also bound to an HTMLMediaElement. The element is
@@ -546,9 +557,9 @@ document.getElementById('btn-start').onclick = async function() {
           remoteAudioEl.srcObject = stream;
           remoteAudioEl.muted = false;
           remoteAudioEl.volume = 1.0;
-          remoteAudioEl.play().catch(function(e2) { err('Fallback play failed: ' + e2.message); });
           attachedTrackId = track.id;
           attachedTrack = track;
+          remoteAudioEl.play().catch(function(e2) { err('Fallback play failed: ' + e2.message); });
         }
       } else {
         // Chrome/Brave/Edge: <audio> element works perfectly
@@ -556,13 +567,34 @@ document.getElementById('btn-start').onclick = async function() {
           remoteAudioEl.srcObject = stream;
           remoteAudioEl.muted = false;
           remoteAudioEl.volume = 1.0;
+          // Set guard flags synchronously BEFORE play() so any rapid second
+          // call to attachRemoteAudio (from participant-updated, track-started,
+          // or the polling scan) hits the re-entry guard at the top of this
+          // function and returns early — instead of replacing srcObject and
+          // aborting this play() promise with "The operation was aborted".
+          attachedTrackId = track.id;
+          attachedTrack = track;
+          log('Attached audio via <audio> element from ' + source + ' (id=' + track.id + ')');
           remoteAudioEl.play().then(function() {
-            attachedTrackId = track.id;
-            attachedTrack = track;
-            log('Attached audio via <audio> element from ' + source + ' (id=' + track.id + ')');
             if (!orbAnalyserBot) orbSetupBotAnalyser();
+            // Audio is now confirmed playing — tell the bot to play the greeting.
+            if (!greetingReadySent && callObject) {
+              greetingReadySent = true;
+              log('[greeting] sending voxtera-ready after <audio>.play() resolved — track=' + track.id.substring(0,8));
+              callObject.sendAppMessage({ type: 'voxtera-ready' }, '*');
+            } else {
+              log('[greeting] voxtera-ready SKIPPED — greetingReadySent=' + greetingReadySent + ' callObject=' + !!callObject);
+            }
           }).catch(function(e) {
-            err('Audio element play blocked: ' + e.message);
+            err('[attach] play() failed from=' + source + ' track=' + track.id.substring(0,8) + ': ' + e.message);
+            // Only clear the guards if they still belong to THIS call's track.
+            // A newer attachRemoteAudio call may have already updated them
+            // synchronously (before this .catch() microtask ran), in which
+            // case clearing here would corrupt the newer call's guard state.
+            if (attachedTrackId === track.id) {
+              attachedTrackId = null;
+              attachedTrack = null;
+            }
           });
         } catch (e) {
           err('Audio element attach failed: ' + e.message);
@@ -668,8 +700,14 @@ document.getElementById('btn-start').onclick = async function() {
         orbSetState('speaking');
         ensureAudioContext();
         if (!isSafari) {
-          // Brave/Chrome: nudge <audio> element playback
-          remoteAudioEl.play().catch(function(e) {});
+          // Nudge <audio> element playback only if already attached. Calling
+          // play() when srcObject is not yet set creates a pending promise that
+          // gets aborted milliseconds later when attachRemoteAudio sets srcObject,
+          // which produces a spurious "The operation was aborted" error and
+          // corrupts the guard state in the .catch() handler.
+          if (attachedTrackId && remoteAudioEl.srcObject) {
+            remoteAudioEl.play().catch(function(e) {});
+          }
         } else {
           // Safari: WebAudio path handles playback; just resume ctx if needed
           if (audioCtx && audioCtx.state === 'suspended') {
@@ -708,13 +746,19 @@ document.getElementById('btn-start').onclick = async function() {
         var ttsProvider = document.getElementById('tts-provider-select').value;
         var ttsVoice = document.getElementById('voice-select').value;
         var sttProvider = document.getElementById('stt-select').value;
-        log('[participant-joined] bot arrived — sending config + voxtera-ready');
+        // Send config messages now so the bot knows the language/voice before
+        // the greeting fires. voxtera-ready is intentionally NOT sent here —
+        // it is sent later from attachRemoteAudio() after the audio track is
+        // confirmed playing. Firing it here (before joined-meeting and before
+        // the <audio> element has srcObject) caused the bot to start speaking
+        // before the browser could hear it, and the beginning of the greeting
+        // was silently discarded by the WebRTC jitter buffer.
+        log('[participant-joined] bot arrived — sending config (voxtera-ready deferred to audio attach)');
         callObject.sendAppMessage({ type: 'voxtera-stt', provider: sttProvider }, '*');
         callObject.sendAppMessage({ type: 'voxtera-language', language: lang }, '*');
         callObject.sendAppMessage({ type: 'voxtera-model', model: llmModel }, '*');
         callObject.sendAppMessage({ type: 'voxtera-tts-provider', provider: ttsProvider }, '*');
         callObject.sendAppMessage({ type: 'voxtera-voice', voice: ttsVoice }, '*');
-        callObject.sendAppMessage({ type: 'voxtera-ready' }, '*');
       }
     });
 
@@ -765,7 +809,11 @@ document.getElementById('btn-start').onclick = async function() {
     log('Joining: ' + ROOM_URL);
     callObject.join({ url: ROOM_URL, userName: 'Guest' }).then(function() {
       log('Joined successfully');
-      // Send selected language, LLM model and TTS voice to the bot.
+      // Re-send config in case participant-joined fired before the bot's
+      // pipeline processors were listening. voxtera-ready is NOT sent here —
+      // it is sent from attachRemoteAudio() after the audio track is confirmed
+      // playing, which is the only moment the browser is actually ready to hear
+      // the greeting.
       var lang = document.getElementById('lang-select').value;
       var llmModel = document.getElementById('llm-select').value;
       var ttsProvider = document.getElementById('tts-provider-select').value;
@@ -778,7 +826,6 @@ document.getElementById('btn-start').onclick = async function() {
       callObject.sendAppMessage({ type: 'voxtera-model', model: llmModel }, '*');
       callObject.sendAppMessage({ type: 'voxtera-tts-provider', provider: ttsProvider }, '*');
       callObject.sendAppMessage({ type: 'voxtera-voice', voice: ttsVoice }, '*');
-      callObject.sendAppMessage({ type: 'voxtera-ready' }, '*');
       document.getElementById('welcome').style.display = 'none';
       document.getElementById('transcript').style.display = 'flex';
       document.getElementById('status-bar').style.display = 'flex';
@@ -862,6 +909,7 @@ function clearConversationView() {
 function resetUI() {
   orbStop();
   userEndedSession = false;
+  greetingReadySent = false;
   clearConversationView();
   document.getElementById('welcome').style.display = 'flex';
   document.getElementById('transcript').style.display = 'none';
@@ -1178,6 +1226,7 @@ function animateSpeakerBars() {
 
 document.getElementById('btn-test-speaker').onclick = function() {
   if (speakerTestActive) {
+    if (speakerAudio) { speakerAudio.pause(); speakerAudio = null; }
     resetSpeakerIndicator();
     return;
   }
@@ -1194,6 +1243,46 @@ document.getElementById('btn-test-speaker').onclick = function() {
   var lang = document.getElementById('lang-select').value;
   var model = document.getElementById('llm-select').value;
 
+  // Safari autoplay-policy fix.
+  //
+  // Safari's user-gesture token expires after the first `await`/`.then()`
+  // that crosses a macrotask boundary — which means by the time the
+  // fetch() resolves (1-3 s later) and we call `new Audio(url).play()`,
+  // Safari has already discarded the gesture. The Audio element technically
+  // starts (onplay fires, VU meter animates) but output is silently muted.
+  // That is why the first press shows the VU meter but no sound.
+  //
+  // Fix: create the Audio element and call play() SYNCHRONOUSLY inside the
+  // click handler (before any await/fetch), carrying the user-gesture token
+  // into the element. Then once the fetch resolves we update srcObject via a
+  // blob URL; assigning .src on a playing element triggers a reload-and-play
+  // that inherits the already-unlocked element state and plays audibly.
+  speakerAudio = new Audio();
+  speakerAudio.onplay = function() {
+    btn.textContent = '⏹ Stop';
+    btn.disabled = false;
+    document.getElementById('speaker-label').textContent = 'Playing...';
+    animateSpeakerBars();
+  };
+  speakerAudio.onended = function() {
+    if (speakerAudio && speakerAudio._blobUrl) {
+      URL.revokeObjectURL(speakerAudio._blobUrl);
+    }
+    resetSpeakerIndicator();
+  };
+  speakerAudio.onerror = function() {
+    if (speakerAudio && speakerAudio._blobUrl) {
+      URL.revokeObjectURL(speakerAudio._blobUrl);
+    }
+    err('Audio playback failed');
+    resetSpeakerIndicator();
+  };
+  // Unlock the audio element in the user-gesture window. play() on an
+  // element with no src returns a rejected promise; we suppress that
+  // rejection — the important side-effect is that Safari marks this
+  // element as user-gesture-unlocked.
+  speakerAudio.play().catch(function() {});
+
   fetch('/api/tts-test', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1204,24 +1293,13 @@ document.getElementById('btn-test-speaker').onclick = function() {
     return resp.blob();
   })
   .then(function(blob) {
-    if (!speakerTestActive) return;
+    if (!speakerTestActive || !speakerAudio) return;
     var url = URL.createObjectURL(blob);
-    speakerAudio = new Audio(url);
-    speakerAudio.onplay = function() {
-      btn.textContent = '⏹ Stop';
-      btn.disabled = false;
-      document.getElementById('speaker-label').textContent = 'Playing...';
-      animateSpeakerBars();
-    };
-    speakerAudio.onended = function() {
-      URL.revokeObjectURL(url);
-      resetSpeakerIndicator();
-    };
-    speakerAudio.onerror = function() {
-      URL.revokeObjectURL(url);
-      err('Audio playback failed');
-      resetSpeakerIndicator();
-    };
+    speakerAudio._blobUrl = url;
+    // Assigning .src on the already-unlocked element starts playback.
+    // Safari allows this because the element was unlocked synchronously
+    // in the click handler above.
+    speakerAudio.src = url;
     speakerAudio.play().catch(function(e) {
       err('Playback blocked: ' + e.message);
       resetSpeakerIndicator();

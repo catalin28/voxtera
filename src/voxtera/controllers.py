@@ -9,6 +9,9 @@ pipeline without restarting it:
 - :class:`AutoTTSLanguageSwitcher` — observes :class:`TranscriptionFrame`
   language detection and updates the active Google Chirp 3 HD TTS to the
   matching locale (preserving the voice character).
+- :class:`InstantAckFiller` — observes :class:`TranscriptionFrame` and plays
+  a short, language-matched backchannel the instant the guest stops speaking,
+  masking the LLM/TTS latency gap with natural speech instead of silence.
 - :class:`ModelSwitcher` — handles ``voxtera-model`` and ``voxtera-voice``
   to swap the LLM model and TTS voice respectively.
 - :class:`GreetingController` — fires the startup greeting on
@@ -21,6 +24,7 @@ pipeline without restarting it:
 from __future__ import annotations
 
 import os
+import random
 import time
 
 from loguru import logger
@@ -44,6 +48,7 @@ try:
 except Exception:  # daily-python not available on Windows
     DailyInputTransportMessageFrame = None  # type: ignore[assignment,misc]
 
+from voxtera.prompts.fillers import FILLERS
 from voxtera.routing import STTRouter, TTSRouter
 from voxtera.stt import _VALID_STT_LANGUAGES, _google_languages_for_selection
 from voxtera.tts import (
@@ -767,6 +772,105 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
                         active_provider,
                         exc,
                     )
+
+        await self.push_frame(frame, direction)
+
+
+class InstantAckFiller(FrameProcessor):
+    """Plays a short acknowledgment the instant the guest finishes speaking.
+
+    A voice turn has a hard latency floor: STT commit + end-of-turn detection
+    + LLM TTFT + TTS TTFA is ≈ 2.5 s even on fast hardware. This processor
+    does not make that faster — it *masks* it. The moment a final
+    :class:`TranscriptionFrame` arrives it pushes a short pre-written
+    backchannel (e.g. "One moment.", "Let me check that.") to the TTS as a
+    :class:`TTSSpeakFrame`. That audio starts playing within ~100 ms while
+    the LLM is still generating, so the guest hears a natural human-style
+    acknowledgment instead of dead silence.
+
+    The filler runs fully in PARALLEL with the LLM/RAG work and is short
+    enough (~0.6-1.3 s) that it finishes around when the real answer is
+    ready — it never delays the answer.
+
+    Language: the filler is spoken in whatever language the STT detected for
+    *this* utterance (``TranscriptionFrame.language`` — the same signal
+    :class:`AutoTTSLanguageSwitcher` uses to switch the TTS). There is no
+    separate detection step. A language with no curated pool plays *no*
+    filler — a wrong-language acknowledgment is worse than silence.
+
+    Placement: must sit AFTER :class:`AutoTTSLanguageSwitcher` (so the TTS is
+    already on the guest's language when the filler's :class:`TTSSpeakFrame`
+    reaches it) and BEFORE ``context_aggregator.user()`` (which consumes
+    :class:`TranscriptionFrame`, so anything downstream never sees the
+    trigger).
+
+    Anti-annoyance measures:
+
+    * Turns shorter than ``min_words`` (default 3) are skipped — a verbose
+      "let me check that" in front of a one-word "yes" / "thanks" is both
+      pointless and socially odd, and skipping them cuts filler frequency on
+      rapid back-and-forth.
+    * The same phrase is never played twice in a row for a given language
+      (per-language recent-phrase memory over a varied pool), so the filler
+      never sounds like a robotic tic.
+    """
+
+    def __init__(self, *, min_words: int = 3) -> None:
+        super().__init__()
+        self._min_words = min_words
+        # Last phrase played per language — so we never repeat back-to-back.
+        self._last_phrase: dict[str, str] = {}
+        # Last language a filler was played in — fallback when a transcript
+        # arrives with no language tag (rare, but the STT can return None).
+        self._last_lang: str | None = None
+
+    @staticmethod
+    def _lang_code(lang_val: object) -> str | None:
+        """Normalise any language representation to a 2-letter code.
+
+        Reuses :meth:`AutoTTSLanguageSwitcher._resolve_lang` (which already
+        handles Whisper full names, BCP-47 codes and ``Language`` enums) and
+        strips the region subtag: ``Language.RO`` / ``"romanian"`` /
+        ``"ro-RO"`` all collapse to ``"ro"``.
+        """
+        bcp47 = AutoTTSLanguageSwitcher._resolve_lang(lang_val)
+        if not bcp47:
+            return None
+        return bcp47.split("-")[0].lower()
+
+    def _pick(self, lang_code: str) -> str | None:
+        """Pick a filler for ``lang_code``, never repeating the last one."""
+        pool = FILLERS.get(lang_code)
+        if not pool:
+            return None
+        last = self._last_phrase.get(lang_code)
+        choices = [p for p in pool if p != last] or list(pool)
+        phrase = random.choice(choices)
+        self._last_phrase[lang_code] = phrase
+        return phrase
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, TranscriptionFrame) and direction == FrameDirection.DOWNSTREAM:
+            text = (getattr(frame, "text", "") or "").strip()
+            # Skip trivially short turns — see the class docstring.
+            if len(text.split()) >= self._min_words:
+                lang_code = self._lang_code(getattr(frame, "language", None)) or self._last_lang
+                if lang_code:
+                    phrase = self._pick(lang_code)
+                    if phrase:
+                        self._last_lang = lang_code
+                        logger.info("[filler] lang={!r} → {!r}", lang_code, phrase)
+                        # Push the filler downstream FIRST so it races ahead
+                        # toward the TTS while the transcript below still has
+                        # to traverse the context aggregator + LLM.
+                        await self.push_frame(TTSSpeakFrame(text=phrase), FrameDirection.DOWNSTREAM)
+                    else:
+                        logger.debug(
+                            "[filler] no curated pool for language {!r} — staying silent",
+                            lang_code,
+                        )
 
         await self.push_frame(frame, direction)
 

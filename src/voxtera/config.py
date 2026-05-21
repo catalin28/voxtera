@@ -47,6 +47,15 @@ class Settings:
     # by _auto_smart_turn_cpu_count(); the SMART_TURN_CPU_COUNT env var is an
     # optional explicit override (mainly for testing).
     smart_turn_cpu_count: int = 2
+    # SmartTurn hard fallback: max seconds of CONTINUOUS silence (counted from
+    # the VAD stop event) after which the turn is force-ended even if the
+    # SmartTurn ONNX model still predicts "incomplete". This is pipecat's
+    # SmartTurnParams.stop_secs — its default is 3.0, which trace analysis
+    # identified as the entire source of the ~3s stt->llm p95 spikes: on turns
+    # where the model mispredicts "incomplete", the bot waits out this whole
+    # window before the turn fires. Lowered to 2.0 to cap that worst case.
+    # Override via SMART_TURN_STOP_SECS.
+    smart_turn_stop_secs: float = 2.0
     # `auto` -> detect from OS locale; explicit code (e.g. `fr`) overrides.
     greeting_language: str = "auto"
     # voice = mic only (current default), text = keyboard only,
@@ -163,6 +172,13 @@ class Settings:
     # a background task. Requires TELEGRAM_BOT_TOKEN. The Telegram channel
     # ID is read from the per-hotel config in config/hotels/<hotel_id>.yaml.
     actions_enabled: bool = False
+    # Instant-acknowledgment filler: when True, the bot plays a short,
+    # language-matched backchannel ("One moment.", "Let me check that.") the
+    # instant the guest stops speaking. It runs in parallel with the LLM and
+    # masks the STT->LLM->TTS latency gap with natural speech instead of
+    # silence — it never delays the real answer. See voxtera.prompts.fillers
+    # and voxtera.controllers.InstantAckFiller.
+    filler_enabled: bool = False
 
 
 def _require(name: str) -> str:
@@ -240,6 +256,7 @@ def load_settings() -> Settings:
         smart_turn_cpu_count=int(
             os.environ.get("SMART_TURN_CPU_COUNT") or _auto_smart_turn_cpu_count()
         ),
+        smart_turn_stop_secs=float(os.environ.get("SMART_TURN_STOP_SECS", "2.0")),
         greeting_language=os.environ.get("GREETING_LANGUAGE", "auto"),
         input_mode=os.environ.get("INPUT_MODE", "hybrid").lower(),
         transport_mode=os.environ.get("TRANSPORT_MODE", "local").lower(),
@@ -291,6 +308,7 @@ def load_settings() -> Settings:
             ),
         ),
         actions_enabled=os.environ.get("ACTIONS_ENABLED", "false").lower() in ("1", "true", "yes"),
+        filler_enabled=os.environ.get("FILLER_ENABLED", "false").lower() in ("1", "true", "yes"),
         stt_thresholds_path=os.environ.get("STT_THRESHOLDS_PATH", "config/stt_thresholds.json")
         or None,
     )

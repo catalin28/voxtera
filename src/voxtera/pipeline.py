@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 import time as _time
 
 from loguru import logger
+from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
@@ -223,6 +224,7 @@ from voxtera.controllers import (  # noqa: E402
     AutoTTSLanguageSwitcher,
     BrowserTextInputController,
     GreetingController,
+    InstantAckFiller,
     LanguageSwitcher,
     LLMRunGuard,
     ModelSwitcher,
@@ -740,13 +742,22 @@ def build_pipeline(
     messages: list[dict[str, str]] = [{"role": "system", "content": system_text}]
     context = LLMContext(messages)
 
-    # Override Pipecat's default user-turn-stop strategy so we control the
-    # CPU thread count used by the SmartTurn ONNX model. Pipecat's default
-    # builds LocalSmartTurnAnalyzerV3() with cpu_count=1, which dominates
-    # the STT→LLM gap (700-900 ms inference on a single core). Trace data
-    # showed 1100-1250 ms for that bucket; bumping cpu_count to 2 on a
-    # 2-vCPU droplet roughly halves it.
-    _smart_turn = LocalSmartTurnAnalyzerV3(cpu_count=settings.smart_turn_cpu_count)
+    # Override Pipecat's default user-turn-stop strategy on two axes:
+    #
+    # 1. cpu_count — Pipecat's default builds LocalSmartTurnAnalyzerV3() with
+    #    cpu_count=1. The ONNX model runs faster with more intra-op threads;
+    #    settings.smart_turn_cpu_count auto-detects a sane value per host.
+    # 2. stop_secs — SmartTurnParams.stop_secs is the hard fallback: after
+    #    this many seconds of continuous silence (counted from the VAD stop
+    #    event) the turn is force-ended even if the model still predicts
+    #    "incomplete". Pipecat's default is 3.0s, and trace analysis showed
+    #    this single value is the entire source of the ~3s stt->llm p95
+    #    spikes — turns where the model mispredicts "incomplete" wait out the
+    #    full window. settings.smart_turn_stop_secs (default 2.0) caps it.
+    _smart_turn = LocalSmartTurnAnalyzerV3(
+        cpu_count=settings.smart_turn_cpu_count,
+        params=SmartTurnParams(stop_secs=settings.smart_turn_stop_secs),
+    )
     _user_turn_strategies = UserTurnStrategies(
         start=default_user_turn_start_strategies(),
         stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=_smart_turn)],
@@ -756,7 +767,9 @@ def build_pipeline(
         user_params=LLMUserAggregatorParams(user_turn_strategies=_user_turn_strategies),
     )
     logger.info(
-        "[turn-detector] LocalSmartTurnAnalyzerV3 cpu_count={}", settings.smart_turn_cpu_count
+        "[turn-detector] LocalSmartTurnAnalyzerV3 cpu_count={} stop_secs={}",
+        settings.smart_turn_cpu_count,
+        settings.smart_turn_stop_secs,
     )
 
     if action_runtime is not None:
@@ -886,6 +899,21 @@ def build_pipeline(
     # which now goes to the locale-correct TTS.
     if settings.transport_mode == "daily" and tts_router is not None:
         processors.append(AutoTTSLanguageSwitcher(tts_router=tts_router))
+    # Instant-acknowledgment filler: plays a short, varied backchannel the
+    # moment the guest stops speaking, masking the LLM+TTS latency gap with
+    # natural speech instead of dead silence. It runs in parallel with the
+    # LLM — it does NOT delay the real answer. Placement is load-bearing: it
+    # must come AFTER AutoTTSLanguageSwitcher (so the TTS is already on the
+    # guest's language when the filler's TTSSpeakFrame reaches it) and BEFORE
+    # context_aggregator.user() (which consumes TranscriptionFrame, so nothing
+    # downstream of it ever sees the trigger). Gated on mic_enabled because
+    # the trigger only exists for voice turns — typed turns produce no
+    # TranscriptionFrame.
+    if settings.filler_enabled and mic_enabled:
+        processors.append(InstantAckFiller())
+        if _probing:
+            processors.append(PipelineProbe("after_filler"))
+        logger.info("[filler] instant-acknowledgment filler enabled")
     processors.append(context_aggregator.user())
     if _probing:
         processors.append(PipelineProbe("after_ctx_user"))

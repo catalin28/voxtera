@@ -995,6 +995,13 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/api/trace/sessions/") and self.path.endswith("/events"):
             sid = self.path[len("/api/trace/sessions/") : -len("/events")]
             return self._handle_session_events(sid)
+        # For HTML files, always send no-store so browsers (especially Safari,
+        # which aggressively disk-caches) never serve a stale version. JS/CSS
+        # assets are unversioned so they get the same treatment.
+        stripped = self.path.split("?")[0]
+        if stripped.endswith((".html", ".js", ".css")) or stripped in ("/", ""):
+            self._no_cache_get()
+            return
         return super().do_GET()
 
     def do_POST(self):  # noqa: N802
@@ -1034,6 +1041,31 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # X-Admin-Token must be in the allow-list or browsers will block
         # preflighted admin requests. Content-Type stays for /api/chat.
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Admin-Token")
+
+    def _no_cache_get(self):
+        """Serve an HTML/JS/CSS file with aggressive no-store headers.
+
+        Safari (and other browsers) can disk-cache static files for hours even
+        after a normal reload. Sending ``Cache-Control: no-store`` forces a
+        fresh read from disk on every request, ensuring code changes in
+        demo.html and other assets are always picked up immediately.
+        """
+        # Let SimpleHTTPRequestHandler do the actual file serving, then patch
+        # the response headers before anything is sent. We do this by
+        # temporarily monkey-patching send_response so we can inject our
+        # Cache-Control header right after the status line.
+        _orig_end_headers = self.end_headers
+
+        def _patched_end_headers():
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            _orig_end_headers()
+
+        self.end_headers = _patched_end_headers  # type: ignore[method-assign]
+        try:
+            super().do_GET()
+        finally:
+            self.end_headers = _orig_end_headers  # type: ignore[method-assign]
 
     # ------------------------------------------------------------------
     # JSON response helpers — used by every admin endpoint.

@@ -21,6 +21,8 @@ import asyncio
 
 from loguru import logger
 from pipecat.frames.frames import (
+    CancelFrame,
+    EndFrame,
     InputAudioRawFrame,
     InterimTranscriptionFrame,
     LLMFullResponseEndFrame,
@@ -204,6 +206,28 @@ class STTRouter(FrameProcessor):
 
     async def process_frame(self, frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
+        if isinstance(frame, EndFrame | CancelFrame):
+            # Clean up the active branch's streaming WebSocket before the
+            # pipeline shuts down. Without this, Gladia's server keeps the
+            # session counted as "active" for ~60 s after os._exit() drops
+            # the TCP connection hard, causing a 429 on the very next Start.
+            active_branch = self._branches.get(self._active)
+            if active_branch:
+                stt = active_branch["stt"]
+                lazy_dc = getattr(stt, "lazy_disconnect", None)
+                if callable(lazy_dc):
+                    logger.info(
+                        "[stt-router] {} — cleanly closing {} WebSocket before shutdown",
+                        type(frame).__name__,
+                        self._active,
+                    )
+                    try:
+                        await lazy_dc()
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "[stt-router] lazy_disconnect on shutdown failed (non-fatal): {}",
+                            exc,
+                        )
         if isinstance(frame, DailyInputTransportMessageFrame):
             msg = frame.message
             if isinstance(msg, dict) and msg.get("type") == "voxtera-stt":
