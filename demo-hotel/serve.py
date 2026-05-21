@@ -1020,6 +1020,12 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_start_session()
         if self.path == "/api/bot-event":
             return self._handle_bot_event()
+        # Root URL → redirect to voxtera.html (landing page).
+        if self.path in ("/", "/index.html"):
+            self.send_response(302)
+            self.send_header("Location", "/voxtera.html")
+            self.end_headers()
+            return None
         self.send_error(404)
         return None
 
