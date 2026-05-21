@@ -999,6 +999,12 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # which aggressively disk-caches) never serve a stale version. JS/CSS
         # assets are unversioned so they get the same treatment.
         stripped = self.path.split("?")[0]
+        # Root URL → redirect to voxtera.html (landing page).
+        if stripped in ("/", "/index.html"):
+            self.send_response(302)
+            self.send_header("Location", "/voxtera.html")
+            self.end_headers()
+            return None
         # Security: only serve explicitly allowed file types. Everything else
         # (Python source, Markdown, JSON configs, .DS_Store, etc.) returns 404.
         allowed_extensions = (
@@ -1015,7 +1021,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             ".woff",
             ".woff2",
         )
-        if stripped in ("/", "") or stripped.endswith((".html", ".js", ".css")):
+        if stripped.endswith((".html", ".js", ".css")):
             self._no_cache_get()
             return
         if stripped.endswith(allowed_extensions):
@@ -1039,12 +1045,6 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_start_session()
         if self.path == "/api/bot-event":
             return self._handle_bot_event()
-        # Root URL → redirect to voxtera.html (landing page).
-        if self.path in ("/", "/index.html"):
-            self.send_response(302)
-            self.send_header("Location", "/voxtera.html")
-            self.end_headers()
-            return None
         self.send_error(404)
         return None
 
