@@ -237,7 +237,7 @@ from voxtera.observability import (  # noqa: E402
     UserTranscriptBroadcaster,
 )
 from voxtera.prompts import SYSTEM_PROMPT, resolve_greeting  # noqa: E402
-from voxtera.prompts.greetings import GREETINGS  # noqa: E402
+from voxtera.prompts.greetings import GREETINGS, TIMED_GREETINGS  # noqa: E402
 from voxtera.routing import STTGate, STTRouter, TTSGate, TTSRouter  # noqa: E402
 from voxtera.stt import _STT_BUILDERS, _build_stt  # noqa: E402
 from voxtera.trace import emit as _trace_emit  # noqa: E402
@@ -657,8 +657,8 @@ def build_pipeline(
                 model=LLM_MODEL,
                 # Anthropic prompt caching: caches the system prompt + tool
                 # schemas across turns for the duration of a 5-minute window.
-                # The system prompt is ~350 words (plus the actions fragment
-                # ~250 words and any hotel addendum), which is ~1500 tokens.
+                # The system prompt is ~660 words (plus the actions fragment
+                # ~250 words and any hotel addendum), which is ~1900 tokens.
                 # Without caching every turn re-tokenizes and re-processes
                 # that prefix; with caching, TTFT drops ~100-200ms after the
                 # first turn warms the cache.
@@ -952,6 +952,16 @@ def build_pipeline(
             processors.append(PipelineProbe("after_rag"))
         logger.info("[rag] enabled for hotel_id={!r}", settings.hotel_id)
 
+    # Time context: give the LLM the guest's current local time on every turn,
+    # so it can answer time-sensitive questions (opening hours, checkout time,
+    # "is the spa still open?"). Like RAGContextInjector it appends to the user
+    # message — never the cached system prompt — so Anthropic prompt caching
+    # still hits. Added in every transport mode; with no browser timezone it
+    # falls back to the server's own clock.
+    from voxtera.time_context import TimeContextInjector
+
+    processors.append(TimeContextInjector())
+
     processors.extend(
         [
             llm,
@@ -993,13 +1003,16 @@ def build_pipeline(
             greeting_lang,
             settings.greeting_language,
         )
-        # Pass the full GREETINGS map so the controller can swap the greeting
-        # to the user's selected language when the browser sends
-        # voxtera-language before voxtera-ready (see GreetingController).
+        # Pass both greeting catalogs so the controller can pick the greeting
+        # by the guest's selected language AND local time of day, from the
+        # voxtera-language / voxtera-timezone messages the browser sends
+        # before voxtera-ready (see GreetingController).
         processors.append(
             GreetingController(
                 greeting_text=greeting_text,
                 greetings_map=GREETINGS,
+                timed_greetings=TIMED_GREETINGS,
+                default_language=greeting_lang,
             )
         )
     if tts_router is not None:

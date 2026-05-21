@@ -120,6 +120,18 @@ _WHISPER_HALLUCINATION_EXACT: frozenset[str] = frozenset(
         # Portuguese
         "se inscreva no canal",
         "obrigado por assistir",
+        # Turkish
+        "izlediğiniz için teşekkürler",
+        "izlediginiz icin tesekkurler",
+        "abone olmayı unutmayın",
+        "abone olmayi unutmayin",
+        "kanalıma abone olun",
+        "kanalima abone olun",
+        # Russian
+        "спасибо за просмотр",
+        "подписывайтесь на канал",
+        "ставьте лайк",
+        "не забудьте подписаться",
     }
 )
 
@@ -158,6 +170,13 @@ _SUBSCRIBE_TOKENS: frozenset[str] = frozenset(
         # Portuguese
         "inscreva",
         "inscrever",
+        # Turkish
+        "abone",
+        # Russian
+        "подписывайтесь",
+        "подпишитесь",
+        "подписаться",
+        "подписки",
     }
 )
 _LIKE_TOKENS: frozenset[str] = frozenset(
@@ -174,7 +193,120 @@ _LIKE_TOKENS: frozenset[str] = frozenset(
         "pouce",
         # Spanish
         "manita",
+        # Turkish
+        "beğen",
+        "begen",
+        "beğenin",
+        "begenin",
+        # Russian
+        "лайк",
+        "лайки",
         # German / Italian / Portuguese borrow English "like" too.
+    }
+)
+
+
+# Known multilingual "see more videos on our website/channel" hallucination.
+# Like the subscribe+like pattern, STT models emit this video-platform
+# call-to-action verbatim on silent / unclear audio (observed in the wild:
+# "Voir plus de vidéos sur le site web de l'Université d'Ottawa"). It is
+# caught by the co-occurrence of THREE token classes — a viewing verb /
+# "more", a "video" noun, and a site/channel word. All three are required
+# so genuine guest questions that mention only one ("is there a video?",
+# "your website?", "I want to watch videos") are never dropped.
+_VIDEO_VIEW_TOKENS: frozenset[str] = frozenset(
+    {
+        # English
+        "see",
+        "watch",
+        "more",
+        # French
+        "voir",
+        "regarder",
+        "plus",
+        # Romanian
+        "vedeti",
+        "vedeți",
+        "vizionati",
+        "vizionați",
+        "urmariti",
+        "urmăriți",
+        "mai",
+        "multe",
+        # Spanish
+        "ver",
+        "mira",
+        "más",
+        "mas",
+        # German
+        "sehen",
+        "weitere",
+        "mehr",
+        # Italian
+        "guarda",
+        "guardare",
+        "altri",
+        "altro",
+        # Portuguese
+        "veja",
+        "assista",
+        "mais",
+        # Turkish
+        "izle",
+        "izleyin",
+        "izlemek",
+        "daha",
+        "fazla",
+        # Russian
+        "смотрите",
+        "смотреть",
+        "больше",
+        "ещё",
+        "еще",
+    }
+)
+_VIDEO_NOUN_TOKENS: frozenset[str] = frozenset(
+    {
+        "video",
+        "videos",
+        "vidéo",
+        "vidéos",
+        "vídeo",
+        "vídeos",
+        "videoclip",
+        "videoclipuri",
+        "videolar",
+        "видео",
+    }
+)
+_VIDEO_SITE_TOKENS: frozenset[str] = frozenset(
+    {
+        # site / website
+        "site",
+        "website",
+        "web",
+        "sitio",
+        "webseite",
+        "sitesi",
+        "siteul",
+        "siteului",
+        "siteuri",
+        "сайт",
+        "сайте",
+        "сайта",
+        # channel
+        "channel",
+        "chaîne",
+        "chaine",
+        "canal",
+        "canale",
+        "kanal",
+        "canalul",
+        "kanalı",
+        "kanalima",
+        "канал",
+        "канале",
+        "канала",
     }
 )
 
@@ -184,20 +316,32 @@ def _is_known_whisper_hallucination(normalized: str) -> bool:
 
     `normalized` should already be lower-cased and punctuation-stripped.
 
-    Two checks:
+    Three checks:
     1. Exact match against :data:`_WHISPER_HALLUCINATION_EXACT`.
     2. Co-occurrence of a "subscribe" token and a "like" token in a short
-       utterance — catches every YouTube-outro hallucination Whisper
+       utterance — catches every YouTube-outro hallucination an STT model
        produces, in any language, without needing to enumerate variants.
+    3. Co-occurrence of a viewing verb / "more", a "video" noun and a
+       site/channel token — catches the "see more videos on our website"
+       hallucination family. All three classes are required to avoid
+       dropping genuine guest speech.
     """
     if normalized in _WHISPER_HALLUCINATION_EXACT:
         return True
     tokens = set(normalized.split())
     if not tokens:
         return False
-    has_subscribe = bool(tokens & _SUBSCRIBE_TOKENS)
-    has_like = bool(tokens & _LIKE_TOKENS)
-    return has_subscribe and has_like and len(tokens) <= 20
+    short = len(tokens) <= 20
+    # YouTube-outro "subscribe + like" pattern.
+    if short and (tokens & _SUBSCRIBE_TOKENS) and (tokens & _LIKE_TOKENS):
+        return True
+    # "See more videos on our website / channel" pattern.
+    return bool(
+        short
+        and (tokens & _VIDEO_VIEW_TOKENS)
+        and (tokens & _VIDEO_NOUN_TOKENS)
+        and (tokens & _VIDEO_SITE_TOKENS)
+    )
 
 
 class TranscriptionNoiseFilter(FrameProcessor):
@@ -436,12 +580,13 @@ class PlaybackLeakageGuard(FrameProcessor):
 
         # Watchdog timeouts: how long a state flag can stay True without
         # receiving its corresponding end frame before we force-clear it.
-        # A real bot utterance rarely exceeds 6s, so 10s on _bot_speaking
+        # A real bot utterance rarely exceeds 6s, so 20s on _bot_speaking
         # catches missed TTSStopped/BotStopped frames quickly while still
-        # leaving margin for legitimately long replies. _bot_thinking gets
+        # leaving margin for legitimately long replies (greetings with
+        # ElevenLabs/Cartesia can approach 10s). _bot_thinking gets
         # more room because LLM responses can stream for a while before
         # the End frame fires.
-        self._max_bot_speaking_secs = 10.0
+        self._max_bot_speaking_secs = 20.0
         self._max_bot_thinking_secs = 20.0
 
         # Drop counter — feeds the dashboard's per-stage "X muted" indicator

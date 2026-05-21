@@ -756,6 +756,10 @@ document.getElementById('btn-start').onclick = async function() {
         log('[participant-joined] bot arrived — sending config (voxtera-ready deferred to audio attach)');
         callObject.sendAppMessage({ type: 'voxtera-stt', provider: sttProvider }, '*');
         callObject.sendAppMessage({ type: 'voxtera-language', language: lang }, '*');
+        // Guest's IANA timezone — lets the bot greet with the correct
+        // time of day (Good morning/afternoon/evening). The server clock is
+        // UTC and useless for this; the browser knows the real local time.
+        callObject.sendAppMessage({ type: 'voxtera-timezone', tz: (Intl.DateTimeFormat().resolvedOptions().timeZone || '') }, '*');
         callObject.sendAppMessage({ type: 'voxtera-model', model: llmModel }, '*');
         callObject.sendAppMessage({ type: 'voxtera-tts-provider', provider: ttsProvider }, '*');
         callObject.sendAppMessage({ type: 'voxtera-voice', voice: ttsVoice }, '*');
@@ -823,6 +827,9 @@ document.getElementById('btn-start').onclick = async function() {
       callObject.sendAppMessage({ type: 'voxtera-stt', provider: sttProvider }, '*');
       log('Sending language preference: ' + lang);
       callObject.sendAppMessage({ type: 'voxtera-language', language: lang }, '*');
+      var guestTz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+      log('Sending guest timezone: ' + guestTz);
+      callObject.sendAppMessage({ type: 'voxtera-timezone', tz: guestTz }, '*');
       callObject.sendAppMessage({ type: 'voxtera-model', model: llmModel }, '*');
       callObject.sendAppMessage({ type: 'voxtera-tts-provider', provider: ttsProvider }, '*');
       callObject.sendAppMessage({ type: 'voxtera-voice', voice: ttsVoice }, '*');

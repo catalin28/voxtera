@@ -1,0 +1,2012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Voxtera — The Multilingual Concierge, Reimagined</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700;9..144,900&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#f4ede1;
+    --cream-deep:#ebe1cf;
+    --ink:#1a1814;
+    --ink-soft:#2c2822;
+    --gold:#b8884a;
+    --gold-deep:#8a5f2a;
+    --rust:#a4391c;
+    --sage:#5a6b4a;
+    --paper:#faf6ec;
+    --line:rgba(26,24,20,0.14);
+    --line-strong:rgba(26,24,20,0.32);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--cream);
+    color:var(--ink);
+    font-family:'Fraunces',serif;
+    font-weight:400;
+    overflow-x:hidden;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* paper grain texture */
+  body::before{
+    content:"";
+    position:fixed;inset:0;
+    pointer-events:none;
+    z-index:1;
+    opacity:.35;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.4 0 0 0 0 0.35 0 0 0 0 0.25 0 0 0 0.08 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode:multiply;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;letter-spacing:0.02em;}
+  .italic{font-family:'Instrument Serif',serif;font-style:italic;font-weight:400;}
+
+  /* ============ NAVIGATION ============ */
+  nav{
+    position:fixed;top:0;left:0;right:0;
+    padding:1.4rem 2.5rem;
+    display:flex;justify-content:space-between;align-items:center;
+    z-index:100;
+    backdrop-filter:blur(20px) saturate(140%);
+    background:rgba(244,237,225,0.72);
+    border-bottom:1px solid var(--line);
+  }
+  .logo{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:1.45rem;
+    letter-spacing:-0.02em;
+    display:flex;align-items:center;gap:0.6rem;
+  }
+  .logo-mark{
+    width:28px;height:28px;
+    position:relative;
+    display:inline-flex;align-items:center;justify-content:center;
+  }
+  .logo-mark svg{width:100%;height:100%;}
+  .logo sup{
+    font-size:0.55rem;
+    font-family:'JetBrains Mono',monospace;
+    color:var(--gold-deep);
+    margin-left:0.2rem;
+    letter-spacing:0.1em;
+    font-weight:400;
+  }
+  .nav-links{
+    display:flex;gap:2.5rem;align-items:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.78rem;
+    text-transform:uppercase;
+    letter-spacing:0.12em;
+  }
+  .nav-links a{
+    color:var(--ink-soft);
+    text-decoration:none;
+    transition:color .25s;
+    position:relative;
+  }
+  .nav-links a:hover{color:var(--rust);}
+  .nav-cta{
+    background:var(--ink);
+    color:var(--cream);
+    padding:0.7rem 1.4rem;
+    border-radius:999px;
+    transition:all .3s;
+    border:1px solid var(--ink);
+  }
+  .nav-cta:hover{background:var(--rust);border-color:var(--rust);color:var(--cream);}
+
+  /* ============ HERO ============ */
+  .hero{
+    min-height:100vh;
+    padding:9rem 2.5rem 4rem;
+    position:relative;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:4rem;
+    align-items:center;
+    z-index:2;
+  }
+  .hero-meta{
+    position:absolute;top:7rem;left:2.5rem;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;
+    color:var(--gold-deep);
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    display:flex;align-items:center;gap:1rem;
+  }
+  .hero-meta::before{content:"";width:48px;height:1px;background:var(--gold-deep);}
+  .hero-meta-right{
+    position:absolute;top:7rem;right:2.5rem;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;
+    color:var(--ink-soft);
+    letter-spacing:0.1em;
+  }
+
+  .hero h1{
+    font-family:'Fraunces',serif;
+    font-weight:300;
+    font-size:clamp(3.2rem,7.2vw,7.5rem);
+    line-height:0.92;
+    letter-spacing:-0.04em;
+    color:var(--ink);
+    font-variation-settings:"SOFT" 50;
+  }
+  .hero h1 .italic{
+    font-weight:300;
+    color:var(--rust);
+  }
+  .hero h1 .ampersand{
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    color:var(--gold-deep);
+    font-size:1.1em;
+    line-height:0.8;
+    display:inline-block;
+    transform:translateY(0.08em);
+  }
+
+  .hero-tag{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.78rem;
+    text-transform:uppercase;
+    letter-spacing:0.18em;
+    color:var(--gold-deep);
+    margin-bottom:2rem;
+  }
+  .hero-sub{
+    font-size:1.18rem;
+    line-height:1.6;
+    color:var(--ink-soft);
+    margin-top:2rem;
+    max-width:32rem;
+    font-weight:400;
+  }
+  .hero-sub .italic{color:var(--ink);}
+
+  .hero-actions{
+    display:flex;gap:1.2rem;align-items:center;
+    margin-top:2.5rem;
+  }
+  .btn{
+    padding:1rem 2rem;
+    border-radius:999px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.78rem;
+    text-transform:uppercase;
+    letter-spacing:0.14em;
+    text-decoration:none;
+    transition:all .3s cubic-bezier(.2,.7,.2,1);
+    display:inline-flex;align-items:center;gap:0.6rem;
+    cursor:pointer;border:none;
+  }
+  .btn-primary{
+    background:var(--ink);
+    color:var(--cream);
+    border:1px solid var(--ink);
+  }
+  .btn-primary:hover{
+    background:var(--rust);
+    border-color:var(--rust);
+    transform:translateY(-2px);
+  }
+  .btn-ghost{
+    background:transparent;
+    color:var(--ink);
+    border:1px solid var(--line-strong);
+  }
+  .btn-ghost:hover{border-color:var(--ink);background:rgba(26,24,20,0.04);}
+  .btn .arrow{
+    display:inline-block;
+    transition:transform .3s;
+  }
+  .btn:hover .arrow{transform:translateX(4px);}
+
+  .hero-microcopy{
+    margin-top:1.2rem;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.7rem;
+    color:var(--ink-soft);
+    opacity:0.6;
+    letter-spacing:0.06em;
+  }
+  .listen-icon{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:22px;height:22px;
+    border-radius:50%;
+    background:rgba(244,237,225,0.16);
+    margin-right:0.2rem;
+    transition:background .25s;
+  }
+  .btn-primary:hover .listen-icon{background:rgba(244,237,225,0.28);}
+  .btn-primary.is-playing .listen-icon{background:var(--gold);color:var(--ink);}
+  .btn-primary.is-playing{background:var(--rust);border-color:var(--rust);}
+
+  /* ============ HERO VISUAL ============ */
+  .hero-visual{
+    position:relative;
+    aspect-ratio:1/1.15;
+    max-width:560px;
+    justify-self:end;
+    width:100%;
+  }
+  .device-card{
+    position:absolute;
+    background:var(--paper);
+    border-radius:28px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.6) inset,
+      0 30px 60px -20px rgba(26,24,20,0.25),
+      0 8px 20px -10px rgba(26,24,20,0.18);
+    border:1px solid rgba(26,24,20,0.06);
+    overflow:hidden;
+  }
+  .device-card.main{
+    inset:0;
+    padding:2.2rem 2rem;
+    display:flex;flex-direction:column;
+    transform:rotate(-2deg);
+  }
+  .device-card.float{
+    width:62%;
+    aspect-ratio:1/0.7;
+    right:-6%;bottom:-4%;
+    transform:rotate(4deg);
+    padding:1.4rem;
+    z-index:2;
+    background:var(--ink);
+    color:var(--cream);
+  }
+  .device-card.tiny{
+    width:42%;
+    aspect-ratio:1/0.55;
+    top:-3%;left:-7%;
+    transform:rotate(-7deg);
+    padding:1rem 1.2rem;
+    z-index:3;
+    background:var(--gold);
+    color:var(--paper);
+  }
+
+  .card-header{
+    display:flex;justify-content:space-between;align-items:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.65rem;
+    text-transform:uppercase;
+    letter-spacing:0.14em;
+    margin-bottom:1.4rem;
+    opacity:0.65;
+  }
+  .pulse-dot{
+    width:8px;height:8px;background:#3a8a3a;border-radius:50%;
+    box-shadow:0 0 0 0 rgba(58,138,58,0.6);
+    animation:pulse 1.8s infinite;
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(58,138,58,0.55);}
+    70%{box-shadow:0 0 0 10px rgba(58,138,58,0);}
+    100%{box-shadow:0 0 0 0 rgba(58,138,58,0);}
+  }
+
+  .conv-line{
+    display:flex;flex-direction:column;gap:0.3rem;
+    margin-bottom:1.1rem;
+  }
+  .conv-line .who{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.6rem;
+    letter-spacing:0.16em;
+    text-transform:uppercase;
+    color:var(--gold-deep);
+  }
+  .conv-line .text{
+    font-family:'Fraunces',serif;
+    font-size:0.95rem;
+    line-height:1.4;
+    color:var(--ink);
+  }
+  .conv-line.bot .who{color:var(--rust);}
+  .conv-line .flag{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.55rem;
+    color:var(--ink-soft);
+    opacity:0.6;
+    margin-top:0.15rem;
+  }
+  /* waveform */
+  .waveform{
+    margin-top:auto;
+    display:flex;align-items:center;gap:3px;
+    height:32px;
+  }
+  .waveform .bar{
+    width:3px;
+    background:var(--ink);
+    border-radius:2px;
+    animation:wave 1.4s ease-in-out infinite;
+  }
+  @keyframes wave{
+    0%,100%{height:6px;}
+    50%{height:28px;}
+  }
+  .waveform .bar:nth-child(1){animation-delay:0s;}
+  .waveform .bar:nth-child(2){animation-delay:.1s;}
+  .waveform .bar:nth-child(3){animation-delay:.2s;}
+  .waveform .bar:nth-child(4){animation-delay:.3s;}
+  .waveform .bar:nth-child(5){animation-delay:.4s;}
+  .waveform .bar:nth-child(6){animation-delay:.3s;}
+  .waveform .bar:nth-child(7){animation-delay:.2s;}
+  .waveform .bar:nth-child(8){animation-delay:.1s;}
+  .waveform .bar:nth-child(9){animation-delay:0s;}
+
+  .float-stat-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.6rem;
+    text-transform:uppercase;
+    letter-spacing:0.16em;
+    opacity:0.6;
+    margin-bottom:0.4rem;
+  }
+  .float-stat-value{
+    font-family:'Fraunces',serif;
+    font-weight:300;
+    font-size:2.6rem;
+    line-height:1;
+    letter-spacing:-0.03em;
+  }
+  .float-stat-value .italic{color:var(--gold);font-weight:300;}
+  .float-stat-foot{
+    font-family:'Fraunces',serif;
+    font-size:0.85rem;
+    margin-top:0.6rem;
+    opacity:0.8;
+  }
+
+  .tiny-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.55rem;
+    text-transform:uppercase;
+    letter-spacing:0.16em;
+    opacity:0.8;
+  }
+  .tiny-value{
+    font-family:'Fraunces',serif;
+    font-weight:500;
+    font-size:1.4rem;
+    line-height:1.1;
+    letter-spacing:-0.02em;
+    margin-top:0.3rem;
+  }
+
+  /* ============ MARQUEE ============ */
+  .marquee{
+    position:relative;
+    z-index:2;
+    border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);
+    overflow:hidden;
+    background:rgba(235,225,207,0.4);
+    padding:1.4rem 0;
+  }
+  .marquee-track{
+    display:flex;gap:4rem;
+    animation:scroll 50s linear infinite;
+    width:max-content;
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    font-size:1.4rem;
+    color:var(--ink-soft);
+    white-space:nowrap;
+  }
+  .marquee-track span{display:inline-flex;align-items:center;gap:4rem;}
+  .marquee-track .sep{color:var(--gold-deep);font-style:normal;}
+  @keyframes scroll{
+    from{transform:translateX(0);}
+    to{transform:translateX(-50%);}
+  }
+
+  /* ============ SECTION SHELL ============ */
+  section{position:relative;z-index:2;}
+  .section-pad{padding:7rem 2.5rem;}
+  .section-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:0.18em;
+    color:var(--gold-deep);
+    display:flex;align-items:center;gap:1rem;
+    margin-bottom:2rem;
+  }
+  .section-label::before{
+    content:"";display:inline-block;width:32px;height:1px;background:var(--gold-deep);
+  }
+  .section-title{
+    font-family:'Fraunces',serif;
+    font-weight:300;
+    font-size:clamp(2.4rem,5vw,4.5rem);
+    line-height:1;
+    letter-spacing:-0.03em;
+    margin-bottom:1.5rem;
+    max-width:24ch;
+  }
+  .section-title .italic{color:var(--rust);}
+
+  /* ============ THE PROBLEM ============ */
+  .problem{
+    background:var(--ink);
+    color:var(--cream);
+    padding:8rem 2.5rem;
+    position:relative;
+    overflow:hidden;
+  }
+  .problem::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.85 0 0 0 0 0.7 0 0 0 0.12 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity:.4;mix-blend-mode:screen;
+    pointer-events:none;
+  }
+  .problem-inner{
+    max-width:1400px;margin:0 auto;
+    display:grid;grid-template-columns:5fr 7fr;gap:5rem;align-items:center;
+    position:relative;
+  }
+  .problem .section-label{color:var(--gold);}
+  .problem .section-label::before{background:var(--gold);}
+  .problem h2{
+    font-family:'Fraunces',serif;
+    font-weight:300;
+    font-size:clamp(2.2rem,4vw,3.8rem);
+    line-height:1.05;
+    letter-spacing:-0.03em;
+    color:var(--cream);
+  }
+  .problem h2 .italic{color:var(--gold);}
+  .problem-stats{
+    display:grid;grid-template-columns:1fr 1fr;
+    gap:0;
+    border-top:1px solid rgba(244,237,225,0.18);
+  }
+  .stat{
+    padding:2.2rem 1.6rem;
+    border-bottom:1px solid rgba(244,237,225,0.18);
+    border-right:1px solid rgba(244,237,225,0.18);
+  }
+  .stat:nth-child(2n){border-right:none;}
+  .stat-num{
+    font-family:'Fraunces',serif;
+    font-weight:300;
+    font-size:3.6rem;
+    line-height:1;
+    letter-spacing:-0.04em;
+    color:var(--gold);
+    margin-bottom:0.5rem;
+  }
+  .stat-num .italic{font-family:'Instrument Serif',serif;font-style:italic;font-size:0.7em;}
+  .stat-text{
+    font-size:0.95rem;line-height:1.45;
+    color:rgba(244,237,225,0.78);
+    font-family:'Fraunces',serif;
+  }
+
+  /* ============ HOW IT WORKS ============ */
+  .how-grid{
+    display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;
+    border-top:1px solid var(--line-strong);
+    border-bottom:1px solid var(--line-strong);
+    margin-top:3rem;
+  }
+  .step{
+    padding:3rem 2rem;
+    border-right:1px solid var(--line);
+    position:relative;
+  }
+  .step:last-child{border-right:none;}
+  .step-num{
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    font-size:4rem;
+    line-height:0.8;
+    color:var(--gold-deep);
+    margin-bottom:1.5rem;
+  }
+  .step-title{
+    font-family:'Fraunces',serif;
+    font-weight:500;
+    font-size:1.45rem;
+    letter-spacing:-0.02em;
+    margin-bottom:0.8rem;
+  }
+  .step-desc{
+    font-size:0.98rem;
+    line-height:1.55;
+    color:var(--ink-soft);
+  }
+  .step-tag{
+    display:inline-block;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.62rem;
+    text-transform:uppercase;
+    letter-spacing:0.14em;
+    color:var(--gold-deep);
+    margin-top:1.2rem;
+    padding:0.25rem 0.6rem;
+    border:1px solid var(--gold-deep);
+    border-radius:999px;
+  }
+
+  /* ============ FEATURES / USE CASES ============ */
+  .features{
+    background:var(--paper);
+    padding:7rem 2.5rem;
+  }
+  .feature-row{
+    max-width:1400px;margin:0 auto;
+    display:grid;grid-template-columns:1fr 1fr;
+    gap:5rem;align-items:start;
+  }
+  .feature-list{
+    display:flex;flex-direction:column;gap:0;
+    border-top:1px solid var(--line);
+  }
+  .feature-item{
+    padding:1.8rem 0;
+    border-bottom:1px solid var(--line);
+    display:grid;grid-template-columns:auto 1fr;gap:1.5rem;
+    cursor:default;
+    transition:padding-left .35s ease, background .35s ease;
+  }
+  .feature-item:hover{
+    padding-left:1rem;
+    background:linear-gradient(90deg,rgba(184,136,74,0.08),transparent);
+  }
+  .feature-num{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;
+    color:var(--gold-deep);
+    letter-spacing:0.12em;
+    padding-top:0.3rem;
+  }
+  .feature-title{
+    font-family:'Fraunces',serif;
+    font-weight:500;
+    font-size:1.3rem;
+    letter-spacing:-0.02em;
+    margin-bottom:0.4rem;
+  }
+  .feature-desc{
+    font-size:0.95rem;line-height:1.5;color:var(--ink-soft);
+  }
+
+  /* ============ TWO AUDIENCES (GUEST / HOTELIER) ============ */
+  .two-audiences{
+    padding:7rem 2.5rem;
+    background:var(--cream);
+    position:relative;
+    z-index:2;
+  }
+  .two-audiences-inner{
+    max-width:1400px;margin:0 auto;
+    display:grid;
+    grid-template-columns:1fr auto 1fr;
+    gap:2rem;
+    align-items:stretch;
+  }
+  .audience-card{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:24px;
+    padding:3rem 2.5rem;
+    display:flex;flex-direction:column;
+    box-shadow:0 30px 60px -40px rgba(26,24,20,0.2);
+  }
+  .audience-card.hotelier{
+    background:var(--ink);
+    color:var(--cream);
+    border-color:var(--ink);
+  }
+  .audience-header{
+    display:flex;align-items:center;gap:0.8rem;
+    margin-bottom:1.5rem;
+  }
+  .audience-icon{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:38px;height:38px;
+    border-radius:50%;
+    background:var(--cream);
+    color:var(--rust);
+    border:1px solid var(--line);
+  }
+  .audience-card.hotelier .audience-icon{
+    background:rgba(244,237,225,0.06);
+    color:var(--gold);
+    border-color:rgba(244,237,225,0.18);
+  }
+  .audience-tag{
+    font-size:0.7rem;
+    text-transform:uppercase;
+    letter-spacing:0.18em;
+    color:var(--gold-deep);
+  }
+  .audience-card.hotelier .audience-tag{color:var(--gold);}
+  .audience-title{
+    font-family:'Fraunces',serif;
+    font-weight:300;
+    font-size:clamp(1.8rem,3vw,2.6rem);
+    line-height:1.05;
+    letter-spacing:-0.03em;
+    margin-bottom:2rem;
+  }
+  .audience-title .italic{
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    color:var(--rust);
+  }
+  .audience-card.hotelier .audience-title .italic{color:var(--gold);}
+  .audience-list{
+    list-style:none;
+    display:flex;flex-direction:column;
+    gap:0;
+    margin-top:auto;
+  }
+  .audience-list li{
+    padding:1rem 0;
+    border-bottom:1px solid var(--line);
+    font-size:1rem;
+    line-height:1.5;
+    display:grid;
+    grid-template-columns:auto 1fr;
+    gap:0.9rem;
+    align-items:start;
+  }
+  .audience-card.hotelier .audience-list li{
+    border-color:rgba(244,237,225,0.14);
+    color:rgba(244,237,225,0.88);
+  }
+  .audience-list li:last-child{border-bottom:none;}
+  .audience-list li::before{
+    content:"—";
+    color:var(--gold-deep);
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    font-size:1.2rem;
+    line-height:1;
+    padding-top:0.15rem;
+  }
+  .audience-card.hotelier .audience-list li::before{color:var(--gold);}
+
+  .audience-divider{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:0 0.5rem;
+  }
+  .divider-line{
+    flex:1;
+    width:1px;
+    background:var(--line-strong);
+    min-height:60px;
+  }
+  .divider-mark{
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    font-size:3rem;
+    color:var(--gold-deep);
+    line-height:1;
+    padding:1.5rem 0;
+  }
+
+  /* ============ LANGUAGE CALLOUT ============ */
+  .language-callout{
+    background:var(--rust);
+    color:var(--cream);
+    padding:6rem 2.5rem;
+    position:relative;
+    overflow:hidden;
+  }
+  .lang-inner{
+    max-width:1400px;margin:0 auto;
+    display:grid;grid-template-columns:1fr 1fr;
+    gap:4rem;align-items:center;
+    position:relative;z-index:2;
+  }
+  .lang-callout-headline{
+    font-family:'Fraunces',serif;
+    font-weight:300;
+    font-size:clamp(2.5rem,5vw,4.5rem);
+    line-height:1;
+    letter-spacing:-0.04em;
+  }
+  .lang-callout-headline .italic{font-style:italic;font-family:'Instrument Serif',serif;}
+  .lang-cloud{
+    display:flex;flex-wrap:wrap;gap:0.6rem 1rem;
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    font-size:1.5rem;
+    line-height:1.2;
+    color:rgba(244,237,225,0.88);
+  }
+  .lang-cloud span{
+    display:inline-block;
+    transition:color .25s, transform .25s;
+  }
+  .lang-cloud span:hover{color:var(--cream);transform:translateY(-2px);}
+  .lang-cloud .big{font-size:2rem;color:var(--cream);}
+  .lang-cloud .dot{font-style:normal;color:rgba(244,237,225,0.4);}
+
+  /* ============ DIALOGUE / DEMO ============ */
+  .demo{
+    padding:7rem 2.5rem;
+  }
+  .demo-inner{
+    max-width:1100px;margin:0 auto;
+    text-align:center;
+  }
+  .demo .section-label{justify-content:center;}
+  .demo .section-label::before,
+  .demo .section-label::after{
+    content:"";display:inline-block;width:32px;height:1px;background:var(--gold-deep);
+  }
+  .demo .section-title{margin-left:auto;margin-right:auto;text-align:center;}
+  .dialogue{
+    margin-top:4rem;
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:24px;
+    padding:3rem;
+    text-align:left;
+    box-shadow:0 30px 80px -40px rgba(26,24,20,0.2);
+  }
+  .dialogue-row{
+    display:grid;grid-template-columns:120px 1fr;
+    gap:2rem;padding:1.4rem 0;
+    border-bottom:1px solid var(--line);
+    align-items:start;
+  }
+  .dialogue-row:last-child{border-bottom:none;}
+  .d-meta{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.7rem;
+    text-transform:uppercase;
+    letter-spacing:0.14em;
+    color:var(--gold-deep);
+    padding-top:0.3rem;
+  }
+  .d-meta .lang{display:block;color:var(--ink-soft);opacity:0.6;margin-top:0.3rem;font-size:0.62rem;}
+  .d-text{
+    font-family:'Fraunces',serif;
+    font-size:1.3rem;
+    line-height:1.45;
+    letter-spacing:-0.01em;
+  }
+  .d-text .trans{
+    display:block;
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    font-size:0.95rem;
+    color:var(--ink-soft);
+    margin-top:0.5rem;
+  }
+
+  /* ============ STACK ============ */
+  .stack{
+    background:var(--cream-deep);
+    padding:7rem 2.5rem;
+  }
+  .stack-inner{max-width:1400px;margin:0 auto;}
+  .stack-grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem;
+    margin-top:3rem;
+  }
+  .stack-card{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:1.8rem;
+    transition:transform .35s, box-shadow .35s;
+  }
+  .stack-card:hover{
+    transform:translateY(-6px);
+    box-shadow:0 20px 40px -20px rgba(26,24,20,0.2);
+  }
+  .stack-card .layer{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.62rem;
+    text-transform:uppercase;
+    letter-spacing:0.14em;
+    color:var(--gold-deep);
+    margin-bottom:0.8rem;
+  }
+  .stack-card h4{
+    font-family:'Fraunces',serif;
+    font-weight:500;
+    font-size:1.3rem;
+    letter-spacing:-0.02em;
+    margin-bottom:0.5rem;
+  }
+  .stack-card p{
+    font-size:0.88rem;line-height:1.5;color:var(--ink-soft);
+  }
+  .stack-card .stat-line{
+    display:flex;justify-content:space-between;
+    margin-top:1.2rem;padding-top:1rem;
+    border-top:1px solid var(--line);
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.68rem;color:var(--ink-soft);
+  }
+  .stack-card .stat-line strong{color:var(--ink);font-weight:500;}
+
+  /* ============ COMPARISON ============ */
+  .compare{
+    padding:7rem 2.5rem;
+    background:var(--cream-deep);
+  }
+  .compare-inner{
+    max-width:1200px;margin:0 auto;
+  }
+  .compare-intro{
+    font-size:1.05rem;
+    line-height:1.6;
+    color:var(--ink-soft);
+    max-width:42rem;
+    margin-bottom:3rem;
+  }
+  .compare-table{
+    border-top:1px solid var(--line-strong);
+    background:var(--paper);
+    border-radius:18px;
+    overflow:hidden;
+    box-shadow:0 30px 60px -40px rgba(26,24,20,0.15);
+  }
+  .compare-row{
+    display:grid;
+    grid-template-columns:1.2fr 1.8fr 1.8fr;
+    border-bottom:1px solid var(--line);
+    align-items:stretch;
+  }
+  .compare-row:last-child{border-bottom:none;}
+  .compare-cell{
+    padding:1.4rem 1.6rem;
+    font-size:0.98rem;
+    line-height:1.45;
+  }
+  .compare-cell.label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:0.14em;
+    color:var(--ink-soft);
+    background:rgba(26,24,20,0.025);
+    border-right:1px solid var(--line);
+    display:flex;align-items:center;
+  }
+  .compare-cell.us{
+    background:rgba(184,136,74,0.06);
+    border-right:1px solid var(--line);
+    color:var(--ink);
+  }
+  .compare-cell.us strong{
+    font-family:'Fraunces',serif;
+    font-weight:500;
+    color:var(--rust);
+  }
+  .compare-cell.them{
+    color:var(--ink-soft);
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    font-size:1.05rem;
+  }
+  .compare-head .compare-cell{
+    background:var(--ink);
+    color:var(--cream);
+    padding:1.2rem 1.6rem;
+  }
+  .compare-head .compare-cell.label{background:var(--ink);border-right:1px solid rgba(244,237,225,0.16);}
+  .compare-head .compare-cell.us{
+    background:var(--ink);
+    border-right:1px solid rgba(244,237,225,0.16);
+  }
+  .compare-head .compare-cell.them{
+    background:var(--ink);
+    font-style:normal;
+    color:rgba(244,237,225,0.55);
+  }
+  .compare-eyebrow{
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:0.16em;
+    color:var(--gold);
+  }
+  .compare-head .compare-cell.them .compare-eyebrow{color:rgba(244,237,225,0.5);}
+  .mono-sep{color:var(--gold-deep);margin:0 0.3rem;}
+  .compare-foot{
+    margin-top:1.5rem;
+    font-size:0.7rem;
+    color:var(--ink-soft);
+    opacity:0.55;
+    text-align:center;
+    text-transform:uppercase;
+    letter-spacing:0.12em;
+  }
+
+  /* ============ PRICING ============ */
+  .pricing{
+    padding:7rem 2.5rem;
+  }
+  .pricing-inner{max-width:1400px;margin:0 auto;}
+  .pricing-grid{
+    display:grid;grid-template-columns:1fr 1fr 1fr;gap:2rem;
+    margin-top:3.5rem;
+  }
+  .price-card{
+    border:1px solid var(--line-strong);
+    border-radius:24px;
+    padding:2.5rem 2rem;
+    background:var(--paper);
+    display:flex;flex-direction:column;
+    position:relative;
+  }
+  .price-card.feature{
+    background:var(--ink);
+    color:var(--cream);
+    border-color:var(--ink);
+    transform:translateY(-12px);
+  }
+  .price-card.feature .price-num{color:var(--gold);}
+  .price-tag{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.7rem;
+    text-transform:uppercase;
+    letter-spacing:0.16em;
+    color:var(--gold-deep);
+    margin-bottom:1.2rem;
+  }
+  .price-card.feature .price-tag{color:var(--gold);}
+  .price-name{
+    font-family:'Fraunces',serif;
+    font-weight:400;
+    font-size:1.8rem;
+    letter-spacing:-0.02em;
+    margin-bottom:0.4rem;
+  }
+  .price-desc{
+    font-size:0.92rem;
+    color:var(--ink-soft);
+    margin-bottom:2rem;
+    line-height:1.45;
+  }
+  .price-card.feature .price-desc{color:rgba(244,237,225,0.7);}
+  .price-num{
+    font-family:'Fraunces',serif;
+    font-weight:300;
+    font-size:3rem;
+    line-height:1;
+    letter-spacing:-0.04em;
+    color:var(--ink);
+    margin-bottom:0.4rem;
+  }
+  .price-card.feature .price-num{color:var(--gold);}
+  .price-num .small{
+    font-size:1rem;font-family:'JetBrains Mono',monospace;
+    color:var(--ink-soft);font-weight:400;letter-spacing:0;
+  }
+  .price-card.feature .price-num .small{color:rgba(244,237,225,0.6);}
+  .price-features{
+    list-style:none;
+    margin:2rem 0;
+    flex:1;
+  }
+  .price-features li{
+    padding:0.7rem 0;
+    border-bottom:1px solid var(--line);
+    font-size:0.92rem;
+    display:flex;align-items:flex-start;gap:0.7rem;
+    line-height:1.4;
+  }
+  .price-card.feature .price-features li{border-color:rgba(244,237,225,0.15);}
+  .price-features li::before{
+    content:"→";color:var(--gold-deep);flex-shrink:0;
+    font-family:'JetBrains Mono',monospace;
+  }
+  .price-card.feature .price-features li::before{color:var(--gold);}
+  .price-features li:last-child{border-bottom:none;}
+
+  /* ============ FAQ ============ */
+  .faq{
+    padding:7rem 2.5rem;
+    background:var(--cream-deep);
+  }
+  .faq-inner{max-width:900px;margin:0 auto;}
+  .faq details{
+    border-bottom:1px solid var(--line-strong);
+    padding:1.6rem 0;
+    cursor:pointer;
+  }
+  .faq summary{
+    list-style:none;
+    display:flex;justify-content:space-between;align-items:center;
+    font-family:'Fraunces',serif;
+    font-weight:500;
+    font-size:1.25rem;
+    letter-spacing:-0.01em;
+  }
+  .faq summary::-webkit-details-marker{display:none;}
+  .faq summary::after{
+    content:"+";
+    font-family:'Instrument Serif',serif;
+    font-size:2rem;
+    color:var(--gold-deep);
+    transition:transform .3s;
+    font-weight:300;
+  }
+  .faq details[open] summary::after{transform:rotate(45deg);}
+  .faq details p{
+    margin-top:1rem;
+    color:var(--ink-soft);
+    line-height:1.6;
+    font-size:1rem;
+    max-width:42rem;
+  }
+
+  /* ============ TRUST & DATA ============ */
+  .trust{
+    padding:6rem 2.5rem;
+    background:var(--cream);
+    border-top:1px solid var(--line);
+  }
+  .trust-inner{
+    max-width:1400px;margin:0 auto;
+    display:grid;
+    grid-template-columns:1fr 2fr;
+    gap:5rem;
+    align-items:start;
+  }
+  .trust-title{
+    font-family:'Fraunces',serif;
+    font-weight:300;
+    font-size:clamp(2rem,3.6vw,3rem);
+    line-height:1.05;
+    letter-spacing:-0.03em;
+    margin-bottom:1.2rem;
+  }
+  .trust-sub{
+    font-size:1rem;
+    line-height:1.6;
+    color:var(--ink-soft);
+    max-width:24rem;
+  }
+  .trust-grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:1rem;
+  }
+  .trust-card{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:1.4rem 1.3rem;
+    transition:transform .3s, box-shadow .3s, border-color .3s;
+  }
+  .trust-card:hover{
+    transform:translateY(-3px);
+    border-color:var(--gold-deep);
+    box-shadow:0 14px 30px -16px rgba(26,24,20,0.18);
+  }
+  .trust-icon{
+    width:38px;height:38px;
+    border-radius:50%;
+    background:rgba(184,136,74,0.12);
+    color:var(--gold-deep);
+    display:inline-flex;align-items:center;justify-content:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.7rem;
+    letter-spacing:0.05em;
+    font-weight:500;
+    margin-bottom:1rem;
+  }
+  .trust-name{
+    font-family:'Fraunces',serif;
+    font-weight:500;
+    font-size:1.05rem;
+    letter-spacing:-0.01em;
+    margin-bottom:0.3rem;
+  }
+  .trust-note{
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    font-size:0.92rem;
+    color:var(--ink-soft);
+    line-height:1.4;
+  }
+
+  /* ============ CTA ============ */
+  .final-cta{
+    background:var(--ink);
+    color:var(--cream);
+    padding:9rem 2.5rem;
+    text-align:center;
+    position:relative;
+    overflow:hidden;
+  }
+  .final-cta::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.85 0 0 0 0 0.7 0 0 0 0.1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity:.4;mix-blend-mode:screen;pointer-events:none;
+  }
+  .final-cta-inner{max-width:900px;margin:0 auto;position:relative;}
+  .final-cta h2{
+    font-family:'Fraunces',serif;
+    font-weight:300;
+    font-size:clamp(3rem,6vw,6rem);
+    line-height:0.95;
+    letter-spacing:-0.04em;
+    margin-bottom:1.5rem;
+  }
+  .final-cta h2 .italic{color:var(--gold);}
+  .final-cta p{
+    font-size:1.15rem;
+    color:rgba(244,237,225,0.78);
+    margin-bottom:2.5rem;
+    line-height:1.6;
+    max-width:30rem;margin-left:auto;margin-right:auto;
+  }
+  .cta-buttons{
+    display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;
+  }
+  .final-cta .btn-primary{
+    background:var(--cream);
+    color:var(--ink);
+    border-color:var(--cream);
+  }
+  .final-cta .btn-primary:hover{background:var(--gold);border-color:var(--gold);color:var(--ink);}
+  .final-cta .btn-ghost{color:var(--cream);border-color:rgba(244,237,225,0.3);}
+  .final-cta .btn-ghost:hover{background:rgba(244,237,225,0.06);border-color:var(--cream);}
+
+  /* ============ FOOTER ============ */
+  footer{
+    padding:4rem 2.5rem 2rem;
+    background:var(--ink);
+    color:rgba(244,237,225,0.6);
+    border-top:1px solid rgba(244,237,225,0.1);
+    position:relative;
+  }
+  .footer-grid{
+    max-width:1400px;margin:0 auto;
+    display:grid;grid-template-columns:2fr 1fr 1fr 1fr;
+    gap:3rem;
+    padding-bottom:3rem;
+    border-bottom:1px solid rgba(244,237,225,0.1);
+  }
+  .footer-grid h5{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.7rem;
+    text-transform:uppercase;
+    letter-spacing:0.16em;
+    color:var(--gold);
+    margin-bottom:1.2rem;
+  }
+  .footer-grid a{
+    display:block;
+    color:rgba(244,237,225,0.7);
+    text-decoration:none;
+    padding:0.4rem 0;
+    font-size:0.95rem;
+    transition:color .25s;
+  }
+  .footer-grid a:hover{color:var(--cream);}
+  .footer-brand{font-family:'Fraunces',serif;font-size:2rem;font-weight:400;color:var(--cream);margin-bottom:1rem;letter-spacing:-0.02em;}
+  .footer-tag{font-family:'Instrument Serif',serif;font-style:italic;font-size:1.1rem;color:rgba(244,237,225,0.6);max-width:24rem;line-height:1.5;}
+  .footer-bottom{
+    max-width:1400px;margin:0 auto;
+    padding-top:2rem;
+    display:flex;justify-content:space-between;align-items:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:rgba(244,237,225,0.4);
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width:1024px){
+    .hero{grid-template-columns:1fr;gap:5rem;padding-top:8rem;}
+    .hero-meta-right{display:none;}
+    .hero-visual{justify-self:center;max-width:420px;}
+    .problem-inner,.feature-row,.lang-inner{grid-template-columns:1fr;gap:3rem;}
+    .how-grid{grid-template-columns:1fr;}
+    .step{border-right:none;border-bottom:1px solid var(--line);}
+    .step:last-child{border-bottom:none;}
+    .stack-grid{grid-template-columns:1fr 1fr;}
+    .pricing-grid{grid-template-columns:1fr;}
+    .price-card.feature{transform:none;}
+    .footer-grid{grid-template-columns:1fr 1fr;}
+    .trust-inner{grid-template-columns:1fr;gap:3rem;}
+    .trust-grid{grid-template-columns:1fr 1fr;}
+    .two-audiences-inner{grid-template-columns:1fr;gap:1.5rem;}
+    .audience-divider{flex-direction:row;padding:0.5rem 0;}
+    .audience-divider .divider-line{height:1px;width:auto;min-height:0;min-width:60px;}
+    .audience-divider .divider-mark{padding:0 1.5rem;font-size:2.2rem;}
+  }
+  @media (max-width:640px){
+    nav{padding:1rem 1.2rem;}
+    .nav-links{gap:1rem;}
+    .nav-links a:not(.nav-cta){display:none;}
+    .section-pad,.features,.stack,.faq,.demo,.language-callout,.problem,.final-cta{padding:5rem 1.2rem;}
+    .two-audiences{padding:5rem 1.2rem;}
+    .audience-card{padding:2rem 1.5rem;}
+    .compare{padding:5rem 1.2rem;}
+    .compare-row{grid-template-columns:1fr;}
+    .compare-cell.label{
+      border-right:none;border-bottom:1px solid var(--line);
+      padding:0.9rem 1.2rem;
+    }
+    .compare-cell.us{border-right:none;padding:1.2rem;}
+    .compare-cell.them{padding:0.6rem 1.2rem 1.2rem;}
+    .compare-row:not(.compare-head) .compare-cell.them::before{
+      content:"vs. typical: ";
+      font-family:'JetBrains Mono',monospace;
+      font-size:0.65rem;
+      text-transform:uppercase;
+      letter-spacing:0.14em;
+      color:var(--gold-deep);
+      margin-right:0.4rem;
+      font-style:normal;
+    }
+    .compare-head{display:none;}
+    .trust{padding:5rem 1.2rem;}
+    .trust-grid{grid-template-columns:1fr;}
+    .hero{padding:7rem 1.2rem 3rem;}
+    .hero-meta{left:1.2rem;font-size:0.65rem;}
+    .problem-stats{grid-template-columns:1fr;}
+    .stat{border-right:none;}
+    .stack-grid{grid-template-columns:1fr;}
+    .dialogue{padding:1.8rem;}
+    .dialogue-row{grid-template-columns:1fr;gap:0.6rem;padding:1rem 0;}
+    .footer-grid{grid-template-columns:1fr;gap:2rem;}
+    .footer-bottom{flex-direction:column;gap:1rem;text-align:center;}
+  }
+
+  /* fade-in on scroll */
+  .reveal{opacity:0;transform:translateY(30px);transition:opacity .9s cubic-bezier(.2,.7,.2,1), transform .9s cubic-bezier(.2,.7,.2,1);}
+  .reveal.in{opacity:1;transform:translateY(0);}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="logo">
+    <span class="logo-mark">
+      <svg viewBox="0 0 32 32" fill="none">
+        <circle cx="16" cy="16" r="15" stroke="#1a1814" stroke-width="1.2" fill="none"/>
+        <path d="M8 16 L11 16 L13 10 L16 22 L19 8 L21 18 L24 16" stroke="#b8884a" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    Voxtera<sup>™</sup>
+  </div>
+  <div class="nav-links">
+    <a href="#solution">Solution</a>
+    <a href="voxtera-hotels.html">For hotels</a>
+    <a href="#languages">Languages</a>
+    <a href="#compare">Compare</a>
+    <a href="#pricing">Pricing</a>
+    <a href="#contact" class="nav-cta">Book a demo →</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-meta">Est. 2025 · Voice intelligence for hospitality</div>
+  <div class="hero-meta-right">Vol. 01 — A new front desk</div>
+
+  <div>
+    <div class="hero-tag">The multilingual concierge</div>
+    <h1>
+      Every guest,<br/>
+      every language, <span class="ampersand">&</span><br/>
+      <span class="italic">no one</span> waiting.
+    </h1>
+    <p class="hero-sub">
+      Voxtera is a real-time voice concierge that hears your guest in
+      <span class="italic">any of 99 languages</span>, answers in the same one,
+      and turns every request into a ticket your team can action —
+      in <span class="italic">Telegram, WhatsApp, Slack, or your PMS</span>.
+      Built for properties where the front desk shouldn't sleep, switch staff, or fumble for a translator.
+    </p>
+    <div class="hero-actions">
+      <button class="btn btn-primary" id="listen-btn" type="button">
+        <span class="listen-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4 L4 12 L12 8 Z" fill="currentColor"/></svg>
+        </span>
+        <span id="listen-label">Listen to a 30-sec sample</span>
+      </button>
+      <a href="#contact" class="btn btn-ghost">Book a demo <span class="arrow">→</span></a>
+    </div>
+    <div class="hero-microcopy">
+      <span class="mono">↳ German guest, real call · 27 seconds · unedited</span>
+    </div>
+  </div>
+
+  <div class="hero-visual">
+    <!-- Floating little card -->
+    <div class="device-card tiny">
+      <div class="tiny-label">Detected · 02:14</div>
+      <div class="tiny-value">日本語<br/>→ ja-JP</div>
+    </div>
+
+    <!-- Main "transcript" card -->
+    <div class="device-card main">
+      <div class="card-header">
+        <span>Room 412 · Live</span>
+        <span style="display:inline-flex;align-items:center;gap:0.5rem;"><span class="pulse-dot"></span>On call</span>
+      </div>
+
+      <div class="conv-line">
+        <span class="who">Guest</span>
+        <span class="text">¿Pueden recomendarme un buen sitio para cenar cerca, no muy caro?</span>
+        <span class="flag">es-ES · detected automatically</span>
+      </div>
+      <div class="conv-line bot">
+        <span class="who">Voxtera</span>
+        <span class="text">Claro. A cuatro minutos andando tiene Casa Lola — tapas auténticas, reserva no necesaria. ¿Le interesa?</span>
+        <span class="flag">latency · 740ms</span>
+      </div>
+
+      <div class="waveform">
+        <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+        <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+        <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+      </div>
+    </div>
+
+    <!-- Floating stat card -->
+    <div class="device-card float">
+      <div class="float-stat-label">Avg. response</div>
+      <div class="float-stat-value">740<span class="italic">ms</span></div>
+      <div class="float-stat-foot">faster than a human pickup</div>
+    </div>
+  </div>
+</section>
+
+<!-- MARQUEE -->
+<div class="marquee">
+  <div class="marquee-track">
+    <span>
+      Bonjour <span class="sep">·</span>
+      مرحبا <span class="sep">·</span>
+      Konnichiwa <span class="sep">·</span>
+      Olá <span class="sep">·</span>
+      你好 <span class="sep">·</span>
+      Namaste <span class="sep">·</span>
+      Guten Tag <span class="sep">·</span>
+      Salut <span class="sep">·</span>
+      Hej <span class="sep">·</span>
+      Ciao <span class="sep">·</span>
+      Annyeonghaseyo <span class="sep">·</span>
+      Merhaba <span class="sep">·</span>
+      Hola <span class="sep">·</span>
+      Cześć <span class="sep">·</span>
+      Sawubona <span class="sep">·</span>
+    </span>
+    <span>
+      Bonjour <span class="sep">·</span>
+      مرحبا <span class="sep">·</span>
+      Konnichiwa <span class="sep">·</span>
+      Olá <span class="sep">·</span>
+      你好 <span class="sep">·</span>
+      Namaste <span class="sep">·</span>
+      Guten Tag <span class="sep">·</span>
+      Salut <span class="sep">·</span>
+      Hej <span class="sep">·</span>
+      Ciao <span class="sep">·</span>
+      Annyeonghaseyo <span class="sep">·</span>
+      Merhaba <span class="sep">·</span>
+      Hola <span class="sep">·</span>
+      Cześć <span class="sep">·</span>
+      Sawubona <span class="sep">·</span>
+    </span>
+  </div>
+</div>
+
+<!-- THE PROBLEM -->
+<section class="problem">
+  <div class="problem-inner">
+    <div>
+      <div class="section-label">The front desk problem</div>
+      <h2>A guest at 2am should not be a <span class="italic">staffing crisis.</span></h2>
+    </div>
+    <div class="problem-stats">
+      <div class="stat reveal">
+        <div class="stat-num">73<span class="italic">%</span></div>
+        <div class="stat-text">of international guests prefer to speak their native language when asking for help.</div>
+      </div>
+      <div class="stat reveal">
+        <div class="stat-num">4.2<span class="italic">×</span></div>
+        <div class="stat-text">higher review scores for properties offering 24/7 multilingual assistance.</div>
+      </div>
+      <div class="stat reveal">
+        <div class="stat-num">€48k</div>
+        <div class="stat-text">average annual cost of overnight reception coverage for a single mid-size property.</div>
+      </div>
+      <div class="stat reveal">
+        <div class="stat-num">11</div>
+        <div class="stat-text">average languages a single concierge can confidently handle. Voxtera handles ninety-nine.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section-pad" id="solution">
+  <div style="max-width:1400px;margin:0 auto;">
+    <div class="section-label">How Voxtera works</div>
+    <h2 class="section-title">Three seconds from <span class="italic">hello</span> to helpful.</h2>
+
+    <div class="how-grid">
+      <div class="step reveal">
+        <div class="step-num">i.</div>
+        <div class="step-title">Hears any language</div>
+        <div class="step-desc">No selection screens. No phrasebooks. The guest just speaks — Whisper detects the language automatically from the first utterance.</div>
+        <span class="step-tag">99 languages</span>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">ii.</div>
+        <div class="step-title">Understands the property</div>
+        <div class="step-desc">A private knowledge layer holds your menus, hours, room amenities, local recommendations and house rules — so answers are <em>your</em> answers.</div>
+        <span class="step-tag">RAG-grounded</span>
+      </div>
+      <div class="step reveal">
+        <div class="step-num">iii.</div>
+        <div class="step-title">Replies in their voice</div>
+        <div class="step-desc">A native-sounding Chirp 3 HD voice responds in the guest's own language. Under one second, end-to-end. Interruptible like a real conversation.</div>
+        <span class="step-tag">~740ms latency</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features">
+  <div class="feature-row">
+    <div>
+      <div class="section-label">What it actually does</div>
+      <h2 class="section-title">A concierge that never <span class="italic">clocks out.</span></h2>
+      <p style="font-size:1.05rem;line-height:1.6;color:var(--ink-soft);max-width:30rem;">
+        Voxtera replaces the gap between front-desk shifts — and supplements it during the day.
+        It picks up the lobby phone, the in-room dial, the web chat, and the WhatsApp call,
+        with the same fluency every time.
+      </p>
+    </div>
+    <div class="feature-list">
+      <div class="feature-item reveal">
+        <div class="feature-num">01</div>
+        <div>
+          <div class="feature-title">Hotel & residence concierge</div>
+          <div class="feature-desc">Room service, check-in queries, late checkout, spa bookings, wake-up calls — handled in the guest's language, logged for your team.</div>
+        </div>
+      </div>
+      <div class="feature-item reveal">
+        <div class="feature-num">02</div>
+        <div>
+          <div class="feature-title">Local recommendations, grounded</div>
+          <div class="feature-desc">Pulls from <em>your</em> curated list of restaurants, walks and attractions — not the open internet. Your preferred vendors stay preferred.</div>
+        </div>
+      </div>
+      <div class="feature-item reveal">
+        <div class="feature-num">03</div>
+        <div>
+          <div class="feature-title">Web widget · phone · mobile SDK</div>
+          <div class="feature-desc">Embed Voxtera on your booking page, route your existing phone line through it, or drop it into your guest app. One platform, three ways to reach you.</div>
+        </div>
+      </div>
+      <div class="feature-item reveal">
+        <div class="feature-num">04</div>
+        <div>
+          <div class="feature-title">Safety & escalation built in</div>
+          <div class="feature-desc">Medical, security or emotional escalations are flagged and routed to a human in real time — no guest is ever stuck with a bot when it matters.</div>
+        </div>
+      </div>
+      <div class="feature-item reveal">
+        <div class="feature-num">05</div>
+        <div>
+          <div class="feature-title">Tickets out, to the tools you already use</div>
+          <div class="feature-desc">Every guest request becomes a structured ticket — posted to your team's <em>Telegram</em>, <em>WhatsApp</em>, <em>Slack</em>, or <em>SMS</em> group, translated into their language. No new app for your staff to learn.</div>
+        </div>
+      </div>
+      <div class="feature-item reveal">
+        <div class="feature-num">06</div>
+        <div>
+          <div class="feature-title">Translated summaries — in your language</div>
+          <div class="feature-desc">A Japanese guest calls at 3am. By 3:05am your night manager has a clean English summary in their inbox: <em>"Guest in Room 412 requested a late checkout to 2pm. Confirmed."</em> Every call, every language, translated automatically.</div>
+        </div>
+      </div>
+      <div class="feature-item reveal">
+        <div class="feature-num">07</div>
+        <div>
+          <div class="feature-title">Conversation summaries to your PMS</div>
+          <div class="feature-desc">Every call ends with a structured summary pushed to your CRM or PMS — guest preferences captured, follow-ups scheduled, complaints surfaced.</div>
+        </div>
+      </div>
+      <div class="feature-item reveal">
+        <div class="feature-num">08</div>
+        <div>
+          <div class="feature-title">Operator dashboard</div>
+          <div class="feature-desc">See active conversations, languages in use, common questions and escalation rates. Tune answers from a web admin without code.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TWO AUDIENCES: GUEST vs HOTELIER -->
+<section class="two-audiences">
+  <div class="two-audiences-inner">
+    <div class="audience-card guest">
+      <div class="audience-header">
+        <span class="audience-icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="16" cy="11" r="5"/><path d="M6 26c2-5 6-7 10-7s8 2 10 7"/></svg>
+        </span>
+        <div class="audience-tag mono">For the guest</div>
+      </div>
+      <h3 class="audience-title">A welcome in <span class="italic">their</span> language.</h3>
+      <ul class="audience-list">
+        <li>Speak in the language they think in — Voxtera detects it on the first syllable</li>
+        <li>Get an answer in under a second, day or night</li>
+        <li>Interrupt freely. Change subject. Speak naturally — it keeps up</li>
+        <li>Receive a follow-up text or email in the same language if they prefer</li>
+        <li>Reach a real person instantly whenever the call needs one</li>
+      </ul>
+    </div>
+
+    <div class="audience-divider" aria-hidden="true">
+      <span class="divider-line"></span>
+      <span class="divider-mark">&amp;</span>
+      <span class="divider-line"></span>
+    </div>
+
+    <div class="audience-card hotelier">
+      <div class="audience-header">
+        <span class="audience-icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 26 L5 12 L16 5 L27 12 L27 26 Z"/><path d="M13 26 L13 18 L19 18 L19 26"/></svg>
+        </span>
+        <div class="audience-tag mono">For the hotelier</div>
+      </div>
+      <h3 class="audience-title">A team that <span class="italic">never</span> sleeps.</h3>
+      <ul class="audience-list">
+        <li>Translated summary of every call delivered to your inbox in your language</li>
+        <li>Guest preferences and complaints captured automatically into your PMS</li>
+        <li>Live dashboard: active calls, languages in use, escalation rate</li>
+        <li>Post-call guest ratings to spot service issues before reviews are written</li>
+        <li>Update menus, hours, recommendations from a web admin — no code</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- LANGUAGE CLOUD -->
+<section class="language-callout" id="languages">
+  <div class="lang-inner">
+    <div>
+      <div class="section-label" style="color:var(--gold);">Coverage</div>
+      <div class="lang-callout-headline">
+        Ninety-nine languages.<br/>
+        <span class="italic">No setting required.</span>
+      </div>
+      <p style="margin-top:2rem;color:rgba(244,237,225,0.78);font-size:1.08rem;line-height:1.6;max-width:30rem;">
+        From Mandarin to Maltese, Tagalog to Tamil. The guest speaks; Voxtera answers.
+        TTS is available in 75+ of those with native-grade voices — the remainder fall back gracefully.
+      </p>
+    </div>
+    <div class="lang-cloud">
+      <span class="big">English</span> <span class="dot">·</span>
+      <span>Français</span> <span class="dot">·</span>
+      <span class="big">Español</span> <span class="dot">·</span>
+      <span>Deutsch</span> <span class="dot">·</span>
+      <span>Italiano</span> <span class="dot">·</span>
+      <span class="big">日本語</span> <span class="dot">·</span>
+      <span>中文</span> <span class="dot">·</span>
+      <span>Português</span> <span class="dot">·</span>
+      <span class="big">العربية</span> <span class="dot">·</span>
+      <span>Nederlands</span> <span class="dot">·</span>
+      <span>Türkçe</span> <span class="dot">·</span>
+      <span>한국어</span> <span class="dot">·</span>
+      <span class="big">हिन्दी</span> <span class="dot">·</span>
+      <span>Polski</span> <span class="dot">·</span>
+      <span>Svenska</span> <span class="dot">·</span>
+      <span>Suomi</span> <span class="dot">·</span>
+      <span>Ελληνικά</span> <span class="dot">·</span>
+      <span class="big">Русский</span> <span class="dot">·</span>
+      <span>Tiếng Việt</span> <span class="dot">·</span>
+      <span>ไทย</span> <span class="dot">·</span>
+      <span>Bahasa</span> <span class="dot">·</span>
+      <span>Norsk</span> <span class="dot">·</span>
+      <span class="big">+78 more</span>
+    </div>
+  </div>
+</section>
+
+<!-- DEMO DIALOGUE -->
+<section class="demo">
+  <div class="demo-inner">
+    <div class="section-label">A typical morning</div>
+    <h2 class="section-title">A real conversation, <span class="italic">unedited.</span></h2>
+
+    <div class="dialogue">
+      <div class="dialogue-row">
+        <div class="d-meta">07:42<span class="lang">de-DE</span></div>
+        <div class="d-text">
+          Guten Morgen, gibt es heute noch Yoga am Pool?
+          <span class="trans">"Good morning — is there still yoga by the pool today?"</span>
+        </div>
+      </div>
+      <div class="dialogue-row">
+        <div class="d-meta" style="color:var(--rust);">Voxtera<span class="lang">de-DE · 680ms</span></div>
+        <div class="d-text">
+          Ja, um neun Uhr am Infinity-Pool. Möchten Sie, dass ich einen Platz für Sie reserviere?
+          <span class="trans">"Yes, at nine, by the infinity pool. Shall I reserve a spot for you?"</span>
+        </div>
+      </div>
+      <div class="dialogue-row">
+        <div class="d-meta">07:43<span class="lang">de-DE</span></div>
+        <div class="d-text">
+          Ja, bitte. Und mein Mann auch.
+          <span class="trans">"Yes, please. And my husband too."</span>
+        </div>
+      </div>
+      <div class="dialogue-row">
+        <div class="d-meta" style="color:var(--rust);">Voxtera<span class="lang">de-DE · 590ms</span></div>
+        <div class="d-text">
+          Erledigt — zwei Plätze auf den Namen Zimmer 207. Genießen Sie den Morgen, Frau Müller.
+          <span class="trans">"Done — two spots under room 207. Enjoy the morning, Frau Müller."</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPARISON -->
+<section class="compare" id="compare">
+  <div class="compare-inner">
+    <div class="section-label">How we compare</div>
+    <h2 class="section-title">A different kind of <span class="italic">concierge.</span></h2>
+    <p class="compare-intro">
+      Most hotel voice assistants still ask you to pick a language at setup. Most don't tell you what's under the hood, or how fast it really is. Here's what we publish openly.
+    </p>
+
+    <div class="compare-table">
+      <div class="compare-row compare-head">
+        <div class="compare-cell label">&nbsp;</div>
+        <div class="compare-cell us">
+          <span class="mono compare-eyebrow">Voxtera</span>
+        </div>
+        <div class="compare-cell them">
+          <span class="mono compare-eyebrow">Typical hotel AI</span>
+        </div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell label">Languages</div>
+        <div class="compare-cell us"><strong>99</strong>, auto-detected from first utterance</div>
+        <div class="compare-cell them">"Multilingual" — per-property configuration required</div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell label">End-to-end latency</div>
+        <div class="compare-cell us"><strong>~740ms</strong> published, every language</div>
+        <div class="compare-cell them">Not disclosed</div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell label">Channels</div>
+        <div class="compare-cell us">Phone <span class="mono-sep">·</span> web widget <span class="mono-sep">·</span> mobile SDK</div>
+        <div class="compare-cell them">Usually phone <em>or</em> web, rarely both</div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell label">Try before buying</div>
+        <div class="compare-cell us">Listen to a sample on this page</div>
+        <div class="compare-cell them">"Request a demo"</div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell label">Pricing</div>
+        <div class="compare-cell us">Published, from <strong>€290/mo</strong></div>
+        <div class="compare-cell them">Contact sales</div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell label">Data residency</div>
+        <div class="compare-cell us">EU-resident by default, on-prem on Enterprise</div>
+        <div class="compare-cell them">Varies by deployment</div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell label">Tickets &amp; routing</div>
+        <div class="compare-cell us">Every request becomes a ticket — sent to Telegram, WhatsApp, Slack, or your PMS</div>
+        <div class="compare-cell them">A transcript in an inbox, at best</div>
+      </div>
+    </div>
+
+    <p class="compare-foot mono">
+      We're not naming names — these are honest patterns across the category in 2026.
+    </p>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing" id="pricing">
+  <div class="pricing-inner" style="text-align:center;">
+    <div class="section-label" style="justify-content:center;">Pricing</div>
+    <h2 class="section-title" style="margin-left:auto;margin-right:auto;">Simple, per <span class="italic">property.</span></h2>
+    <p style="font-size:1.05rem;line-height:1.6;color:var(--ink-soft);max-width:32rem;margin:0 auto;">
+      No per-minute surprises. Pick the tier that matches your monthly call volume.
+    </p>
+
+    <div class="pricing-grid">
+      <div class="price-card">
+        <div class="price-tag">Boutique</div>
+        <div class="price-name">Petit</div>
+        <div class="price-desc">For independent hotels and serviced residences up to 40 keys.</div>
+        <div class="price-num">€290<span class="small">/mo</span></div>
+        <ul class="price-features">
+          <li>Up to 1,000 conversations / month</li>
+          <li>Web widget + phone line</li>
+          <li>99-language understanding, 75-language voice replies</li>
+          <li>Tickets to one channel (Telegram or email)</li>
+          <li>PMS summary webhook</li>
+          <li>Email support</li>
+        </ul>
+        <a href="#contact" class="btn btn-ghost" style="justify-content:center;">Start trial →</a>
+      </div>
+
+      <div class="price-card feature">
+        <div class="price-tag">Most popular</div>
+        <div class="price-name">Maison</div>
+        <div class="price-desc">For full-service hotels and small chains, 40–250 keys.</div>
+        <div class="price-num">€790<span class="small">/mo</span></div>
+        <ul class="price-features">
+          <li>Up to 5,000 conversations / month</li>
+          <li>Web · phone · mobile SDK</li>
+          <li>Tickets to all channels — Telegram, WhatsApp, Slack, SMS, PMS</li>
+          <li>Full property RAG, custom voice tone</li>
+          <li>Live admin dashboard</li>
+          <li>Human-escalation routing</li>
+          <li>Priority support</li>
+        </ul>
+        <a href="#contact" class="btn btn-primary" style="background:var(--gold);border-color:var(--gold);color:var(--ink);justify-content:center;">Book a demo →</a>
+      </div>
+
+      <div class="price-card">
+        <div class="price-tag">Enterprise</div>
+        <div class="price-name">Domaine</div>
+        <div class="price-desc">For chains, resort groups, and branded residences.</div>
+        <div class="price-num">Custom</div>
+        <ul class="price-features">
+          <li>Unlimited conversations</li>
+          <li>Multi-property orchestration</li>
+          <li>Dedicated voice cloning per brand</li>
+          <li>On-prem / EU-resident deployment</li>
+          <li>Custom CRM, PMS, IPTV integrations</li>
+          <li>Named success manager + SLA</li>
+        </ul>
+        <a href="#contact" class="btn btn-ghost" style="justify-content:center;">Talk to sales →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq">
+  <div class="faq-inner">
+    <div class="section-label">Questions, briefly answered</div>
+    <h2 class="section-title">Things people <span class="italic">always</span> ask.</h2>
+
+    <details open>
+      <summary>How fast is the response, really?</summary>
+      <p>End-to-end — from the moment the guest stops speaking to the first syllable of Voxtera's reply — averages 600 to 850 milliseconds. That's faster than most human pickups on a hotel phone, and well within the threshold where conversation feels natural.</p>
+    </details>
+    <details>
+      <summary>What if the guest interrupts?</summary>
+      <p>Voxtera stops immediately, listens, and continues the new thread — like a real conversation, not a robocall menu. Silero VAD handles turn-taking with sub-100ms responsiveness.</p>
+    </details>
+    <details>
+      <summary>How does it know about <em>my</em> property?</summary>
+      <p>During onboarding we ingest your menus, room amenities, hours, house rules, local recommendations and FAQs into a private knowledge layer. Updates take seconds — change your spa hours and Voxtera knows on the next call.</p>
+    </details>
+    <details>
+      <summary>What about escalating to a real person?</summary>
+      <p>Anything safety-related, medical, or emotionally distressed is flagged in real time and routed to a staff member via the channel you specify — Slack, SMS, internal phone. Voxtera stays with the guest until the handover completes.</p>
+    </details>
+    <details>
+      <summary>Where is guest data stored?</summary>
+      <p>EU-resident by default, with on-prem deployment available for Domaine-tier customers. Conversations are encrypted in transit and at rest; recordings can be disabled per-property.</p>
+    </details>
+    <details>
+      <summary>Can it handle a phone line, not just web?</summary>
+      <p>Yes — via Twilio, you can route any existing number through Voxtera. The same brain, the same voices, the same languages.</p>
+    </details>
+  </div>
+</section>
+
+<!-- TRUST & DATA -->
+<section class="trust">
+  <div class="trust-inner">
+    <div class="trust-head">
+      <div class="section-label">Trust &amp; data</div>
+      <h2 class="trust-title">Enterprise-grade, by default.</h2>
+      <p class="trust-sub">Built in the EU for properties that take guest privacy seriously. The same posture from our first €290/mo customer to our largest chain.</p>
+    </div>
+    <div class="trust-grid">
+      <div class="trust-card">
+        <div class="trust-icon">EU</div>
+        <div class="trust-name">EU data residency</div>
+        <div class="trust-note">Default. Frankfurt &amp; Paris regions.</div>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        </div>
+        <div class="trust-name">Encrypted, end-to-end</div>
+        <div class="trust-note">In transit (TLS 1.3) and at rest (AES-256).</div>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L21 7 V12 C21 17 17 20 12 21 C7 20 3 17 3 12 V7 Z"/><path d="M9 12 l2 2 l4-4"/></svg>
+        </div>
+        <div class="trust-name">GDPR &amp; DPA ready</div>
+        <div class="trust-note">Sign our DPA at any tier. RoPA available.</div>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        </div>
+        <div class="trust-name">SOC 2 in progress</div>
+        <div class="trust-note">Type II audit target Q4 2026.</div>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5 5 l14 14"/></svg>
+        </div>
+        <div class="trust-name">Recording opt-out</div>
+        <div class="trust-note">Disable storage of audio per property.</div>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 19 L20 19 M4 19 L4 9 L12 4 L20 9 L20 19 M9 19 L9 13 L15 13 L15 19"/></svg>
+        </div>
+        <div class="trust-name">On-prem available</div>
+        <div class="trust-note">Run inside your own VPC on Enterprise.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="final-cta" id="contact">
+  <div class="final-cta-inner">
+    <div class="section-label" style="justify-content:center;color:var(--gold);">— Ready when you are —</div>
+    <h2>Let your guests speak<br/><span class="italic">their language.</span></h2>
+    <p>A fifteen-minute demo. A live call in the language of your choice. Decide for yourself whether the future of the front desk sounds like Voxtera.</p>
+    <div class="cta-buttons">
+      <a href="mailto:hello@voxtera.ai" class="btn btn-primary">Book a demo <span class="arrow">→</span></a>
+      <a href="voxtera-hotels.html" class="btn btn-ghost">See how it works in a hotel</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-grid">
+    <div>
+      <div class="footer-brand">Voxtera</div>
+      <p class="footer-tag">A multilingual voice concierge for hospitality — turning every guest request into action your team can take, in the tools you already use.</p>
+    </div>
+    <div>
+      <h5>Product</h5>
+      <a href="#solution">How it works</a>
+      <a href="#languages">Languages</a>
+      <a href="#compare">Compare</a>
+      <a href="#pricing">Pricing</a>
+    </div>
+    <div>
+      <h5>For operators</h5>
+      <a href="voxtera-hotels.html">Hotels</a>
+      <a href="#">Branded residences <span style="opacity:0.5;font-size:0.85em;">· soon</span></a>
+      <a href="#">Vacation rentals <span style="opacity:0.5;font-size:0.85em;">· soon</span></a>
+      <a href="#">Cruise &amp; travel <span style="opacity:0.5;font-size:0.85em;">· soon</span></a>
+    </div>
+    <div>
+      <h5>Contact</h5>
+      <a href="mailto:hello@voxtera.ai">hello@voxtera.ai</a>
+      <a href="#">Book a demo</a>
+      <a href="#">Trust Center</a>
+      <a href="#">Press kit</a>
+      <a href="#">Careers</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 Voxtera — Built in EU</span>
+    <span>Privacy · Terms · GDPR · DPA</span>
+  </div>
+</footer>
+
+<script>
+  // Scroll-reveal animation
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach((entry, i) => {
+      if(entry.isIntersecting){
+        setTimeout(() => entry.target.classList.add('in'), i * 60);
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold:0.12, rootMargin:'0px 0px -60px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Listen-to-sample: uses Web Speech API to synthesize a short bilingual exchange.
+  // Falls back to a transcript-only state if SpeechSynthesis is unavailable or blocked.
+  (function(){
+    const btn = document.getElementById('listen-btn');
+    const label = document.getElementById('listen-label');
+    if(!btn || !label) return;
+
+    const turns = [
+      { lang:'de-DE', text:'Guten Morgen, gibt es heute noch Yoga am Pool?', voice:/de/i },
+      { lang:'de-DE', text:'Ja, um neun Uhr am Infinity-Pool. Möchten Sie, dass ich einen Platz für Sie reserviere?', voice:/de/i },
+      { lang:'de-DE', text:'Ja, bitte. Und mein Mann auch.', voice:/de/i },
+      { lang:'de-DE', text:'Erledigt — zwei Plätze auf den Namen Zimmer 207. Genießen Sie den Morgen, Frau Müller.', voice:/de/i },
+    ];
+
+    let playing = false;
+    let queue = [];
+
+    function pickVoice(re){
+      const voices = window.speechSynthesis.getVoices();
+      return voices.find(v => re.test(v.lang)) || voices.find(v => /en/i.test(v.lang)) || voices[0];
+    }
+
+    function stop(){
+      playing = false;
+      try{ window.speechSynthesis.cancel(); }catch(e){}
+      queue = [];
+      btn.classList.remove('is-playing');
+      label.textContent = 'Listen to a 30-sec sample';
+    }
+
+    function playNext(){
+      if(!playing || queue.length === 0){ stop(); return; }
+      const turn = queue.shift();
+      const u = new SpeechSynthesisUtterance(turn.text);
+      u.lang = turn.lang;
+      u.rate = 1.0;
+      u.pitch = 1.0;
+      const v = pickVoice(turn.voice);
+      if(v) u.voice = v;
+      u.onend = playNext;
+      u.onerror = playNext;
+      window.speechSynthesis.speak(u);
+    }
+
+    btn.addEventListener('click', () => {
+      if(playing){ stop(); return; }
+      if(!('speechSynthesis' in window)){
+        label.textContent = 'Audio unavailable — see transcript below';
+        document.querySelector('.demo').scrollIntoView({ behavior:'smooth' });
+        return;
+      }
+      // Some browsers populate voices async — trigger load
+      window.speechSynthesis.getVoices();
+      playing = true;
+      queue = turns.slice();
+      btn.classList.add('is-playing');
+      label.textContent = 'Stop sample';
+      // small delay to allow voices to load on first interaction
+      setTimeout(playNext, 200);
+    });
+
+    // Stop if user leaves the page
+    window.addEventListener('beforeunload', stop);
+  })();
+</script>
+
+</body>
+</html>

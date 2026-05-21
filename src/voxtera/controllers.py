@@ -49,6 +49,7 @@ except Exception:  # daily-python not available on Windows
     DailyInputTransportMessageFrame = None  # type: ignore[assignment,misc]
 
 from voxtera.prompts.fillers import FILLERS
+from voxtera.prompts.greetings import DEFAULT_LANGUAGE, daypart_for_timezone
 from voxtera.routing import STTRouter, TTSRouter
 from voxtera.stt import _VALID_STT_LANGUAGES, _google_languages_for_selection
 from voxtera.tts import (
@@ -1008,15 +1009,23 @@ class GreetingController(FrameProcessor):
     from queuing two overlapping greetings, which otherwise sounds like a
     heavy echo on the welcome message.
 
-    Greeting language resolution:
+    Greeting selection (resolved lazily, when voxtera-ready fires, so the
+    language and timezone messages may arrive in any order):
 
-    The boot-time ``greeting_text`` is used as the default. When the browser
-    sends ``voxtera-language`` before ``voxtera-ready`` (which the demo
-    page does in the Start handler), the greeting is re-resolved from the
-    optional ``greetings_map`` so the user hears the welcome message in
-    the language they selected. If the selected language isn't in the
-    map (e.g. an exotic language we don't have a hardcoded greeting for),
-    the bot falls back to the default ``greeting_text``.
+    * Language — the browser sends ``voxtera-language`` before
+      ``voxtera-ready``. The selected language picks the row in
+      ``greetings_map`` / ``timed_greetings``. ``"multi"`` (auto-detect) or a
+      language with no hardcoded greeting keeps the boot ``default_language``.
+    * Time of day — the browser sends ``voxtera-timezone`` with its IANA
+      timezone (e.g. ``"Europe/Paris"``). When present, the matching
+      morning/afternoon/evening variant from ``timed_greetings`` is spoken.
+      With no timezone (phone line, Telegram, an older widget) the
+      time-neutral greeting from ``greetings_map`` is used instead. The
+      server clock is never used — it is UTC and says nothing about the guest.
+
+    If no ``greetings_map`` is supplied the controller plays the static
+    ``greeting_text`` it was constructed with — the original behaviour, kept
+    for callers that don't need per-language / per-time greetings.
     """
 
     def __init__(
@@ -1025,19 +1034,43 @@ class GreetingController(FrameProcessor):
         *,
         debounce_secs: float = 3.0,
         greetings_map: dict[str, str] | None = None,
+        timed_greetings: dict[str, dict[str, str]] | None = None,
+        default_language: str = DEFAULT_LANGUAGE,
     ) -> None:
         super().__init__()
+        # Static fallback greeting — used when no greetings_map is supplied, or
+        # as a last resort if a language somehow isn't in the catalog.
         self._greeting_text = greeting_text
-        # Per-language greeting catalog. Used to re-resolve the greeting
-        # text when the browser sends voxtera-language before
-        # voxtera-ready. None means "static greeting, ignore language
-        # switches" (preserves the original behaviour for callers that
-        # don't pass a map).
+        # Per-language time-neutral catalog (lang -> text). None means "static
+        # greeting, ignore language/time" (preserves the original behaviour).
         self._greetings_map = greetings_map
+        # Per-language time-of-day catalog (lang -> {morning/afternoon/evening}).
+        self._timed_greetings = timed_greetings or {}
+        # Guest state, learned from browser app-messages before voxtera-ready.
+        self._language = default_language
+        self._timezone: str | None = None
         # Debounce window: if voxtera-ready fires twice within this many
         # seconds, don't queue a second greeting.
         self._debounce_secs = debounce_secs
         self._last_greeting_at: float | None = None
+
+    def _resolve_greeting_text(self) -> str:
+        """Pick the greeting to speak from the current language + timezone."""
+        # No catalog: static greeting (preserves the original contract).
+        if not self._greetings_map:
+            return self._greeting_text
+
+        lang = self._language if self._language in self._greetings_map else DEFAULT_LANGUAGE
+
+        # Time-aware variant when the browser reported the guest's timezone.
+        daypart = daypart_for_timezone(self._timezone)
+        if daypart:
+            timed = self._timed_greetings.get(lang)
+            if timed and daypart in timed:
+                return timed[daypart]
+
+        # Time-neutral fallback (unknown/absent timezone, or no timed variant).
+        return self._greetings_map.get(lang, self._greeting_text)
 
     async def process_frame(self, frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -1046,25 +1079,32 @@ class GreetingController(FrameProcessor):
             msg = frame.message
             logger.info("[greeting] received DailyInputTransportMessageFrame: {}", msg)
             if isinstance(msg, dict):
-                # Update greeting text based on the user's selected language
-                # BEFORE voxtera-ready fires. The demo page sends these in
-                # order: voxtera-stt → voxtera-language → voxtera-model →
-                # voxtera-tts-provider → voxtera-voice → voxtera-ready.
-                if msg.get("type") == "voxtera-language" and self._greetings_map:
+                msg_type = msg.get("type")
+                # The demo page sends, before voxtera-ready:
+                #   voxtera-stt → voxtera-language → voxtera-timezone →
+                #   voxtera-model → voxtera-tts-provider → voxtera-voice.
+                # Language and timezone are just stored here; the greeting is
+                # resolved lazily at voxtera-ready, so arrival order is moot.
+                if msg_type == "voxtera-language":
                     lang = msg.get("language", "")
-                    # "multi" = auto-detect; no preference, keep default.
+                    # "multi" = auto-detect; no preference, keep the default.
                     if lang and lang != "multi":
-                        new_text = self._greetings_map.get(lang)
-                        if new_text and new_text != self._greeting_text:
-                            logger.info("[greeting] updating greeting to language={!r}", lang)
-                            self._greeting_text = new_text
-                        elif not new_text:
+                        if self._greetings_map and lang not in self._greetings_map:
                             logger.info(
                                 "[greeting] no hardcoded greeting for language={!r}, "
-                                "keeping current",
+                                "keeping {!r}",
                                 lang,
+                                self._language,
                             )
-                elif msg.get("type") == "voxtera-ready":
+                        else:
+                            self._language = lang
+                            logger.info("[greeting] guest language set to {!r}", lang)
+                elif msg_type == "voxtera-timezone":
+                    tz = msg.get("tz")
+                    if tz:
+                        self._timezone = tz
+                        logger.info("[greeting] guest timezone set to {!r}", tz)
+                elif msg_type == "voxtera-ready":
                     now = time.monotonic()
                     if (
                         self._last_greeting_at is not None
@@ -1077,12 +1117,15 @@ class GreetingController(FrameProcessor):
                         )
                     else:
                         self._last_greeting_at = now
+                        text = self._resolve_greeting_text()
                         logger.info(
-                            "[greeting] user ready — playing startup greeting " "({} chars)",
-                            len(self._greeting_text),
+                            "[greeting] user ready — playing startup greeting "
+                            "(language={!r} timezone={!r} daypart={!r} {} chars)",
+                            self._language,
+                            self._timezone,
+                            daypart_for_timezone(self._timezone),
+                            len(text),
                         )
-                        await self.push_frame(
-                            TTSSpeakFrame(text=self._greeting_text), FrameDirection.DOWNSTREAM
-                        )
+                        await self.push_frame(TTSSpeakFrame(text=text), FrameDirection.DOWNSTREAM)
 
         await self.push_frame(frame, direction)

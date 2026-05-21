@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from datetime import datetime
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -49,7 +50,7 @@ from voxtera.config import Settings, load_settings
 from voxtera.controllers import LLM_MODEL
 from voxtera.conversation_logger import log_user_query
 from voxtera.pipeline import build_pipeline
-from voxtera.prompts import resolve_greeting
+from voxtera.prompts import daypart_for_hour, resolve_greeting
 from voxtera.stt import STT_MODEL_DEEPGRAM, STT_MODEL_GLADIA, STT_MODEL_GOOGLE, STT_MODEL_WHISPER
 from voxtera.trace import TraceForwarder
 from voxtera.trace_server import TuneServer, resolve_port
@@ -135,11 +136,18 @@ async def run_bot(settings: Settings) -> None:
         )
 
     if settings.transport_mode != "daily":
-        greeting_lang, greeting_text = resolve_greeting(settings.greeting_language)
+        # Local mode has no browser to report the guest's timezone — but the
+        # machine running the bot IS the listener, so its own clock is the
+        # right clock. Greet with the matching time of day.
+        local_daypart = daypart_for_hour(datetime.now().hour)
+        greeting_lang, greeting_text = resolve_greeting(
+            settings.greeting_language, daypart=local_daypart
+        )
         logger.info(
-            "Greeting language: {} (preference: {})",
+            "Greeting language: {} (preference: {}) daypart: {}",
             greeting_lang,
             settings.greeting_language,
+            local_daypart,
         )
         await task.queue_frames([TTSSpeakFrame(text=greeting_text)])
 
