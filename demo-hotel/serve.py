@@ -999,10 +999,29 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # which aggressively disk-caches) never serve a stale version. JS/CSS
         # assets are unversioned so they get the same treatment.
         stripped = self.path.split("?")[0]
-        if stripped.endswith((".html", ".js", ".css")) or stripped in ("/", ""):
+        # Security: only serve explicitly allowed file types. Everything else
+        # (Python source, Markdown, JSON configs, .DS_Store, etc.) returns 404.
+        allowed_extensions = (
+            ".html",
+            ".js",
+            ".css",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".svg",
+            ".ico",
+            ".webp",
+            ".woff",
+            ".woff2",
+        )
+        if stripped in ("/", "") or stripped.endswith((".html", ".js", ".css")):
             self._no_cache_get()
             return
-        return super().do_GET()
+        if stripped.endswith(allowed_extensions):
+            return super().do_GET()
+        self.send_error(404)
+        return None
 
     def do_POST(self):  # noqa: N802
         if self.path == "/api/tts-test":
@@ -1047,6 +1066,11 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # X-Admin-Token must be in the allow-list or browsers will block
         # preflighted admin requests. Content-Type stays for /api/chat.
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Admin-Token")
+
+    def list_directory(self, path):  # noqa: N802
+        """Block directory listings — return 403 Forbidden."""
+        self.send_error(403, "Directory listing is disabled")
+        return None
 
     def _no_cache_get(self):
         """Serve an HTML/JS/CSS file with aggressive no-store headers.
