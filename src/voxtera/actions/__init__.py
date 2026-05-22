@@ -21,10 +21,14 @@ from voxtera.actions.button_actions import (
     ButtonEvent,
 )
 from voxtera.actions.hotel_config import HotelConfig, load_hotel_config
-from voxtera.actions.integration import wire_actions
+from voxtera.actions.integration import wire_actions, wire_web_search
 from voxtera.actions.interactive_sink import InteractiveTelegramSink
 from voxtera.actions.listener import TelegramListener
-from voxtera.actions.prompt import build_actions_prompt_fragment, compose_system_prompt
+from voxtera.actions.prompt import (
+    build_actions_prompt_fragment,
+    build_web_search_prompt_fragment,
+    compose_system_prompt,
+)
 from voxtera.actions.runtime import ActionRuntime, build_action_runtime
 from voxtera.actions.sink import TicketSink
 from voxtera.actions.staff import Staff, StaffDirectory
@@ -42,12 +46,15 @@ from voxtera.actions.telegram_sink import TelegramSink
 from voxtera.actions.ticket import Category, Ticket
 from voxtera.actions.tool import (
     CREATE_TICKET_FUNCTION_NAME,
+    WEB_SEARCH_FUNCTION_NAME,
     build_create_ticket_tool,
     build_openai_tools,
+    build_web_search_tool,
 )
 
 __all__ = [
     "CREATE_TICKET_FUNCTION_NAME",
+    "WEB_SEARCH_FUNCTION_NAME",
     "ActionRegistry",
     "ActionResult",
     "ButtonEvent",
@@ -71,7 +78,10 @@ __all__ = [
     "build_actions_prompt_fragment",
     "build_create_ticket_tool",
     "build_openai_tools",
+    "build_web_search_prompt_fragment",
+    "build_web_search_tool",
     "compose_system_prompt",
     "load_hotel_config",
     "wire_actions",
+    "wire_web_search",
 ]

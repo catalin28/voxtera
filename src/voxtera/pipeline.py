@@ -734,9 +734,11 @@ def build_pipeline(
     # is appended (categories, confirmation rule, language split, etc.)
     # before the prompt is handed to the LLM.
     if action_runtime is not None:
-        from voxtera.actions import compose_system_prompt, wire_actions
+        from voxtera.actions import compose_system_prompt, wire_actions, wire_web_search
 
-        system_text = compose_system_prompt(SYSTEM_PROMPT, action_runtime.hotel_config)
+        system_text = compose_system_prompt(
+            SYSTEM_PROMPT, action_runtime.hotel_config, web_search_enabled=True
+        )
     else:
         system_text = SYSTEM_PROMPT
     messages: list[dict[str, str]] = [{"role": "system", "content": system_text}]
@@ -781,6 +783,7 @@ def build_pipeline(
             hotel_config=action_runtime.hotel_config,
             sink=action_runtime.sink,
         )
+        wire_web_search(llm=llm, context=context)
         logger.info(
             "[actions] enabled for hotel={!r} channel={}",
             action_runtime.hotel_config.hotel_name,

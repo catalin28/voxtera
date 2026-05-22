@@ -19,9 +19,11 @@ from pipecat.adapters.schemas.function_schema import FunctionSchema
 
 from voxtera.actions.hotel_config import HotelConfig
 
-# The function name Claude will call. Keep this stable — changing it would
-# require coordinating prompt updates and any logs/dashboards keyed on it.
+# The function names Claude will call. Keep these stable — changing them
+# would require coordinating prompt updates and any logs/dashboards keyed
+# on them.
 CREATE_TICKET_FUNCTION_NAME: Final[str] = "create_ticket"
+WEB_SEARCH_FUNCTION_NAME: Final[str] = "web_search"
 _DEFAULT_TOOLS_DIR: Final[Path] = Path(__file__).resolve().parents[3] / "config" / "tools"
 
 
@@ -116,3 +118,25 @@ def build_create_ticket_tool(hotel_config: HotelConfig) -> FunctionSchema:
     gather missing info from the guest before calling the tool.
     """
     return _to_pipecat_schema(_build_create_ticket_spec(hotel_config))
+
+
+def _build_web_search_spec() -> dict:
+    """Build neutral JSON-schema spec for ``web_search`` from template JSON."""
+    file_path = _DEFAULT_TOOLS_DIR / "web_search.json"
+    raw = file_path.read_text(encoding="utf-8")
+    tool = json.loads(raw)
+    function = tool.get("function") or {}
+    if function.get("name") != WEB_SEARCH_FUNCTION_NAME:
+        raise RuntimeError(
+            "config/tools/web_search.json must define function.name='web_search'"
+        )
+    return function
+
+
+def build_web_search_tool() -> FunctionSchema:
+    """Build the ``web_search`` FunctionSchema.
+
+    Unlike ``create_ticket``, the web_search tool has no hotel-specific
+    parameters — the schema is static.
+    """
+    return _to_pipecat_schema(_build_web_search_spec())

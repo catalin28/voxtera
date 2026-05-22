@@ -12,6 +12,8 @@ separation is deliberate: each piece is replaceable.
 
 from __future__ import annotations
 
+import os
+
 from loguru import logger
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -20,7 +22,13 @@ from pipecat.services.llm_service import LLMService
 from voxtera.actions.handler import make_create_ticket_handler
 from voxtera.actions.hotel_config import HotelConfig
 from voxtera.actions.sink import TicketSink
-from voxtera.actions.tool import CREATE_TICKET_FUNCTION_NAME, build_create_ticket_tool
+from voxtera.actions.tool import (
+    CREATE_TICKET_FUNCTION_NAME,
+    WEB_SEARCH_FUNCTION_NAME,
+    build_create_ticket_tool,
+    build_web_search_tool,
+)
+from voxtera.actions.web_search_handler import make_web_search_handler
 
 
 def wire_actions(
@@ -77,3 +85,45 @@ def wire_actions(
         len(hotel_config.allowed_categories),
         type(sink).__name__,
     )
+
+
+def wire_web_search(
+    *,
+    llm: LLMService,
+    context: LLMContext,
+) -> None:
+    """Register the ``web_search`` tool and handler on ``llm`` / ``context``.
+
+    Only wires if ``TAVILY_API_KEY`` is set in the environment. If the key
+    is missing, logs a warning and skips — the bot runs without web search.
+
+    After this call:
+    - ``llm`` has a registered handler for ``web_search``.
+    - ``context.tools`` includes the ``web_search`` schema.
+    """
+    key = os.environ.get("TAVILY_API_KEY", "").strip()
+    if not key:
+        logger.warning(
+            "[web-search] TAVILY_API_KEY not set — web_search tool disabled. "
+            "Add the key to .env to enable."
+        )
+        return
+
+    schema = build_web_search_tool()
+    handler = make_web_search_handler()
+
+    existing = context.tools
+    standard_tools: list = []
+    if isinstance(existing, ToolsSchema):
+        prior = existing.standard_tools or []
+        try:
+            standard_tools = [
+                t for t in prior if t is not None and getattr(t, "name", None) != schema.name
+            ]
+        except TypeError:
+            standard_tools = []
+    standard_tools.append(schema)
+    context.set_tools(ToolsSchema(standard_tools=standard_tools))
+
+    llm.register_function(WEB_SEARCH_FUNCTION_NAME, handler)
+    logger.info("[web-search] wired web_search tool")

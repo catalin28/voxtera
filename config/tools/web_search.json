@@ -1,0 +1,17 @@
+{
+  "type": "function",
+  "function": {
+    "name": "web_search",
+    "description": "Search the web for live, time-sensitive information the guest needs: current weather, today's events, opening hours, transit disruptions, exchange rates, etc. Use ONLY when the answer requires up-to-the-minute data that neither the hotel knowledge base nor your own training can provide.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "A clear, concise English search query derived from the guest's question. Rephrase into a good web search — do not paste the guest's raw words."
+        }
+      },
+      "required": ["query"]
+    }
+  }
+}
