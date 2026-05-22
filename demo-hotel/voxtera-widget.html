@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Voxtera widget — demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#f4ede1;
+    --paper:#faf6ec;
+    --ink:#1a1814;
+    --ink-soft:#2c2822;
+    --gold:#b8884a;
+    --gold-deep:#8a5f2a;
+    --rust:#a4391c;
+    --line:rgba(26,24,20,0.14);
+    --line-strong:rgba(26,24,20,0.32);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--cream);
+    color:var(--ink);
+    font-family:'Fraunces',serif;
+    min-height:100vh;
+    padding:3rem;
+  }
+  .demo-note{
+    max-width:42rem;
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    color:var(--ink-soft);
+    font-size:1.1rem;
+    line-height:1.5;
+  }
+  .demo-note strong{
+    font-family:'JetBrains Mono',monospace;
+    font-style:normal;
+    font-size:0.75rem;
+    text-transform:uppercase;
+    letter-spacing:0.14em;
+    color:var(--gold-deep);
+    display:block;
+    margin-bottom:0.6rem;
+  }
+
+  /* =========================================================
+     WIDGET — paste everything from here down into your page
+     ========================================================= */
+
+  /* Floating container — bottom-right by default */
+  .voxtera-widget{
+    position:fixed;
+    bottom:1.75rem;
+    right:1.75rem;
+    z-index:9999;
+    font-family:'Fraunces',serif;
+  }
+
+  /* ---------- LAUNCHER (collapsed state) ---------- */
+  .vx-launcher{
+    display:flex;
+    align-items:center;
+    gap:0.9rem;
+    background:#ffffff;
+    border-radius:999px;
+    padding:0.55rem 0.6rem 0.55rem 1rem;
+    box-shadow:
+      0 1px 2px rgba(26,24,20,0.06),
+      0 20px 40px -18px rgba(26,24,20,0.22),
+      0 30px 80px -30px rgba(26,24,20,0.18);
+    border:1px solid rgba(26,24,20,0.06);
+    cursor:pointer;
+    transition:transform .3s cubic-bezier(.2,.7,.2,1), box-shadow .3s;
+    user-select:none;
+  }
+  .vx-launcher:hover{
+    transform:translateY(-3px);
+    box-shadow:
+      0 1px 2px rgba(26,24,20,0.06),
+      0 28px 50px -18px rgba(26,24,20,0.28),
+      0 40px 90px -30px rgba(26,24,20,0.22);
+  }
+  .vx-launcher.hidden{
+    opacity:0;
+    transform:scale(0.85) translateY(8px);
+    pointer-events:none;
+  }
+
+  /* The conic-gradient orb mark */
+  .vx-orb{
+    width:36px;
+    height:36px;
+    border-radius:50%;
+    flex-shrink:0;
+    background:
+      conic-gradient(
+        from 180deg at 50% 50%,
+        #1e88e5 0deg,
+        #5fc3e4 45deg,
+        #ffffff 90deg,
+        #5fc3e4 135deg,
+        #1565c0 180deg,
+        #0d47a1 225deg,
+        #ffffff 270deg,
+        #5fc3e4 315deg,
+        #1e88e5 360deg
+      );
+      box-shadow:
+        inset 0 0 8px rgba(255,255,255,0.4),
+        0 2px 6px rgba(13,71,161,0.25);
+      position:relative;
+    }
+    .vx-orb::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      border-radius:50%;
+      background:radial-gradient(circle at 30% 30%, rgba(255,255,255,0.5), transparent 50%);
+    }
+    .vx-orb.lg{
+      width:148px;
+      height:148px;
+      animation:vx-spin 14s linear infinite;
+    }
+    @keyframes vx-spin{
+      to{ transform:rotate(360deg); }
+    }
+
+    .vx-launcher-label{
+      font-family:'Fraunces',serif;
+      font-weight:500;
+      font-size:1.05rem;
+      color:var(--ink);
+      letter-spacing:-0.01em;
+      padding-right:0.4rem;
+      white-space:nowrap;
+    }
+
+    .vx-launcher-cta{
+      display:inline-flex;
+      align-items:center;
+      gap:0.55rem;
+      background:var(--ink);
+      color:#ffffff;
+      border-radius:999px;
+      padding:0.7rem 1.2rem 0.7rem 1rem;
+      font-family:'Fraunces',serif;
+      font-weight:500;
+      font-size:0.98rem;
+      letter-spacing:-0.005em;
+      transition:background .25s;
+    }
+    .vx-launcher:hover .vx-launcher-cta{
+      background:var(--rust);
+    }
+    .vx-launcher-cta svg{
+      width:16px;
+      height:16px;
+      stroke:#ffffff;
+      fill:none;
+      stroke-width:2;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+    }
+
+    /* ---------- PANEL (expanded state) ---------- */
+    .vx-panel{
+      position:absolute;
+      bottom:0;
+      right:0;
+      width:380px;
+      max-width:calc(100vw - 2rem);
+      max-height:calc(100vh - 3rem);
+      background:#ffffff;
+      border-radius:24px;
+      box-shadow:
+        0 2px 4px rgba(26,24,20,0.06),
+        0 30px 60px -20px rgba(26,24,20,0.28),
+        0 50px 100px -30px rgba(26,24,20,0.22);
+      border:1px solid rgba(26,24,20,0.06);
+      display:flex;
+      flex-direction:column;
+      opacity:0;
+      transform:scale(0.92) translateY(20px);
+      pointer-events:none;
+      transform-origin:bottom right;
+      transition:opacity .35s cubic-bezier(.2,.7,.2,1), transform .35s cubic-bezier(.2,.7,.2,1);
+      overflow:hidden;
+    }
+    .vx-panel.open{
+      opacity:1;
+      transform:scale(1) translateY(0);
+      pointer-events:auto;
+    }
+
+    /* Header inside the panel */
+    .vx-panel-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:1.1rem 1.2rem 0.6rem;
+      border-bottom:1px solid var(--line);
+    }
+    .vx-brand{
+      display:flex;
+      align-items:center;
+      gap:0.6rem;
+    }
+    .vx-brand-mark{
+      width:24px;
+      height:24px;
+      border-radius:50%;
+      background:
+        conic-gradient(
+          from 180deg at 50% 50%,
+          #1e88e5 0deg,
+          #5fc3e4 90deg,
+          #ffffff 180deg,
+          #1565c0 270deg,
+          #1e88e5 360deg
+        );
+    }
+    .vx-brand-text{
+      font-family:'Fraunces',serif;
+      font-weight:500;
+      font-size:0.95rem;
+      letter-spacing:-0.01em;
+    }
+    .vx-brand-status{
+      font-family:'JetBrains Mono',monospace;
+      font-size:0.62rem;
+      text-transform:uppercase;
+      letter-spacing:0.14em;
+      color:var(--gold-deep);
+      display:inline-flex;
+      align-items:center;
+      gap:0.4rem;
+      margin-top:0.15rem;
+    }
+    .vx-brand-status::before{
+      content:"";
+      width:6px;
+      height:6px;
+      border-radius:50%;
+      background:#3a8a3a;
+      box-shadow:0 0 0 0 rgba(58,138,58,0.6);
+      animation:vx-pulse 1.8s infinite;
+    }
+    @keyframes vx-pulse{
+      0%{ box-shadow:0 0 0 0 rgba(58,138,58,0.55); }
+      70%{ box-shadow:0 0 0 6px rgba(58,138,58,0); }
+      100%{ box-shadow:0 0 0 0 rgba(58,138,58,0); }
+    }
+
+    .vx-close{
+      width:32px;
+      height:32px;
+      border-radius:50%;
+      background:transparent;
+      border:none;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      color:var(--ink-soft);
+      transition:background .2s, color .2s;
+    }
+    .vx-close:hover{
+      background:var(--cream);
+      color:var(--ink);
+    }
+    .vx-close svg{
+      width:16px;
+      height:16px;
+      stroke:currentColor;
+      fill:none;
+      stroke-width:2;
+      stroke-linecap:round;
+    }
+
+    /* Main body — the big orb and call button */
+    .vx-panel-body{
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      padding:3rem 1.5rem 2rem;
+      position:relative;
+      min-height:340px;
+    }
+
+    .vx-orb-wrap{
+      position:relative;
+      display:flex;
+      align-items:flex-end;
+      justify-content:center;
+    }
+
+    /* The call button — overlaps the orb at bottom-center */
+    .vx-call-btn{
+      position:absolute;
+      bottom:-18px;
+      left:50%;
+      transform:translateX(-50%);
+      width:56px;
+      height:56px;
+      border-radius:50%;
+      background:var(--ink);
+      border:4px solid #ffffff;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      color:#ffffff;
+      box-shadow:
+        0 4px 12px rgba(26,24,20,0.25),
+        0 12px 30px -8px rgba(26,24,20,0.3);
+      transition:background .25s, transform .25s, box-shadow .25s;
+      z-index:2;
+    }
+    .vx-call-btn:hover{
+      background:var(--rust);
+      transform:translateX(-50%) scale(1.06);
+      box-shadow:
+        0 4px 12px rgba(164,57,28,0.3),
+        0 16px 36px -8px rgba(164,57,28,0.4);
+    }
+    .vx-call-btn:active{
+      transform:translateX(-50%) scale(0.98);
+    }
+    .vx-call-btn svg{
+      width:22px;
+      height:22px;
+      fill:currentColor;
+    }
+    .vx-call-btn .vx-pulse-ring{
+      position:absolute;
+      inset:-4px;
+      border-radius:50%;
+      border:2px solid var(--ink);
+      opacity:0;
+      animation:vx-ring 2.5s ease-out infinite;
+      pointer-events:none;
+    }
+    @keyframes vx-ring{
+      0%{ transform:scale(0.95); opacity:0.7; }
+      80%{ transform:scale(1.4); opacity:0; }
+      100%{ transform:scale(1.4); opacity:0; }
+    }
+
+    .vx-helper{
+      margin-top:2.5rem;
+      text-align:center;
+      font-family:'Instrument Serif',serif;
+      font-style:italic;
+      font-size:0.95rem;
+      color:var(--ink-soft);
+      line-height:1.5;
+      max-width:18rem;
+    }
+
+    /* Chat input at the bottom */
+    .vx-chat-input{
+      border-top:1px solid var(--line);
+      padding:0.9rem 1rem;
+      background:var(--paper);
+      display:flex;
+      align-items:center;
+      gap:0.6rem;
+    }
+    .vx-input-field{
+      flex:1;
+      background:#ffffff;
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:0.7rem 0.9rem;
+      font-family:'Fraunces',serif;
+      font-size:0.95rem;
+      color:var(--ink);
+      transition:border-color .2s;
+      resize:none;
+      min-height:42px;
+      max-height:120px;
+      line-height:1.4;
+      font-weight:400;
+    }
+    .vx-input-field::placeholder{
+      color:rgba(26,24,20,0.4);
+      font-family:'Fraunces',serif;
+    }
+    .vx-input-field:focus{
+      outline:none;
+      border-color:var(--gold-deep);
+    }
+    .vx-send-btn{
+      width:38px;
+      height:38px;
+      border-radius:50%;
+      background:var(--ink);
+      border:none;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      color:#ffffff;
+      flex-shrink:0;
+      transition:background .25s, transform .25s;
+    }
+    .vx-send-btn:hover{
+      background:var(--rust);
+      transform:translateY(-1px);
+    }
+    .vx-send-btn:active{
+      transform:translateY(0);
+    }
+    .vx-send-btn svg{
+      width:16px;
+      height:16px;
+      fill:currentColor;
+    }
+    .vx-send-btn:disabled{
+      background:var(--line-strong);
+      cursor:not-allowed;
+      transform:none;
+    }
+
+    /* Mobile */
+    @media (max-width:480px){
+      .voxtera-widget{
+        bottom:1rem;
+        right:1rem;
+        left:1rem;
+      }
+      .vx-launcher{
+        width:fit-content;
+        margin-left:auto;
+      }
+      .vx-panel{
+        width:auto;
+        left:0;
+        right:0;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="demo-note">
+    <strong>Widget demo · paste-ready</strong>
+    Hover the bottom-right of the page. Click <em>"Need help?"</em> to expand
+    the panel. The phone button is the click target you'll wire to your call
+    flow (Daily.co / Pipecat); the input is the click target for chat. Everything
+    else is presentation only.
+  </div>
+
+  <!-- =========================================================
+       WIDGET MARKUP — copy from <div class="voxtera-widget"> ↓
+       ========================================================= -->
+
+  <div class="voxtera-widget" id="voxtera-widget">
+
+    <!-- Collapsed launcher pill -->
+    <div class="vx-launcher" id="vx-launcher" role="button" tabindex="0" aria-label="Open Voxtera chat">
+      <div class="vx-orb" aria-hidden="true"></div>
+      <span class="vx-launcher-label">Need help?</span>
+      <span class="vx-launcher-cta">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+        Start a call
+      </span>
+    </div>
+
+    <!-- Expanded panel -->
+    <div class="vx-panel" id="vx-panel" role="dialog" aria-label="Voxtera assistant" aria-hidden="true">
+
+      <div class="vx-panel-header">
+        <div class="vx-brand">
+          <div class="vx-brand-mark" aria-hidden="true"></div>
+          <div>
+            <div class="vx-brand-text">Voxtera</div>
+            <div class="vx-brand-status">Online · 99 languages</div>
+          </div>
+        </div>
+        <button class="vx-close" id="vx-close" type="button" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6 L18 18 M18 6 L6 18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="vx-panel-body">
+        <div class="vx-orb-wrap">
+          <div class="vx-orb lg" aria-hidden="true"></div>
+          <button class="vx-call-btn" id="vx-call-btn" type="button" aria-label="Start a voice call">
+            <span class="vx-pulse-ring" aria-hidden="true"></span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="vx-helper">
+          Tap the phone to talk — or type a message below.<br/>
+          Voxtera speaks your language.
+        </div>
+      </div>
+
+      <div class="vx-chat-input">
+        <textarea class="vx-input-field" id="vx-input" rows="1" placeholder="Send a message…" aria-label="Type your message"></textarea>
+        <button class="vx-send-btn" id="vx-send" type="button" aria-label="Send message" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 12 L21 4 L13 22 L11 13 Z"/>
+          </svg>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- =========================================================
+       WIDGET SCRIPT — open/close + auto-grow input
+       (no backend wiring; you'll add that yourself)
+       ========================================================= -->
+  <script>
+    (function () {
+      const launcher = document.getElementById('vx-launcher');
+      const panel    = document.getElementById('vx-panel');
+      const closeBtn = document.getElementById('vx-close');
+      const callBtn  = document.getElementById('vx-call-btn');
+      const input    = document.getElementById('vx-input');
+      const sendBtn  = document.getElementById('vx-send');
+
+      function openPanel(){
+        panel.classList.add('open');
+        panel.setAttribute('aria-hidden','false');
+        launcher.classList.add('hidden');
+        // Focus input after the transition finishes
+        setTimeout(() => input.focus(), 350);
+      }
+      function closePanel(){
+        panel.classList.remove('open');
+        panel.setAttribute('aria-hidden','true');
+        launcher.classList.remove('hidden');
+      }
+
+      // Open
+      launcher.addEventListener('click', openPanel);
+      launcher.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPanel(); }
+      });
+
+      // Close
+      closeBtn.addEventListener('click', closePanel);
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && panel.classList.contains('open')) closePanel();
+      });
+
+      // Call button — placeholder, wire to Daily.co / Pipecat later
+      callBtn.addEventListener('click', () => {
+        console.log('[Voxtera] start-call clicked');
+        // window.dispatchEvent(new CustomEvent('voxtera:start-call'));
+      });
+
+      // Auto-grow textarea + enable/disable send
+      input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        sendBtn.disabled = input.value.trim().length === 0;
+      });
+
+      // Send on Enter (Shift+Enter = newline)
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          if (!sendBtn.disabled) sendBtn.click();
+        }
+      });
+
+      sendBtn.addEventListener('click', () => {
+        const msg = input.value.trim();
+        if (!msg) return;
+        console.log('[Voxtera] send-message:', msg);
+        // window.dispatchEvent(new CustomEvent('voxtera:send-message', { detail: { text: msg } }));
+        input.value = '';
+        input.style.height = 'auto';
+        sendBtn.disabled = true;
+      });
+    })();
+  </script>
+
+</body>
+</html>
