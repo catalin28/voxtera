@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Try Voxtera — Talk or type, in any language</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#f4ede1;
+    --cream-deep:#ebe1cf;
+    --ink:#1a1814;
+    --ink-soft:#2c2822;
+    --gold:#b8884a;
+    --gold-deep:#8a5f2a;
+    --gold-light:#d4a563;
+    --rust:#a4391c;
+    --rust-soft:#c95436;
+    --paper:#faf6ec;
+    --line:rgba(26,24,20,0.14);
+    --line-strong:rgba(26,24,20,0.32);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    background:var(--cream);
+    color:var(--ink);
+    font-family:'Fraunces',serif;
+    font-weight:400;
+    overflow:hidden;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    display:flex;flex-direction:column;
+  }
+  /* paper grain */
+  body::before{
+    content:"";
+    position:fixed;inset:0;
+    pointer-events:none;
+    z-index:1;
+    opacity:.35;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.4 0 0 0 0 0.35 0 0 0 0 0.25 0 0 0 0.08 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode:multiply;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;letter-spacing:0.02em;}
+
+  /* ============ TOP BAR ============ */
+  .topbar{
+    position:relative;z-index:10;
+    padding:1.2rem 2rem;
+    display:flex;justify-content:space-between;align-items:center;
+    border-bottom:1px solid var(--line);
+    backdrop-filter:blur(20px) saturate(140%);
+    background:rgba(244,237,225,0.72);
+  }
+  .logo{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:1.3rem;
+    letter-spacing:-0.02em;
+    display:flex;align-items:center;gap:0.6rem;
+    color:var(--ink);
+    text-decoration:none;
+  }
+  .logo-mark{
+    width:26px;height:26px;
+    display:inline-flex;align-items:center;justify-content:center;
+  }
+  .logo sup{
+    font-size:0.5rem;
+    font-family:'JetBrains Mono',monospace;
+    color:var(--gold-deep);
+    margin-left:0.2rem;
+    letter-spacing:0.1em;
+  }
+  .topbar-right{
+    display:flex;align-items:center;gap:1.4rem;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:0.14em;
+    color:var(--ink-soft);
+  }
+  .topbar-right a{color:var(--ink-soft);text-decoration:none;transition:color .25s;}
+  .topbar-right a:hover{color:var(--rust);}
+  .session-state{
+    display:inline-flex;align-items:center;gap:0.5rem;
+  }
+  .session-dot{
+    width:7px;height:7px;border-radius:50%;background:var(--gold);
+    box-shadow:0 0 0 0 rgba(184,136,74,0.5);
+    animation:pulse-dot 2s infinite;
+  }
+  @keyframes pulse-dot{
+    0%{box-shadow:0 0 0 0 rgba(184,136,74,0.5);}
+    70%{box-shadow:0 0 0 8px rgba(184,136,74,0);}
+    100%{box-shadow:0 0 0 0 rgba(184,136,74,0);}
+  }
+
+  /* ============ MAIN STAGE ============ */
+  main{
+    position:relative;z-index:2;
+    flex:1;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    padding:2rem;
+    overflow:hidden;
+  }
+
+  /* tagline */
+  .stage-eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.7rem;
+    color:var(--gold-deep);
+    letter-spacing:0.2em;
+    text-transform:uppercase;
+    margin-bottom:0.8rem;
+    opacity:0;
+    animation:fade-in 1s 0.2s ease forwards;
+  }
+  .stage-title{
+    font-family:'Fraunces',serif;
+    font-weight:300;
+    font-size:clamp(1.6rem,2.6vw,2.4rem);
+    line-height:1.15;
+    letter-spacing:-0.02em;
+    text-align:center;
+    margin-bottom:0;
+    max-width:30ch;
+    opacity:0;
+    animation:fade-in 1s 0.4s ease forwards;
+  }
+  .stage-title .italic{
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    color:var(--rust);
+  }
+  .stage-sub{
+    font-family:'Instrument Serif',serif;
+    font-style:italic;
+    font-size:1.05rem;
+    color:var(--ink-soft);
+    margin-top:0.6rem;
+    text-align:center;
+    opacity:0;
+    animation:fade-in 1s 0.5s ease forwards;
+  }
+  @keyframes fade-in{
+    to{opacity:1;}
+  }
+
+  /* ============ ORB ============ */
+  .orb-wrap{
+    position:relative;
+    margin:1.5rem 0;
+    width:min(360px, 52vw);
+    aspect-ratio:1/1;
+    display:flex;align-items:center;justify-content:center;
+    opacity:0;
+    animation:orb-in 1.4s 0.6s cubic-bezier(.2,.7,.2,1) forwards;
+  }
+  @keyframes orb-in{
+    from{opacity:0;transform:scale(0.85);}
+    to{opacity:1;transform:scale(1);}
+  }
+
+  /* outer halo ring */
+  .orb-halo{
+    position:absolute;inset:-8%;
+    border-radius:50%;
+    background:
+      radial-gradient(circle at center, rgba(184,136,74,0.18) 0%, rgba(184,136,74,0) 70%);
+    filter:blur(8px);
+    transition:transform 0.4s cubic-bezier(.2,.7,.2,1), opacity 0.4s ease;
+    pointer-events:none;
+  }
+
+  /* the orb itself */
+  .orb{
+    position:relative;
+    width:100%;height:100%;
+    border-radius:50%;
+    background:
+      radial-gradient(circle at 30% 30%, var(--cream) 0%, var(--paper) 20%, transparent 50%),
+      conic-gradient(from 180deg at 50% 50%,
+        var(--gold-light) 0deg,
+        var(--gold) 60deg,
+        var(--gold-deep) 120deg,
+        var(--rust-soft) 180deg,
+        var(--rust) 220deg,
+        var(--gold-deep) 280deg,
+        var(--gold) 320deg,
+        var(--gold-light) 360deg
+      );
+    box-shadow:
+      inset 0 0 80px rgba(255,245,220,0.4),
+      inset 0 -20px 60px rgba(164,57,28,0.25),
+      0 30px 80px -30px rgba(184,136,74,0.5),
+      0 10px 30px -10px rgba(26,24,20,0.25);
+    animation:orb-spin 22s linear infinite, orb-breathe 4s ease-in-out infinite;
+    transform-origin:center;
+  }
+  @keyframes orb-spin{
+    from{transform:rotate(0deg);}
+    to{transform:rotate(360deg);}
+  }
+  @keyframes orb-breathe{
+    0%,100%{filter:brightness(1) saturate(1);}
+    50%{filter:brightness(1.08) saturate(1.1);}
+  }
+
+  /* overlay shimmer (counter-rotates so the highlights move differently from base) */
+  .orb-shimmer{
+    position:absolute;inset:0;
+    border-radius:50%;
+    background:
+      conic-gradient(from 0deg at 50% 50%,
+        transparent 0deg,
+        rgba(255,245,220,0.3) 60deg,
+        transparent 120deg,
+        rgba(212,165,99,0.25) 180deg,
+        transparent 240deg,
+        rgba(255,245,220,0.35) 300deg,
+        transparent 360deg
+      );
+    mix-blend-mode:overlay;
+    animation:orb-counter 16s linear infinite reverse;
+    pointer-events:none;
+  }
+  @keyframes orb-counter{
+    from{transform:rotate(0deg);}
+    to{transform:rotate(360deg);}
+  }
+
+  /* dynamic state classes — set by JS */
+  .orb-wrap.listening .orb-halo{
+    background:radial-gradient(circle at center, rgba(58,138,58,0.28) 0%, rgba(58,138,58,0) 65%);
+    transform:scale(1.1);
+  }
+  .orb-wrap.listening .orb{
+    animation:orb-spin 22s linear infinite, orb-listen 1.4s ease-in-out infinite;
+    box-shadow:
+      inset 0 0 80px rgba(255,245,220,0.4),
+      inset 0 -20px 60px rgba(58,138,58,0.3),
+      0 30px 80px -30px rgba(58,138,58,0.6),
+      0 0 0 4px rgba(58,138,58,0.18),
+      0 10px 30px -10px rgba(26,24,20,0.25);
+  }
+  @keyframes orb-listen{
+    0%,100%{transform:scale(1) rotate(var(--r,0deg));}
+    50%{transform:scale(1.04) rotate(var(--r,0deg));}
+  }
+  .orb-wrap.speaking .orb-halo{
+    background:radial-gradient(circle at center, rgba(164,57,28,0.32) 0%, rgba(164,57,28,0) 65%);
+    transform:scale(1.15);
+  }
+  .orb-wrap.speaking .orb{
+    animation:orb-spin 14s linear infinite, orb-speak 0.55s ease-in-out infinite;
+    box-shadow:
+      inset 0 0 80px rgba(255,245,220,0.5),
+      inset 0 -20px 60px rgba(164,57,28,0.4),
+      0 30px 80px -30px rgba(164,57,28,0.55),
+      0 0 0 5px rgba(164,57,28,0.15),
+      0 10px 30px -10px rgba(26,24,20,0.3);
+  }
+  @keyframes orb-speak{
+    0%,100%{transform:scale(1);}
+    50%{transform:scale(1.06);}
+  }
+
+  /* phone button on the orb */
+  .orb-call-btn{
+    position:absolute;
+    bottom:6%;right:6%;
+    width:64px;height:64px;
+    border-radius:50%;
+    background:var(--ink);
+    color:var(--cream);
+    border:3px solid var(--cream);
+    cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;
+    box-shadow:
+      0 12px 30px -10px rgba(26,24,20,0.5),
+      0 4px 10px -4px rgba(26,24,20,0.3);
+    transition:transform .25s cubic-bezier(.2,.7,.2,1), background .25s, box-shadow .25s;
+    z-index:3;
+  }
+  .orb-call-btn:hover{
+    background:var(--rust);
+    transform:scale(1.08);
+    box-shadow:
+      0 16px 40px -10px rgba(164,57,28,0.55),
+      0 6px 16px -4px rgba(164,57,28,0.35);
+  }
+  .orb-call-btn svg{width:24px;height:24px;}
+  .orb-call-btn.in-call{
+    background:var(--rust);
+    animation:call-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes call-pulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(164,57,28,0.55), 0 12px 30px -10px rgba(164,57,28,0.5);}
+    70%{box-shadow:0 0 0 14px rgba(164,57,28,0), 0 12px 30px -10px rgba(164,57,28,0.5);}
+  }
+
+  /* status caption under the orb */
+  .stage-caption{
+    margin-top:1.6rem;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:0.18em;
+    color:var(--ink-soft);
+    text-align:center;
+    min-height:1.2em;
+    transition:color .25s;
+    opacity:0;
+    animation:fade-in 1s 0.9s ease forwards;
+  }
+  .stage-caption strong{
+    color:var(--rust);
+    font-weight:500;
+  }
+
+  /* ============ TRANSCRIPT ============ */
+  .transcript{
+    position:relative;z-index:2;
+    width:min(720px, 100% - 4rem);
+    margin:1rem auto 0;
+    max-height:32vh;
+    overflow-y:auto;
+    padding:0 0.4rem;
+    scrollbar-width:thin;
+    scrollbar-color:var(--line-strong) transparent;
+  }
+  .transcript::-webkit-scrollbar{width:6px;}
+  .transcript::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:3px;}
+  .msg{
+    display:flex;flex-direction:column;
+    margin-bottom:0.9rem;
+    opacity:0;
+    transform:translateY(8px);
+    animation:msg-in .4s cubic-bezier(.2,.7,.2,1) forwards;
+  }
+  @keyframes msg-in{
+    to{opacity:1;transform:translateY(0);}
+  }
+  .msg .who{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.6rem;
+    text-transform:uppercase;
+    letter-spacing:0.14em;
+    color:var(--gold-deep);
+    margin-bottom:0.3rem;
+  }
+  .msg.user .who{color:var(--ink-soft);}
+  .msg.bot .who{color:var(--rust);}
+  .msg .bubble{
+    font-family:'Fraunces',serif;
+    font-size:1.02rem;
+    line-height:1.45;
+    padding:0.75rem 1rem;
+    border-radius:14px;
+    max-width:80%;
+    align-self:flex-start;
+  }
+  .msg.user .bubble{
+    background:var(--cream-deep);
+    border:1px solid var(--line);
+    align-self:flex-end;
+    border-bottom-right-radius:4px;
+  }
+  .msg.bot .bubble{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-left:3px solid var(--gold);
+    border-bottom-left-radius:4px;
+  }
+  .msg.bot .bubble.typing::after{
+    content:"";
+    display:inline-block;
+    width:6px;height:14px;
+    background:var(--gold-deep);
+    margin-left:3px;
+    vertical-align:-2px;
+    animation:caret-blink 0.9s steps(2) infinite;
+  }
+  @keyframes caret-blink{
+    50%{opacity:0;}
+  }
+
+  /* ============ INPUT BAR ============ */
+  .input-bar-wrap{
+    position:relative;z-index:5;
+    padding:1.2rem 2rem 1.6rem;
+    background:linear-gradient(to bottom, transparent, var(--cream) 30%);
+  }
+  .input-bar{
+    max-width:880px;margin:0 auto;
+    background:var(--paper);
+    border:1px solid var(--line-strong);
+    border-radius:22px;
+    padding:0.9rem 1.2rem 0.9rem 1.4rem;
+    display:flex;flex-direction:column;
+    box-shadow:
+      0 20px 50px -20px rgba(26,24,20,0.2),
+      0 6px 16px -8px rgba(26,24,20,0.12);
+    transition:border-color .25s, box-shadow .25s;
+  }
+  .input-bar:focus-within{
+    border-color:var(--gold-deep);
+    box-shadow:
+      0 20px 50px -20px rgba(184,136,74,0.3),
+      0 6px 16px -8px rgba(184,136,74,0.2);
+  }
+  .input-row{
+    display:flex;align-items:center;gap:0.8rem;
+    width:100%;
+  }
+  #msg-input{
+    flex:1;
+    border:none;outline:none;
+    background:transparent;
+    font-family:'Fraunces',serif;
+    font-size:1.05rem;
+    color:var(--ink);
+    padding:0.5rem 0;
+    line-height:1.4;
+    resize:none;
+    max-height:120px;
+    min-height:1.5em;
+    overflow-y:auto;
+  }
+  #msg-input::placeholder{
+    color:var(--ink-soft);
+    opacity:0.55;
+    font-style:italic;
+    font-family:'Instrument Serif',serif;
+  }
+  .input-controls{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-top:0.7rem;
+    padding-top:0.7rem;
+    border-top:1px solid var(--line);
+  }
+  .input-controls-left{
+    display:flex;align-items:center;gap:0.5rem;
+  }
+  .icon-btn{
+    width:34px;height:34px;
+    border-radius:10px;
+    background:transparent;
+    border:1px solid transparent;
+    color:var(--ink-soft);
+    display:inline-flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    transition:background .2s, color .2s, border-color .2s;
+  }
+  .icon-btn:hover{background:var(--cream-deep);color:var(--ink);}
+  .icon-btn svg{width:18px;height:18px;}
+  .icon-btn.active{
+    color:var(--rust);
+    background:rgba(164,57,28,0.08);
+    border-color:rgba(164,57,28,0.2);
+  }
+
+  /* language chip */
+  .lang-chip{
+    display:inline-flex;align-items:center;gap:0.5rem;
+    padding:0.4rem 0.8rem 0.4rem 0.5rem;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:transparent;
+    cursor:pointer;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;
+    color:var(--ink);
+    transition:border-color .2s, background .2s;
+  }
+  .lang-chip:hover{border-color:var(--gold-deep);background:rgba(184,136,74,0.06);}
+  .lang-chip .flag{
+    width:22px;height:22px;
+    border-radius:50%;
+    overflow:hidden;
+    background:#ccc;
+    display:inline-flex;align-items:center;justify-content:center;
+    font-size:0.9rem;
+  }
+  .lang-chip .chev{opacity:0.6;font-size:0.6em;}
+
+  /* send button */
+  .send-btn{
+    width:42px;height:42px;
+    border-radius:50%;
+    background:var(--ink);
+    color:var(--cream);
+    border:none;
+    cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;
+    transition:background .2s, transform .2s;
+  }
+  .send-btn:hover{background:var(--rust);transform:scale(1.05);}
+  .send-btn:disabled{
+    background:var(--line-strong);
+    cursor:not-allowed;
+    transform:none;
+  }
+  .send-btn svg{width:18px;height:18px;}
+
+  /* language menu popover */
+  .lang-menu{
+    position:absolute;
+    bottom:calc(100% + 10px);
+    left:0;
+    background:var(--paper);
+    border:1px solid var(--line-strong);
+    border-radius:14px;
+    padding:0.6rem;
+    box-shadow:0 20px 50px -10px rgba(26,24,20,0.25);
+    display:none;
+    flex-direction:column;
+    gap:0.2rem;
+    min-width:160px;
+    z-index:20;
+  }
+  .lang-menu.open{display:flex;}
+  .lang-menu button{
+    background:transparent;border:none;
+    text-align:left;
+    padding:0.55rem 0.7rem;
+    border-radius:8px;
+    cursor:pointer;
+    font-family:'Fraunces',serif;
+    font-size:0.95rem;
+    color:var(--ink);
+    display:flex;align-items:center;gap:0.6rem;
+    transition:background .15s;
+  }
+  .lang-menu button:hover{background:var(--cream-deep);}
+  .lang-menu button.active{background:rgba(184,136,74,0.1);color:var(--rust);}
+  .lang-wrap{position:relative;}
+
+  /* small print at the very bottom */
+  .input-footnote{
+    text-align:center;
+    margin-top:0.8rem;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.62rem;
+    color:var(--ink-soft);
+    opacity:0.55;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+  }
+
+  /* mic recording state */
+  .icon-btn.mic.recording{
+    color:var(--rust);
+    animation:mic-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes mic-pulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(164,57,28,0.4);}
+    50%{box-shadow:0 0 0 8px rgba(164,57,28,0);}
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width:640px){
+    .topbar{padding:1rem 1rem;}
+    .topbar-right{gap:0.8rem;font-size:0.65rem;}
+    .topbar-right a:not(.session-state){display:none;}
+    main{padding:1rem;}
+    .stage-title{font-size:1.4rem;}
+    .stage-sub{font-size:0.95rem;}
+    .orb-wrap{width:min(280px, 64vw);}
+    .orb-call-btn{width:54px;height:54px;}
+    .orb-call-btn svg{width:20px;height:20px;}
+    .transcript{max-height:24vh;}
+    .input-bar-wrap{padding:0.8rem 1rem 1.2rem;}
+    .input-bar{padding:0.7rem 0.9rem;border-radius:18px;}
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<header class="topbar">
+  <a href="voxtera-v3.html" class="logo">
+    <span class="logo-mark">
+      <svg viewBox="0 0 32 32" fill="none">
+        <circle cx="16" cy="16" r="15" stroke="#1a1814" stroke-width="1.2" fill="none"/>
+        <path d="M8 16 L11 16 L13 10 L16 22 L19 8 L21 18 L24 16" stroke="#b8884a" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    Voxtera<sup>™</sup>
+  </a>
+  <div class="topbar-right">
+    <a href="voxtera-hotels.html">For hotels</a>
+    <a href="voxtera-v3.html">Home</a>
+    <span class="session-state" id="session-state">
+      <span class="session-dot"></span>
+      <span id="session-label">Ready</span>
+    </span>
+  </div>
+</header>
+
+<!-- MAIN STAGE -->
+<main>
+  <div class="stage-eyebrow">Try Voxtera</div>
+  <h1 class="stage-title">Talk, or type — <span class="italic">in any language.</span></h1>
+  <p class="stage-sub">Tap the orb to start a voice call, or just type below.</p>
+
+  <div class="orb-wrap" id="orb-wrap">
+    <div class="orb-halo" aria-hidden="true"></div>
+    <div class="orb" aria-hidden="true">
+      <div class="orb-shimmer"></div>
+    </div>
+    <button class="orb-call-btn" id="call-btn" aria-label="Start voice call">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.72 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.35 1.85.59 2.81.72A2 2 0 0 1 22 16.92z"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="stage-caption" id="stage-caption">Tap the orb, or send a message below to begin.</div>
+
+  <!-- TRANSCRIPT -->
+  <div class="transcript" id="transcript" aria-live="polite"></div>
+</main>
+
+<!-- INPUT BAR -->
+<div class="input-bar-wrap">
+  <form class="input-bar" id="chat-form" autocomplete="off">
+    <div class="input-row">
+      <textarea
+        id="msg-input"
+        placeholder="Send a message to start a chat"
+        rows="1"
+        autocomplete="off"
+        spellcheck="true"
+      ></textarea>
+    </div>
+    <div class="input-controls">
+      <div class="input-controls-left">
+        <button type="button" class="icon-btn" id="settings-btn" aria-label="Settings" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8L4.2 7a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+          </svg>
+        </button>
+        <button type="button" class="icon-btn mic" id="mic-btn" aria-label="Voice input" title="Hold to speak">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="2" width="6" height="12" rx="3"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+        <div class="lang-wrap">
+          <button type="button" class="lang-chip" id="lang-btn" aria-label="Change language" aria-haspopup="true">
+            <span class="flag" id="lang-flag">🇺🇸</span>
+            <span id="lang-label">English</span>
+            <span class="chev">▾</span>
+          </button>
+          <div class="lang-menu" id="lang-menu" role="menu">
+            <button type="button" data-lang="en" data-flag="🇺🇸" class="active">🇺🇸 English</button>
+            <button type="button" data-lang="fr" data-flag="🇫🇷">🇫🇷 Français</button>
+            <button type="button" data-lang="es" data-flag="🇪🇸">🇪🇸 Español</button>
+            <button type="button" data-lang="de" data-flag="🇩🇪">🇩🇪 Deutsch</button>
+            <button type="button" data-lang="it" data-flag="🇮🇹">🇮🇹 Italiano</button>
+            <button type="button" data-lang="pt" data-flag="🇵🇹">🇵🇹 Português</button>
+            <button type="button" data-lang="ja" data-flag="🇯🇵">🇯🇵 日本語</button>
+            <button type="button" data-lang="zh" data-flag="🇨🇳">🇨🇳 中文</button>
+            <button type="button" data-lang="auto" data-flag="🌐">🌐 Auto-detect</button>
+          </div>
+        </div>
+      </div>
+      <button type="submit" class="send-btn" id="send-btn" aria-label="Send message">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/>
+        </svg>
+      </button>
+    </div>
+  </form>
+  <div class="input-footnote">Demo · backend not yet connected · UI prototype</div>
+</div>
+
+<script>
+/* =============================================================
+   Voxtera demo page — prototype interactions
+   - Orb has three states: idle / listening / speaking
+   - Chat form: stores messages locally, mocks bot replies
+   - Voice button: toggles "in call" UI
+   - Mic button: toggles "recording" UI
+   - Language menu: opens/closes, sets current language label
+   - All backend calls are stubs marked with TODO
+   ============================================================ */
+(function() {
+  // ─── elements ───
+  const orbWrap     = document.getElementById('orb-wrap');
+  const callBtn     = document.getElementById('call-btn');
+  const caption     = document.getElementById('stage-caption');
+  const sessionLbl  = document.getElementById('session-label');
+  const transcript  = document.getElementById('transcript');
+  const form        = document.getElementById('chat-form');
+  const input       = document.getElementById('msg-input');
+  const sendBtn     = document.getElementById('send-btn');
+  const micBtn      = document.getElementById('mic-btn');
+  const langBtn     = document.getElementById('lang-btn');
+  const langMenu    = document.getElementById('lang-menu');
+  const langFlag    = document.getElementById('lang-flag');
+  const langLabel   = document.getElementById('lang-label');
+
+  // ─── state ───
+  let currentLang = 'en';
+  let inCall = false;
+
+  // ─── helper: set orb state ('' | 'listening' | 'speaking') ───
+  function setOrbState(state) {
+    orbWrap.classList.remove('listening', 'speaking');
+    if (state) orbWrap.classList.add(state);
+  }
+
+  // ─── helper: set the caption text + session label ───
+  function setStatus(caption_text, session_text) {
+    caption.innerHTML = caption_text;
+    sessionLbl.textContent = session_text;
+  }
+
+  // ─── helper: add a message to the transcript ───
+  function addMessage(who, text, typing) {
+    const wrap = document.createElement('div');
+    wrap.className = `msg ${who}`;
+    const label = document.createElement('div');
+    label.className = 'who';
+    label.textContent = who === 'user' ? 'You' : 'Voxtera';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble' + (typing ? ' typing' : '');
+    bubble.textContent = text;
+    wrap.appendChild(label);
+    wrap.appendChild(bubble);
+    transcript.appendChild(wrap);
+    transcript.scrollTop = transcript.scrollHeight;
+    return bubble;
+  }
+
+  // ─── auto-resize textarea ───
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+  });
+
+  // submit on Enter, newline on Shift+Enter
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
+
+  // ─── form submit: send message ───
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+
+    addMessage('user', text);
+    input.value = '';
+    input.style.height = 'auto';
+
+    setOrbState('listening');
+    setStatus('<strong>Voxtera is listening…</strong>', 'Listening');
+
+    // TODO: replace with real backend call
+    // fetch('/api/chat', { method:'POST', body: JSON.stringify({ text, lang: currentLang }) })
+    //   .then(r => r.json())
+    //   .then(data => renderBotReply(data.reply));
+    //
+    // For now: a mocked reply, with a typing animation,
+    // simulating the bot "speaking" for ~2s.
+    setTimeout(() => {
+      setOrbState('speaking');
+      setStatus('<strong>Voxtera is speaking…</strong>', 'Speaking');
+      const bubble = addMessage('bot', '', true);
+      const reply = mockReply(text, currentLang);
+      typeOut(bubble, reply, () => {
+        bubble.classList.remove('typing');
+        setOrbState('');
+        setStatus('Ready when you are.', 'Ready');
+      });
+    }, 600);
+  });
+
+  // ─── mock typewriter ───
+  function typeOut(el, text, done) {
+    let i = 0;
+    el.textContent = '';
+    const speed = 22; // ms per char
+    const tick = () => {
+      if (i < text.length) {
+        el.textContent += text[i++];
+        transcript.scrollTop = transcript.scrollHeight;
+        setTimeout(tick, speed);
+      } else if (done) {
+        done();
+      }
+    };
+    tick();
+  }
+
+  // ─── mocked replies, language-aware (purely for the prototype) ───
+  function mockReply(userText, lang) {
+    const lower = userText.toLowerCase();
+    const replies = {
+      en: {
+        greet: "Hi — I'm Voxtera, the multilingual concierge. How can I help?",
+        wifi:  "The wifi network is 'Casa-Lisboa-Guest', password 'welcome2024'. Let me know if it doesn't connect.",
+        pool:  "The pool is open from 7am to 10pm. There's a yoga session by the pool every morning at 9.",
+        food:  "Four minutes' walk away, you'll find Casa Lola — authentic tapas, no reservation needed. Want me to text you the address?",
+        default: "Got it. In the real product I'd handle this from your property's knowledge base — for now this is a prototype."
+      },
+      fr: {
+        greet: "Bonjour — je suis Voxtera, le concierge multilingue. Comment puis-je vous aider ?",
+        wifi:  "Le réseau wifi est 'Casa-Lisboa-Guest', mot de passe 'welcome2024'.",
+        default: "Compris. Dans le produit réel, je traiterais cela depuis la base de connaissances de votre propriété."
+      },
+      es: {
+        greet: "Hola — soy Voxtera, el conserje multilingüe. ¿En qué puedo ayudarle?",
+        wifi:  "La red wifi es 'Casa-Lisboa-Guest', contraseña 'welcome2024'.",
+        default: "Entendido. En el producto real lo gestionaría desde la base de conocimientos de su propiedad."
+      },
+      de: {
+        greet: "Hallo — ich bin Voxtera, der mehrsprachige Concierge. Wie kann ich helfen?",
+        wifi:  "Das WLAN heißt 'Casa-Lisboa-Guest', Passwort 'welcome2024'.",
+        default: "Verstanden. In der echten Anwendung würde ich das aus der Wissensdatenbank Ihrer Unterkunft beantworten."
+      },
+      ja: {
+        greet: "こんにちは、Voxteraです。多言語対応のコンシェルジュです。ご用件は？",
+        wifi:  "WiFiは 'Casa-Lisboa-Guest'、パスワードは 'welcome2024' です。",
+        default: "了解しました。本番では、お宿の情報から正確にお答えします。"
+      },
+      pt: {
+        greet: "Olá — sou o Voxtera, o concierge multilíngue. Como posso ajudar?",
+        wifi:  "A rede wifi é 'Casa-Lisboa-Guest', palavra-passe 'welcome2024'.",
+        default: "Entendido. No produto real, eu trataria isto a partir da base de conhecimento do seu alojamento."
+      },
+      it: {
+        greet: "Ciao — sono Voxtera, il concierge multilingue. Come posso aiutarla?",
+        wifi:  "La rete wifi è 'Casa-Lisboa-Guest', password 'welcome2024'.",
+        default: "Capito. Nel prodotto reale gestirei la richiesta dalla base di conoscenza della struttura."
+      },
+      zh: {
+        greet: "您好,我是Voxtera多语种礼宾。请问需要什么帮助?",
+        wifi:  "WiFi名称是 'Casa-Lisboa-Guest',密码是 'welcome2024'。",
+        default: "明白了。正式产品中,我会基于您住宿的知识库来回答。"
+      },
+      auto: {
+        greet: "Hi — I'm Voxtera. (Auto-detect mode — I'll reply in whichever language you use.)",
+        default: "Got it. Auto-detect mode is on — I'd match your language in the real product."
+      }
+    };
+    const L = replies[lang] || replies.en;
+    if (/hi|hello|bonjour|hola|hallo|olá|ciao|你好|こんにちは/i.test(lower)) return L.greet;
+    if (/wifi|wi-fi|password|wlan|wifi の|无线|wi fi/i.test(lower)) return L.wifi || L.default;
+    if (/pool|piscina|piscine|swimming/i.test(lower)) return L.pool || L.default;
+    if (/eat|food|restaurant|dinner|brunch|comer|manger|essen|食べ|吃/i.test(lower)) return L.food || L.default;
+    return L.default;
+  }
+
+  // ─── call button: toggle voice-call state ───
+  callBtn.addEventListener('click', () => {
+    inCall = !inCall;
+    if (inCall) {
+      callBtn.classList.add('in-call');
+      setOrbState('listening');
+      setStatus('<strong>Voice call connecting…</strong> Tap again to end.', 'In call');
+      addMessage('bot', '— Voice call started (prototype: backend would connect here) —');
+
+      // TODO: replace with real Daily.co / WebRTC / phone call initiation
+      // startVoiceCall({ language: currentLang });
+    } else {
+      callBtn.classList.remove('in-call');
+      setOrbState('');
+      setStatus('Voice call ended.', 'Ready');
+      addMessage('bot', '— Voice call ended —');
+
+      // TODO: replace with real call teardown
+      // endVoiceCall();
+    }
+  });
+
+  // ─── mic button: hold-to-speak (prototype only) ───
+  let recording = false;
+  micBtn.addEventListener('click', () => {
+    recording = !recording;
+    micBtn.classList.toggle('recording', recording);
+    micBtn.classList.toggle('active', recording);
+    if (recording) {
+      setOrbState('listening');
+      setStatus('<strong>Listening…</strong> Tap mic again to stop.', 'Recording');
+
+      // TODO: replace with real Web Speech API or MediaRecorder
+      // startMicrophone();
+    } else {
+      setOrbState('');
+      setStatus('Ready when you are.', 'Ready');
+
+      // TODO: stop microphone, send audio to backend
+      // stopMicrophoneAndTranscribe();
+    }
+  });
+
+  // ─── language menu open/close ───
+  langBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    langMenu.classList.toggle('open');
+  });
+  document.addEventListener('click', e => {
+    if (!langMenu.contains(e.target) && e.target !== langBtn) {
+      langMenu.classList.remove('open');
+    }
+  });
+
+  // ─── language selection ───
+  langMenu.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const lang  = btn.dataset.lang;
+      const flag  = btn.dataset.flag;
+      const label = btn.textContent.replace(/^\S+\s/, ''); // drop the flag emoji from label
+      langFlag.textContent = flag;
+      langLabel.textContent = label;
+      currentLang = lang;
+      langMenu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      langMenu.classList.remove('open');
+
+      // TODO: tell backend the preferred language for the next message
+    });
+  });
+
+  // ─── settings button (placeholder) ───
+  document.getElementById('settings-btn').addEventListener('click', () => {
+    alert('Settings: TODO — would open voice/audio/notification preferences.');
+  });
+
+  // initial focus
+  setTimeout(() => input.focus(), 800);
+})();
+</script>
+
+</body>
+</html>
