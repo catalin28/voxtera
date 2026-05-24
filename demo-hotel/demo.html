@@ -595,6 +595,14 @@ document.getElementById('btn-start').onclick = async function() {
               attachedTrackId = null;
               attachedTrack = null;
             }
+            // play() failed (autoplay policy or abort) — send voxtera-ready
+            // anyway so the bot still greets. The user may not hear the audio
+            // until they interact further, but the conversation can still start.
+            if (!greetingReadySent && callObject) {
+              greetingReadySent = true;
+              log('[greeting] sending voxtera-ready after play() failure (fallback) — ' + e.message);
+              callObject.sendAppMessage({ type: 'voxtera-ready' }, '*');
+            }
           });
         } catch (e) {
           err('Audio element attach failed: ' + e.message);
@@ -763,6 +771,17 @@ document.getElementById('btn-start').onclick = async function() {
         callObject.sendAppMessage({ type: 'voxtera-model', model: llmModel }, '*');
         callObject.sendAppMessage({ type: 'voxtera-tts-provider', provider: ttsProvider }, '*');
         callObject.sendAppMessage({ type: 'voxtera-voice', voice: ttsVoice }, '*');
+        // Fallback: if audio attachment never completes (play() blocked, track
+        // not live in time, etc.) fire voxtera-ready after 4 s so the bot
+        // always greets. The greeting audio may or may not be audible
+        // depending on what failed, but the conversation pipeline starts.
+        setTimeout(function() {
+          if (!greetingReadySent && callObject) {
+            greetingReadySent = true;
+            log('[greeting] sending voxtera-ready via 4s fallback timeout (audio attach never completed)');
+            callObject.sendAppMessage({ type: 'voxtera-ready' }, '*');
+          }
+        }, 4000);
       }
     });
 

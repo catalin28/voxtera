@@ -387,6 +387,41 @@ _STATIC_KNOBS: list[Tunable] = [
         pipeline_stage="leakage_guard",
     ),
     Tunable(
+        name="interruption_resume_enabled",
+        group="echo",
+        label="Resume answer after interruption",
+        explanation=(
+            "When the guest barges in over the bot, the bot's half-finished "
+            "reply is normally abandoned. With this on, a note is injected "
+            "into the LLM context so the answering model can decide whether "
+            "the guest ADDED a request (answer it, then briefly finish the "
+            "original) or REPLACED it (drop the original). Only has any "
+            "effect when 'Allow user to interrupt bot' is also on."
+        ),
+        type="bool",
+        default=True,
+        tier="live",
+        pipeline_stage="interruption_resumer",
+    ),
+    Tunable(
+        name="interruption_resume_window_secs",
+        group="echo",
+        label="Interruption resume window (seconds)",
+        explanation=(
+            "A barge-in triggers a resume only if it lands within this many "
+            "seconds of the bot starting its reply. Past this window the "
+            "reply is treated as near-complete and is not resumed — finishing "
+            "a nearly-done thought sounds worse than letting it go."
+        ),
+        type="float",
+        default=5.0,
+        tier="live",
+        pipeline_stage="interruption_resumer",
+        min=1.0,
+        max=15.0,
+        step=0.5,
+    ),
+    Tunable(
         name="leakage_open_ratio",
         group="echo",
         label="Leakage gate open ratio (read-only)",
@@ -607,6 +642,7 @@ def register_pipeline_knobs(
     vad_processor: Any | None,
     leakage_guard: Any | None,
     user_frame_suppressor: Any | None,
+    interruption_resumer: Any | None,
     rnnoise_denoiser: Any | None,
     stt_router: Any | None,
     tts_router: Any | None,
@@ -670,6 +706,34 @@ def register_pipeline_knobs(
                 user_frame_suppressor._allow_interruptions = bool(value)
 
         knob.apply = _apply_allow_interruptions
+        reg.register(knob)
+
+    # ---- Interruption resume ------------------------------------------
+    # Both knobs mutate the live InterruptionResumer in place. The closures
+    # guard ``interruption_resumer is None`` (text-only mode, no mic) so the
+    # knob stays visible in the dashboard but its apply is a safe no-op.
+    def _apply_interruption_resume_enabled(value: bool) -> None:
+        if interruption_resumer is not None:
+            interruption_resumer._enabled = bool(value)
+
+    def _apply_interruption_resume_window(value: float) -> None:
+        if interruption_resumer is not None:
+            interruption_resumer._resume_window_secs = float(value)
+
+    knob = reg.get("interruption_resume_enabled")
+    if knob is not None:
+        knob.current = settings.interruption_resume_enabled
+        knob.origin = "env" if settings.interruption_resume_enabled != knob.default else "default"
+        knob.apply = _apply_interruption_resume_enabled
+        reg.register(knob)
+
+    knob = reg.get("interruption_resume_window_secs")
+    if knob is not None:
+        knob.current = settings.interruption_resume_window_secs
+        knob.origin = (
+            "env" if settings.interruption_resume_window_secs != knob.default else "default"
+        )
+        knob.apply = _apply_interruption_resume_window
         reg.register(knob)
 
     # ---- RNNoise toggle ------------------------------------------------

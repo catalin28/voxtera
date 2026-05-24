@@ -326,13 +326,78 @@ def _build_whisper_stt(settings: Settings) -> FrameProcessor | None:
     return stt
 
 
+def _is_deepgram_fatal_error(exc: Exception) -> bool:
+    """Return True for errors that won't resolve by retrying (auth, bad config)."""
+    msg = str(exc).lower()
+    return any(k in msg for k in ("invalid api key", "401", "403", "forbidden", "unauthorized"))
+
+
 def _build_deepgram_stt(settings: Settings) -> FrameProcessor | None:
     """Build the Deepgram STT service if its credentials are present."""
     if not settings.deepgram_api_key:
         return None
     from pipecat.services.deepgram.stt import DeepgramSTTService
 
-    stt = DeepgramSTTService(
+    class _InstrumentedDeepgramSTTService(DeepgramSTTService):
+        """DeepgramSTTService with labelled, severity-aware error logging.
+
+        Pipecat's built-in handler logs every connection failure as a generic
+        warning with no ``[stt]`` prefix and retries forever — including on
+        fatal errors like invalid API keys.  This subclass:
+
+        * Prefixes all Deepgram log messages with ``[stt] deepgram:`` so they
+          are easy to grep in bot logs.
+        * Promotes auth / config errors to ``ERROR`` level so they show up
+          clearly instead of being buried in ``WARNING`` noise.
+        * Stops retrying on fatal errors rather than spinning forever.
+        """
+
+        async def _on_error(self, error) -> None:  # type: ignore[override]
+            msg = str(error)
+            if _is_deepgram_fatal_error(Exception(msg)):
+                logger.error(
+                    "[stt] deepgram: FATAL connection error (check API key / plan): {}", msg
+                )
+            else:
+                logger.warning("[stt] deepgram: connection error, will retry: {}", msg)
+            await super()._on_error(error)
+
+        async def _connection_handler(self) -> None:  # type: ignore[override]
+            import asyncio
+
+            while True:
+                connect_kwargs = self._build_connect_kwargs()
+                try:
+                    async with self._client.listen.v1.connect(**connect_kwargs) as conn:
+                        self._connection = conn
+                        from deepgram import EventType
+
+                        conn.on(EventType.MESSAGE, self._on_message)
+                        conn.on(EventType.ERROR, self._on_error)
+                        logger.debug("[stt] deepgram: WebSocket connection initialised")
+
+                        keepalive_task = self.create_task(
+                            self._keepalive_handler(), f"{self}::keepalive"
+                        )
+                        try:
+                            await conn.start_listening()
+                        finally:
+                            await self.cancel_task(keepalive_task)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    if _is_deepgram_fatal_error(exc):
+                        logger.error(
+                            "[stt] deepgram: FATAL — stopping retries. "
+                            "Check DEEPGRAM_API_KEY and account status. Error: {}",
+                            exc,
+                        )
+                        return  # Do NOT retry on fatal errors.
+                    logger.warning("[stt] deepgram: connection lost, will retry: {}", exc)
+                finally:
+                    self._connection = None  # type: ignore[assignment]
+
+    stt = _InstrumentedDeepgramSTTService(
         api_key=settings.deepgram_api_key,
         ttfs_p99_latency=0.8,
         settings=DeepgramSTTService.Settings(
@@ -443,6 +508,115 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
         )
         return None
 
+    # ── Gladia session management helpers ─────────────────────────────────
+    # Pipecat's GladiaSTTService never calls DELETE /v2/live/{id} — it only
+    # closes the WebSocket. Gladia keeps sessions in "processing" state
+    # indefinitely after a plain ws.close(), exhausting the free-tier
+    # 1-concurrent-session cap and silently blocking all future transcription
+    # (VAD fires but Gladia returns zero transcripts; no 429 error is surfaced
+    # to the bot). These helpers fix that at the voxtera level.
+
+    async def _gladia_delete_session(api_key: str, region: str | None, session_id: str) -> None:
+        """DELETE /v2/live/{session_id} to release the session slot immediately."""
+        import aiohttp
+
+        base = "https://api.gladia.io"
+        params = {"region": region} if region else {}
+        url = f"{base}/v2/live/{session_id}"
+        try:
+            async with (
+                aiohttp.ClientSession() as http,
+                http.delete(
+                    url,
+                    headers={"x-gladia-key": api_key},
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=5),
+                ) as resp,
+            ):
+                if resp.status in (202, 204):
+                    logger.info(
+                        "[stt] gladia: deleted session {} (HTTP {})", session_id, resp.status
+                    )
+                else:
+                    body = await resp.text()
+                    logger.warning(
+                        "[stt] gladia: DELETE session {} returned {} — {}",
+                        session_id,
+                        resp.status,
+                        body[:200],
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[stt] gladia: DELETE session {} failed (non-fatal): {}", session_id, exc
+            )
+
+    async def _gladia_purge_orphan_sessions(api_key: str, region: str | None) -> int:
+        """Delete all active Gladia sessions for this API key before opening a new one.
+
+        Called once per lazy_connect to ensure the free-tier 1-session cap is
+        never exhausted by sessions that were left open by a previous bot run
+        (crash, SIGTERM, hard kill) that skipped lazy_disconnect.
+
+        Returns the number of sessions deleted.
+        """
+        import aiohttp
+
+        base = "https://api.gladia.io"
+        params: dict[str, str] = {"limit": "20"}
+        if region:
+            params["region"] = region
+
+        deleted = 0
+        offset = 0
+        try:
+            async with aiohttp.ClientSession() as http:
+                while True:
+                    params["offset"] = str(offset)
+                    async with http.get(
+                        f"{base}/v2/live",
+                        headers={"x-gladia-key": api_key},
+                        params=params,
+                        timeout=aiohttp.ClientTimeout(total=5),
+                    ) as resp:
+                        if not resp.ok:
+                            logger.warning(
+                                "[stt] gladia: listing sessions failed (HTTP {})", resp.status
+                            )
+                            break
+                        data = await resp.json()
+                    items = data.get("items", data.get("data", []))
+                    if not items:
+                        break
+                    for item in items:
+                        sid = item.get("id") or item.get("session_id")
+                        if not sid:
+                            continue
+                        async with http.delete(
+                            f"{base}/v2/live/{sid}",
+                            headers={"x-gladia-key": api_key},
+                            timeout=aiohttp.ClientTimeout(total=5),
+                        ) as dr:
+                            if dr.status in (202, 204):
+                                deleted += 1
+                            elif dr.status == 403:
+                                # Session is locked by Gladia (e.g. just created by
+                                # another live process). Leave it — starting a new
+                                # session will still get a 429 but that's the correct
+                                # error to surface rather than silently stalling.
+                                logger.warning(
+                                    "[stt] gladia: session {} is locked (403) — cannot purge",
+                                    sid,
+                                )
+                    if len(items) < 20:
+                        break
+                    offset += 20
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[stt] gladia: orphan-purge failed (non-fatal): {}", exc)
+
+        if deleted:
+            logger.info("[stt] gladia: purged {} orphan session(s) before connecting", deleted)
+        return deleted
+
     class _LazyConnectGladiaSTTService(GladiaSTTService):
         """Gladia STT that defers the WebSocket connection until activated.
 
@@ -490,25 +664,54 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
                 logger.info("[stt] gladia: lazy_connect deferred (awaiting StartFrame)")
                 self._pending_connect = True
                 return
+            # Purge any sessions left open by a previous bot run that was
+            # hard-killed (SIGTERM/crash) without running lazy_disconnect.
+            # Pipecat never calls DELETE, so these accumulate and eventually
+            # hit the concurrent-session cap, causing silent 429s.
+            await _gladia_purge_orphan_sessions(self._api_key, self._region)
             logger.info("[stt] gladia: lazy_connect — opening session")
-            await self._connect()
+            try:
+                await self._connect()
+            except Exception as exc:
+                msg = str(exc)
+                if "429" in msg or "concurrent" in msg.lower() or "maximum" in msg.lower():
+                    logger.error(
+                        "[stt] gladia: CONCURRENT SESSION CAP HIT — Gladia rejected new session "
+                        "(429 Too Many Requests). Check https://app.gladia.io for stuck sessions. "
+                        "Error: {}",
+                        exc,
+                    )
+                else:
+                    logger.error("[stt] gladia: lazy_connect failed — {}", exc)
+                raise
 
         async def lazy_disconnect(self) -> None:
             """Close the Gladia WebSocket session and clear session state
             so the next ``lazy_connect`` opens a fresh session. Idempotent.
+
+            Pipecat's GladiaSTTService._disconnect() only closes the WebSocket
+            — it never calls DELETE /v2/live/{session_id}. Gladia keeps the
+            session in "processing" state indefinitely after a plain ws.close(),
+            which exhausts the free-tier 1-session cap and silently blocks all
+            future transcription. We call DELETE here to properly terminate it.
             """
             if not self._session_url:
                 return
-            logger.info(
-                "[stt] gladia: lazy_disconnect — closing session {}",
-                self._session_id,
-            )
+            sid = self._session_id
+            logger.info("[stt] gladia: lazy_disconnect — closing session {}", sid)
             await self._disconnect()
-            # Clear session URL/id so the next ``lazy_connect`` POSTs a
-            # fresh /v2/live init rather than trying to reconnect to a
-            # session Gladia has already torn down.
+            # Clear session URL/id so the next lazy_connect POSTs a fresh
+            # /v2/live init rather than trying to reconnect to a torn-down session.
             self._session_url = None
             self._session_id = None
+            # Hard-delete the session via Gladia's REST API so it releases the
+            # concurrent-session slot immediately. Without this, Gladia keeps
+            # the session in "processing" state indefinitely, which exhausts
+            # the 1-concurrent-session cap on the Free Trial plan and silently
+            # causes 429 errors on the next bot start — VAD fires but Gladia
+            # returns zero transcripts.
+            if sid:
+                await _gladia_delete_session(self._api_key, self._region, sid)
 
         async def reconfigure_languages(
             self,

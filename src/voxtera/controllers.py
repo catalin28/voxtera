@@ -12,6 +12,9 @@ pipeline without restarting it:
 - :class:`InstantAckFiller` — observes :class:`TranscriptionFrame` and plays
   a short, language-matched backchannel the instant the guest stops speaking,
   masking the LLM/TTS latency gap with natural speech instead of silence.
+- :class:`InterruptionResumer` — observes barge-ins; when the guest cuts the
+  bot off early, injects a context note so the answering LLM can decide
+  whether to return to the unfinished answer or drop it.
 - :class:`ModelSwitcher` — handles ``voxtera-model`` and ``voxtera-voice``
   to swap the LLM model and TTS voice respectively.
 - :class:`GreetingController` — fires the startup greeting on
@@ -29,6 +32,7 @@ import time
 
 from loguru import logger
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     InterruptionFrame,
     LLMMessagesAppendFrame,
@@ -872,6 +876,129 @@ class InstantAckFiller(FrameProcessor):
                             "[filler] no curated pool for language {!r} — staying silent",
                             lang_code,
                         )
+
+        await self.push_frame(frame, direction)
+
+
+# Out-of-band note injected into the LLM context after a barge-in truncates a
+# reply. Phrased explicitly as a system-style directive (NOT as guest speech)
+# so the model treats it as stage direction rather than something the guest
+# said. The additive-vs-dismissal classification is left to the answering LLM,
+# which does it in the guest's own language — no keyword tables, no extra call.
+_RESUME_NOTE = (
+    "[System note — not spoken by the guest: your previous reply was cut off "
+    "mid-sentence when the guest began speaking. Judge the guest's most recent "
+    "message: if it ADDS a request (e.g. 'and also...', 'what about...'), "
+    "answer the new request first, then briefly finish the cut-off point "
+    "without repeating what the guest already heard; if it DISMISSES or "
+    "REPLACES the topic (e.g. 'no', 'stop', 'actually...'), drop the cut-off "
+    "point and answer only the new message. Keep the whole reply brief.]"
+)
+
+
+class InterruptionResumer(FrameProcessor):
+    """Lets the bot return to an answer the guest cut off mid-sentence.
+
+    When ``allow_interruptions`` is on, a guest can barge in over the bot.
+    Pipecat handles the barge-in correctly — TTS stops, the in-flight LLM
+    generation is cancelled — but the *partial* reply is then simply
+    abandoned. If the guest's interruption was additive ("...and tell me about
+    the spa too") rather than a dismissal ("no, stop"), the bot drops the first
+    topic and never returns to it, leaving the guest with half an answer.
+
+    This processor does not classify the interruption itself. It supplies the
+    *signal* the answering LLM needs to classify it:
+
+    1. It watches :class:`BotStartedSpeakingFrame` to time the reply, and
+       :class:`InterruptionFrame` to catch a barge-in landing while the bot is
+       still speaking.
+    2. If the barge-in lands within ``_resume_window_secs`` of the reply
+       starting — early enough that meaningful content was left unsaid — it
+       arms a one-shot flag. A barge-in past that window is treated as a
+       near-complete answer and ignored: resuming a nearly-finished thought
+       ("as I was saying...") sounds worse than dropping it.
+    3. On the next :class:`TranscriptionFrame` (the interrupting utterance) it
+       injects :data:`_RESUME_NOTE` into the LLM context via
+       :class:`LLMMessagesAppendFrame`. The note tells the model its previous
+       reply was truncated and instructs it to judge — in the guest's own
+       language — whether the new utterance *adds* a request or *replaces* it.
+
+    The additive-vs-replacement classification is therefore performed by the
+    same LLM that produces the answer: no extra round trip, no per-language
+    keyword tables, ~0 added latency.
+
+    Placement: must sit downstream of STT (to see :class:`TranscriptionFrame`)
+    and upstream of ``context_aggregator.user()`` (so the injected note lands
+    in context before the LLM run) — i.e. right next to :class:`InstantAckFiller`.
+
+    Live-tunable: ``_enabled`` and ``_resume_window_secs`` are mutated in place
+    by the ``interruption_resume_enabled`` / ``interruption_resume_window_secs``
+    knobs (see :func:`voxtera.tunables.register_pipeline_knobs`).
+    """
+
+    def __init__(self, *, enabled: bool = True, resume_window_secs: float = 5.0) -> None:
+        super().__init__()
+        # Live-tunable: flipped/retuned by the interruption_resume_* knobs.
+        self._enabled = enabled
+        self._resume_window_secs = resume_window_secs
+        # Monotonic timestamp of the most recent BotStartedSpeakingFrame, or
+        # None when the bot isn't speaking. Used to measure how far into a
+        # reply a barge-in landed.
+        self._bot_started_at: float | None = None
+        # One-shot: set when a barge-in truncates a reply early enough to be
+        # worth resuming; consumed by the next TranscriptionFrame.
+        self._pending_resume = False
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, BotStartedSpeakingFrame):
+            self._bot_started_at = time.monotonic()
+
+        elif isinstance(frame, BotStoppedSpeakingFrame):
+            # Reply finished cleanly — nothing was truncated. Clear state so a
+            # stale flag can't fire on an unrelated later turn.
+            self._bot_started_at = None
+            self._pending_resume = False
+
+        elif isinstance(frame, InterruptionFrame):
+            # A barge-in. Only meaningful if the bot was actually speaking (a
+            # start time is recorded) and the feature is enabled.
+            if self._enabled and self._bot_started_at is not None:
+                elapsed = time.monotonic() - self._bot_started_at
+                if elapsed <= self._resume_window_secs:
+                    self._pending_resume = True
+                    logger.info(
+                        "[interruption-resumer] barge-in {:.1f}s into reply "
+                        "(window {:.1f}s) — arming resume note",
+                        elapsed,
+                        self._resume_window_secs,
+                    )
+                else:
+                    logger.debug(
+                        "[interruption-resumer] barge-in {:.1f}s into reply "
+                        "exceeds window {:.1f}s — reply near-complete, not resuming",
+                        elapsed,
+                        self._resume_window_secs,
+                    )
+            self._bot_started_at = None
+
+        elif (
+            isinstance(frame, TranscriptionFrame)
+            and direction == FrameDirection.DOWNSTREAM
+            and self._pending_resume
+        ):
+            # The interrupting utterance has been transcribed. Inject the
+            # out-of-band note BEFORE letting the transcript continue, so the
+            # note lands in context ahead of the user turn that triggers the
+            # LLM run. One-shot: cleared here so a multi-segment utterance
+            # doesn't inject the note more than once.
+            self._pending_resume = False
+            await self.push_frame(
+                LLMMessagesAppendFrame([{"role": "user", "content": _RESUME_NOTE}]),
+                FrameDirection.DOWNSTREAM,
+            )
+            logger.info("[interruption-resumer] injected resume note into context")
 
         await self.push_frame(frame, direction)
 

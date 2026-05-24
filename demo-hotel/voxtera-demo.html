@@ -323,6 +323,25 @@
     font-weight:500;
   }
 
+  /* ============ STOP BUTTON ============ */
+  #stop-btn{
+    display:none;
+    margin:1.4rem auto 0;
+    background:transparent;
+    border:1.5px solid var(--rust);
+    color:var(--rust);
+    border-radius:2rem;
+    padding:0.45rem 1.4rem;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.7rem;
+    letter-spacing:0.15em;
+    text-transform:uppercase;
+    cursor:pointer;
+    transition:background .2s, color .2s;
+    z-index:4;
+  }
+  #stop-btn:hover{ background:var(--rust); color:var(--cream); }
+
   /* ============ TRANSCRIPT ============ */
   .transcript{
     position:relative;z-index:2;
@@ -563,6 +582,167 @@
     50%{box-shadow:0 0 0 8px rgba(164,57,28,0);}
   }
 
+  /* ============ DIAGNOSTIC PANEL ============ */
+  #diag-panel{
+    position:fixed;
+    top:0;right:-360px;
+    width:340px;
+    height:100vh;
+    background:var(--paper);
+    border-left:1px solid var(--line-strong);
+    box-shadow:-8px 0 30px -8px rgba(26,24,20,0.18);
+    display:flex;flex-direction:column;
+    z-index:100;
+    transition:right .3s cubic-bezier(.2,.7,.2,1);
+    font-family:'JetBrains Mono',monospace;
+  }
+  #diag-panel.open{ right:0; }
+  #diag-panel-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:1rem 1rem 0.75rem;
+    border-bottom:1px solid var(--line);
+    flex-shrink:0;
+  }
+  #diag-panel-header h3{
+    font-size:0.7rem;letter-spacing:0.14em;text-transform:uppercase;
+    color:var(--rust);margin:0;
+  }
+  #diag-close{
+    background:none;border:none;cursor:pointer;
+    color:var(--ink-soft);font-size:1.1rem;padding:2px 6px;
+    border-radius:6px;
+  }
+  #diag-close:hover{background:var(--cream-deep);}
+  #diag-mic-row{
+    padding:0.6rem 1rem;
+    border-bottom:1px solid var(--line);
+    flex-shrink:0;
+    display:flex;align-items:center;gap:8px;
+    font-size:0.65rem;color:var(--ink-soft);
+  }
+  #diag-mic-bar-wrap{
+    flex:1;height:6px;border-radius:3px;
+    background:var(--line-strong);overflow:hidden;
+  }
+  #diag-mic-fill{
+    height:100%;width:0%;border-radius:3px;
+    background:var(--gold);
+    transition:width .1s;
+  }
+  #diag-mic-label{ min-width:60px; }
+  #diag-mic-warn{ color:var(--rust); }
+  #diag-device-row{
+    padding:0.4rem 0.8rem 0.5rem;
+    border-bottom:1px solid var(--line);
+    flex-shrink:0;
+    display:flex;align-items:center;gap:6px;
+    font-size:0.63rem;font-family:'JetBrains Mono',monospace;
+  }
+  #diag-device-row label{
+    color:var(--ink-soft);white-space:nowrap;flex-shrink:0;
+  }
+  #diag-mic-select{
+    flex:1;min-width:0;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.62rem;
+    background:var(--cream-deep,#e8e2d9);
+    border:1px solid var(--line-strong);
+    border-radius:5px;
+    color:var(--ink);
+    padding:3px 4px;
+    cursor:pointer;
+  }
+  #diag-mic-select option.device-active{
+    font-weight:700;color:var(--rust);
+  }
+  #diag-refresh-devices{
+    background:none;border:1px solid var(--line-strong);
+    border-radius:5px;padding:2px 7px;cursor:pointer;
+    font-size:0.8rem;color:var(--ink-soft);flex-shrink:0;
+  }
+  #diag-refresh-devices:hover{background:var(--line-strong);}
+  #diag-actions{
+    padding:0.5rem 0.8rem;
+    border-bottom:1px solid var(--line);
+    flex-shrink:0;
+  }
+  #diag-mic-test{
+    background:var(--cream-deep,#e8e2d9);
+    border:1px solid var(--line-strong);
+    border-radius:6px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.63rem;
+    letter-spacing:0.06em;
+    padding:5px 10px;
+    cursor:pointer;
+    color:var(--ink);
+    width:100%;
+  }
+  #diag-mic-test:hover{background:var(--line-strong);}
+  #diag-mic-test.recording{
+    background:var(--rust);color:#fff;
+    border-color:var(--rust);
+    animation:mic-pulse 1s ease infinite;
+  }
+  #diag-mic-test.playing{
+    background:var(--gold);color:#fff;
+    border-color:var(--gold);
+  }
+  #diag-feed{
+    flex:1;overflow-y:auto;padding:0.6rem 0.8rem;
+    display:flex;flex-direction:column;gap:4px;
+  }
+  .diag-row{
+    padding:5px 8px;border-radius:6px;
+    font-size:0.63rem;line-height:1.4;
+    animation:msg-in .25s ease forwards;
+  }
+  .diag-row .diag-ts{
+    color:var(--ink-soft);margin-right:5px;opacity:.6;
+  }
+  .diag-row.stt{
+    background:rgba(58,138,58,0.08);
+    border-left:3px solid #3a8a3a;
+    color:#2a6a2a;
+  }
+  .diag-row.bot{
+    background:rgba(184,136,74,0.08);
+    border-left:3px solid var(--gold);
+    color:var(--rust);
+  }
+  .diag-row.vad-start{
+    background:rgba(58,138,58,0.05);
+    color:var(--ink-soft);
+    font-style:italic;
+  }
+  .diag-row.vad-stop{
+    background:rgba(164,57,28,0.04);
+    color:var(--ink-soft);
+    font-style:italic;
+  }
+  .diag-row.info{
+    color:var(--ink-soft);
+    opacity:.7;
+  }
+  .diag-row.warn{ color:var(--rust); }
+  #diag-toggle{
+    position:fixed;
+    right:0;top:50%;
+    transform:translateY(-50%);
+    background:var(--rust);
+    color:var(--cream);
+    border:none;cursor:pointer;
+    writing-mode:vertical-rl;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.6rem;letter-spacing:0.12em;
+    text-transform:uppercase;
+    padding:10px 6px;
+    border-radius:6px 0 0 6px;
+    z-index:101;
+    transition:right .3s cubic-bezier(.2,.7,.2,1);
+  }
+  #diag-toggle.open{ right:340px; }
+
   /* ============ RESPONSIVE ============ */
   @media (max-width:640px){
     .topbar{padding:1rem 1rem;}
@@ -584,7 +764,7 @@
 
 <!-- TOP BAR -->
 <header class="topbar">
-  <a href="voxtera-v3.html" class="logo">
+  <a href="voxtera.html" class="logo">
     <span class="logo-mark">
       <svg viewBox="0 0 32 32" fill="none">
         <circle cx="16" cy="16" r="15" stroke="#1a1814" stroke-width="1.2" fill="none"/>
@@ -593,9 +773,13 @@
     </span>
     Voxtera<sup>™</sup>
   </a>
+  <div class="hotel-strip" aria-hidden="true">
+    <span class="hotel-name">Grand Hôtel Lumière</span>
+    <span class="hotel-meta">Paris 8e · Concierge</span>
+  </div>
   <div class="topbar-right">
     <a href="voxtera-hotels.html">For hotels</a>
-    <a href="voxtera-v3.html">Home</a>
+    <a href="voxtera.html">Home</a>
     <span class="session-state" id="session-state">
       <span class="session-dot"></span>
       <span id="session-label">Ready</span>
@@ -622,6 +806,17 @@
   </div>
 
   <div class="stage-caption" id="stage-caption">Tap the orb, or send a message below to begin.</div>
+  <button id="stop-btn" aria-label="Stop speaking">⏹ Stop</button>
+
+  <!-- SUGGESTION CHIPS (content updated by JS on language change) -->
+  <div class="suggestions" id="suggestions" aria-label="Suggested questions">
+    <button class="chip" data-prompt="What's the WiFi password?">WiFi password?</button>
+    <button class="chip" data-prompt="Any good restaurants nearby?">Restaurants nearby</button>
+    <button class="chip" data-prompt="Is the pool open right now?">Pool hours</button>
+    <button class="chip" data-prompt="I'd like a late checkout, is that possible?">Late checkout</button>
+    <button class="chip" data-prompt="What are the spa opening hours?">Spa hours</button>
+    <button class="chip" data-prompt="Can you recommend something to do in Paris?">Things to do</button>
+  </div>
 
   <!-- TRANSCRIPT -->
   <div class="transcript" id="transcript" aria-live="polite"></div>
@@ -668,6 +863,9 @@
             <button type="button" data-lang="de" data-flag="🇩🇪">🇩🇪 Deutsch</button>
             <button type="button" data-lang="it" data-flag="🇮🇹">🇮🇹 Italiano</button>
             <button type="button" data-lang="pt" data-flag="🇵🇹">🇵🇹 Português</button>
+            <button type="button" data-lang="tr" data-flag="🇹🇷">🇹🇷 Türkçe</button>
+            <button type="button" data-lang="ru" data-flag="🇷🇺">🇷🇺 Русский</button>
+            <button type="button" data-lang="ar" data-flag="🇦🇪">🇦🇪 العربية</button>
             <button type="button" data-lang="ja" data-flag="🇯🇵">🇯🇵 日本語</button>
             <button type="button" data-lang="zh" data-flag="🇨🇳">🇨🇳 中文</button>
             <button type="button" data-lang="auto" data-flag="🌐">🌐 Auto-detect</button>
@@ -681,18 +879,39 @@
       </button>
     </div>
   </form>
-  <div class="input-footnote">Demo · backend not yet connected · UI prototype</div>
+  <div class="input-footnote">Grand Hôtel Lumière · powered by Voxtera</div>
 </div>
 
+<audio id="bot-audio" playsinline style="display:none"></audio>
+<audio id="remote-audio" autoplay playsinline style="display:none"></audio>
+
+<!-- DIAGNOSTIC PANEL -->
+<button id="diag-toggle" aria-label="Toggle diagnostic panel">DIAG</button>
+<aside id="diag-panel" aria-label="Diagnostic panel">
+  <div id="diag-panel-header">
+    <h3>&#9679; Voice Diagnostics</h3>
+    <button id="diag-close" aria-label="Close">&#10005;</button>
+  </div>
+  <div id="diag-mic-row">
+    <span id="diag-mic-label">MIC —</span>
+    <div id="diag-mic-bar-wrap"><div id="diag-mic-fill"></div></div>
+    <span id="diag-mic-warn"></span>
+  </div>
+  <div id="diag-device-row">
+    <label for="diag-mic-select">Device</label>
+    <select id="diag-mic-select"><option value="">— scanning… —</option></select>
+    <button id="diag-refresh-devices" title="Re-scan devices">↺</button>
+  </div>
+  <div id="diag-actions">
+    <button id="diag-mic-test" title="Click to record, click again to stop">&#127908; Test mic</button>
+  </div>
+  <div id="diag-feed"></div>
+</aside>
+
+<script src="https://unpkg.com/@daily-co/daily-js"></script>
 <script>
 /* =============================================================
-   Voxtera demo page — prototype interactions
-   - Orb has three states: idle / listening / speaking
-   - Chat form: stores messages locally, mocks bot replies
-   - Voice button: toggles "in call" UI
-   - Mic button: toggles "recording" UI
-   - Language menu: opens/closes, sets current language label
-   - All backend calls are stubs marked with TODO
+   Voxtera demo page
    ============================================================ */
 (function() {
   // ─── elements ───
@@ -709,32 +928,309 @@
   const langMenu    = document.getElementById('lang-menu');
   const langFlag    = document.getElementById('lang-flag');
   const langLabel   = document.getElementById('lang-label');
+  const audioEl     = document.getElementById('bot-audio');
+  const remoteAudioEl = document.getElementById('remote-audio');
+  const stopBtn     = document.getElementById('stop-btn');
 
   // ─── state ───
   let currentLang = 'en';
-  let inCall = false;
+  let sessionId   = null;
+  let isBusy      = false;
+  let inCall      = false;
+  let callRecognition = null;
+  let micRecognition  = null;
+  let micActive       = false;
+  let _currentAbort   = null;   // AbortController for in-flight fetch
+  let _audioQueue     = [];     // shared audio queue ref for stop
+  let _audioEl        = audioEl;
+  let _selectedMicDeviceId = null;  // synced with the panel dropdown
 
-  // ─── helper: set orb state ('' | 'listening' | 'speaking') ───
+  // ─── diagnostic panel ───
+  const diagPanel   = document.getElementById('diag-panel');
+  const diagToggle  = document.getElementById('diag-toggle');
+  const diagFeed    = document.getElementById('diag-feed');
+  const diagFill    = document.getElementById('diag-mic-fill');
+  const diagWarn    = document.getElementById('diag-mic-warn');
+  const diagLabel   = document.getElementById('diag-mic-label');
+
+  document.getElementById('diag-close').addEventListener('click', () => {
+    diagPanel.classList.remove('open');
+    diagToggle.classList.remove('open');
+  });
+  diagToggle.addEventListener('click', () => {
+    diagPanel.classList.toggle('open');
+    diagToggle.classList.toggle('open');
+  });
+
+  function diagLog(type, text) {
+    const row = document.createElement('div');
+    row.className = 'diag-row ' + type;
+    const ts = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    row.innerHTML = '<span class="diag-ts">' + ts + '</span>' + _escHtml(text);
+    diagFeed.appendChild(row);
+    diagFeed.scrollTop = diagFeed.scrollHeight;
+    // Keep max 200 rows
+    while (diagFeed.children.length > 200) diagFeed.removeChild(diagFeed.firstChild);
+  }
+
+  function _escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ─── mic device selector ───
+  const diagMicSelect = document.getElementById('diag-mic-select');
+
+  async function _populateMicSelect(withPermission) {
+    try {
+      // If called with withPermission=true (after mic test grants access),
+      // re-enumerate to get real labels. Otherwise just enumerate — Safari
+      // blocks getUserMedia outside a user gesture so we never call it here.
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const mics = devices.filter(d => d.kind === 'audioinput');
+
+      diagMicSelect.innerHTML = '';
+      mics.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        const label = d.label || ('Mic ' + d.deviceId.substring(0, 8));
+        opt.textContent = label;
+        if (d.deviceId === _selectedMicDeviceId) {
+          opt.selected = true;
+          opt.className = 'device-active';
+          opt.textContent = '✔ ' + label;
+        }
+        if (/aggregate|blackhole|virtual|loopback|teams/i.test(label)) {
+          opt.textContent = (opt.selected ? '✔ ' : '⚠ ') + label;
+        }
+        diagMicSelect.appendChild(opt);
+      });
+
+      // Auto-pick built-in if nothing selected yet
+      if (!_selectedMicDeviceId) {
+        const builtIn = mics.find(d =>
+          /macbook|built.in|internal/i.test(d.label) &&
+          !/aggregate|blackhole|loopback|teams|virtual/i.test(d.label)
+        );
+        if (builtIn) {
+          diagMicSelect.value = builtIn.deviceId;
+          _selectedMicDeviceId = builtIn.deviceId;
+        } else if (mics.length > 0) {
+          // Fallback: pick first non-virtual device
+          const first = mics.find(d => !/aggregate|blackhole|virtual|loopback|teams/i.test(d.label)) || mics[0];
+          diagMicSelect.value = first.deviceId;
+          _selectedMicDeviceId = first.deviceId;
+        }
+      }
+
+      const selLabel = diagMicSelect.options[diagMicSelect.selectedIndex]
+        ? diagMicSelect.options[diagMicSelect.selectedIndex].textContent.replace(/^[✔⚠] /, '')
+        : 'none';
+      diagLog('info', 'Found ' + mics.length + ' mic(s). Selected: ' + selLabel);
+    } catch (e) {
+      diagLog('warn', '⚠ Device scan failed: ' + (e && e.message));
+    }
+  }
+
+  diagMicSelect.addEventListener('change', () => {
+    _selectedMicDeviceId = diagMicSelect.value || null;
+    const label = diagMicSelect.options[diagMicSelect.selectedIndex]
+      ? diagMicSelect.options[diagMicSelect.selectedIndex].textContent.replace(/^[✔⚠] /, '')
+      : '?';
+    diagLog('info', '🎤 Mic switched → ' + label);
+    // Restart the level monitor with the new device
+    if (_micMonitorInterval) _startMicMonitor();
+  });
+
+  document.getElementById('diag-refresh-devices').addEventListener('click', () => {
+    diagLog('info', '🔄 Re-scanning devices…');
+    _populateMicSelect();
+  });
+
+  // ─── mic test button ───
+  let _micTestAbort = false;
+
+  document.getElementById('diag-mic-test').addEventListener('click', async function() {
+    const btn = this;
+
+    // Second click while recording → stop early
+    if (btn.dataset.testing === 'recording') {
+      _micTestAbort = true;
+      return;
+    }
+    if (btn.dataset.testing) return; // playing back, ignore
+
+    _micTestAbort = false;
+    btn.dataset.testing = 'recording';
+    btn.classList.add('recording');
+    btn.textContent = '⏹ Stop recording';
+
+    // ⚠ getUserMedia MUST be the first await — no prior awaits allowed.
+    // Any await before this (enumerateDevices, etc.) breaks Safari's user-gesture
+    // chain and the permission prompt will never appear.
+    // Step 1: request with no constraints to trigger permission prompt.
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (e) {
+      diagLog('warn', '⚠ getUserMedia failed: ' + e.message);
+      diagLog('warn', '👉 Safari: allow mic in the browser address bar');
+      diagLog('warn', '👉 macOS: System Settings → Privacy → Microphone → enable browser');
+      btn.classList.remove('recording');
+      btn.textContent = '🎤 Test mic';
+      delete btn.dataset.testing;
+      return;
+    }
+
+    // Step 2: if user has selected a specific device in the dropdown, switch to it.
+    // This is safe to do now — permission is already granted.
+    const chosenId = diagMicSelect.value;
+    if (chosenId && stream.getAudioTracks()[0] &&
+        stream.getAudioTracks()[0].getSettings().deviceId !== chosenId) {
+      stream.getTracks().forEach(t => t.stop());
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: chosenId } }, video: false
+        });
+      } catch (_) {
+        // Couldn't get chosen device — fall back to what we already had
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      }
+    }
+
+    // Log what device we actually got — but DO NOT overwrite _selectedMicDeviceId.
+    // That value is controlled exclusively by the dropdown.
+    // Now that we have permission, re-populate dropdown with real labels.
+    _populateMicSelect(true);
+
+    const track = stream.getAudioTracks()[0];
+    if (track) {
+      const settings = track.getSettings();
+      const gotLabel = track.label || '(no label)';
+      const selectedLabel = diagMicSelect.options[diagMicSelect.selectedIndex]
+        ? diagMicSelect.options[diagMicSelect.selectedIndex].textContent.replace(/^[✔⚠] /, '')
+        : '?';
+      if (chosenId && settings.deviceId !== chosenId) {
+        diagLog('warn', '⚠ Asked for: ' + selectedLabel);
+        diagLog('warn', '⚠ Got instead: ' + gotLabel + ' — Chrome ignored deviceId');
+        diagLog('warn', '👉 Change macOS default input in Audio MIDI Setup');
+      } else {
+        diagLog('info', '🎤 Testing: ' + gotLabel);
+      }
+      diagLog('info', 'sampleRate=' + settings.sampleRate
+        + '  ch=' + settings.channelCount
+        + '  echo=' + settings.echoCancellation
+        + '  noise=' + settings.noiseSuppression);
+    }
+
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ac.createMediaStreamSource(stream);
+    const analyser = ac.createAnalyser();
+    analyser.fftSize = 256;
+    src.connect(analyser);
+    const buf = new Float32Array(analyser.frequencyBinCount);
+
+    const chunks = [];
+    const rec = new MediaRecorder(stream);
+    rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    rec.start();
+
+    let maxRms = 0;
+    const startMs = Date.now();
+    const MAX_MS = 10000;
+
+    while (!_micTestAbort && (Date.now() - startMs) < MAX_MS) {
+      await new Promise(r => setTimeout(r, 150));
+      analyser.getFloatTimeDomainData(buf);
+      let rms = 0;
+      for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+      rms = Math.sqrt(rms / buf.length);
+      if (rms > maxRms) maxRms = rms;
+      const pct = Math.min(100, rms * 800);
+      if (diagFill) diagFill.style.width = pct + '%';
+      if (diagLabel) diagLabel.textContent = 'MIC ' + (rms * 1000).toFixed(1);
+      const elapsed = ((Date.now() - startMs) / 1000).toFixed(1);
+      btn.textContent = '⏹ ' + elapsed + 's — click to stop';
+    }
+
+    rec.stop();
+    stream.getTracks().forEach(t => t.stop());
+    try { ac.close(); } catch(_) {}
+    await new Promise(r => rec.onstop = r);
+
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    const kb = (blob.size / 1024).toFixed(1);
+    const hasAudio = maxRms > 0.005;
+
+    diagLog(hasAudio ? 'stt' : 'warn',
+      (hasAudio ? '✅' : '⚠') + ' ' + kb + ' KB  peak RMS=' + maxRms.toFixed(4) + ' — '
+      + (hasAudio ? 'audio captured ✔' : 'SILENT — mic not sending audio'));
+
+    if (!hasAudio) {
+      diagLog('warn', '👉 macOS: System Settings → Privacy & Security → Microphone → enable Chrome');
+      diagLog('warn', '👉 macOS: Audio MIDI Setup → MacBook Pro Mic → check input level bar moves');
+      btn.classList.remove('recording');
+      btn.textContent = '🎤 Test mic';
+      delete btn.dataset.testing;
+      return;
+    }
+
+    const url = URL.createObjectURL(blob);
+    btn.classList.remove('recording');
+    btn.classList.add('playing');
+    btn.textContent = '▶ Playing back…';
+    btn.dataset.testing = 'playing';
+    const a = new Audio(url);
+    a.onended = () => {
+      URL.revokeObjectURL(url);
+      btn.classList.remove('playing');
+      btn.textContent = '🎤 Test mic';
+      delete btn.dataset.testing;
+      diagLog('info', '⏹ Playback done');
+    };
+    a.play().catch(err => {
+      diagLog('warn', '⚠ Playback failed: ' + err.message);
+      btn.classList.remove('playing');
+      btn.textContent = '🎤 Test mic';
+      delete btn.dataset.testing;
+    });
+  });
+
+  function _showStop(show) {
+    stopBtn.style.display = show ? 'block' : 'none';
+  }
+
+  stopBtn.addEventListener('click', () => {
+    if (_currentAbort) { _currentAbort.abort(); _currentAbort = null; }
+    if (!_audioEl.paused) { _audioEl.pause(); _audioEl.currentTime = 0; }
+    _audioQueue.length = 0;
+    _showStop(false);
+    isBusy = false;
+    sendBtn.disabled = false;
+    setOrbState('');
+    setStatus('Ready when you are.', 'Ready');
+  });
+
+  // ─── orb state ───
   function setOrbState(state) {
     orbWrap.classList.remove('listening', 'speaking');
     if (state) orbWrap.classList.add(state);
   }
 
-  // ─── helper: set the caption text + session label ───
-  function setStatus(caption_text, session_text) {
-    caption.innerHTML = caption_text;
-    sessionLbl.textContent = session_text;
+  // ─── caption + session label ───
+  function setStatus(captionHtml, sessionText) {
+    caption.innerHTML = captionHtml;
+    sessionLbl.textContent = sessionText;
   }
 
-  // ─── helper: add a message to the transcript ───
-  function addMessage(who, text, typing) {
-    const wrap = document.createElement('div');
+  // ─── add message to transcript ───
+  function addMessage(who, text) {
+    const wrap   = document.createElement('div');
     wrap.className = `msg ${who}`;
-    const label = document.createElement('div');
+    const label  = document.createElement('div');
     label.className = 'who';
     label.textContent = who === 'user' ? 'You' : 'Voxtera';
     const bubble = document.createElement('div');
-    bubble.className = 'bubble' + (typing ? ' typing' : '');
+    bubble.className = 'bubble';
     bubble.textContent = text;
     wrap.appendChild(label);
     wrap.appendChild(bubble);
@@ -749,7 +1245,6 @@
     input.style.height = Math.min(input.scrollHeight, 120) + 'px';
   });
 
-  // submit on Enter, newline on Shift+Enter
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -757,159 +1252,697 @@
     }
   });
 
-  // ─── form submit: send message ───
+  // ─── core: send text to /api/chat and play audio response ───
+  async function sendMessage(text) {
+    if (isBusy || !text.trim()) return;
+    isBusy = true;
+    sendBtn.disabled = true;
+    _showStop(true);
+
+    addMessage('user', text);
+    setOrbState('listening');
+    setStatus('<strong>Voxtera is thinking…</strong>', 'Thinking');
+
+    // Create bot bubble immediately — text streams into it
+    const botWrap   = document.createElement('div');
+    botWrap.className = 'msg bot';
+    const botLabel  = document.createElement('div');
+    botLabel.className = 'who';
+    botLabel.textContent = 'Voxtera';
+    const botBubble = document.createElement('div');
+    botBubble.className = 'bubble typing';
+    botWrap.appendChild(botLabel);
+    botWrap.appendChild(botBubble);
+    transcript.appendChild(botWrap);
+    transcript.scrollTop = transcript.scrollHeight;
+
+    let fullText = '';
+    // Audio queue — plays clips sequentially without overlap
+    const audioQueue = [];
+    _audioQueue = audioQueue;
+    let audioPlaying = false;
+    let allAudioDoneResolve = null;
+    const allAudioDone = new Promise(resolve => { allAudioDoneResolve = resolve; });
+    function enqueueAudio(b64) {
+      audioQueue.push(b64);
+      if (!audioPlaying) _playNextAudio();
+    }
+    function _playNextAudio() {
+      if (audioQueue.length === 0) {
+        audioPlaying = false;
+        if (allAudioDoneResolve) allAudioDoneResolve();
+        return;
+      }
+      audioPlaying = true;
+      const b64 = audioQueue.shift();
+      audioEl.src = 'data:audio/mpeg;base64,' + b64;
+      audioEl.onended = () => _playNextAudio();
+      audioEl.onerror = () => _playNextAudio();
+      audioEl.play().catch(() => _playNextAudio());
+    }
+
+    _currentAbort = new AbortController();
+    try {
+      const resp = await fetch('/api/chat', {
+        signal: _currentAbort.signal,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: text.trim(),
+          session_id: sessionId,
+          model: 'gpt-4o-mini',
+          language: currentLang === 'auto' ? 'en' : currentLang,
+          tts_provider: 'elevenlabs',
+          voice: '21m00Tcm4TlvDq8ikWAM'
+        })
+      });
+
+      if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
+
+      const reader  = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let lineBuf   = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        lineBuf += decoder.decode(value, { stream: true });
+        const lines = lineBuf.split('\n');
+        lineBuf = lines.pop(); // keep incomplete last line
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let event;
+          try { event = JSON.parse(line); } catch { continue; }
+
+          if (event.type === 'text') {
+            fullText += event.chunk;
+            botBubble.textContent = fullText;
+            transcript.scrollTop = transcript.scrollHeight;
+
+          } else if (event.type === 'audio') {
+            setOrbState('speaking');
+            setStatus('<strong>Voxtera is speaking…</strong>', 'Speaking');
+            enqueueAudio(event.data);
+
+          } else if (event.type === 'done') {
+            sessionId = event.session_id;
+            botBubble.classList.remove('typing');
+
+          } else if (event.type === 'error') {
+            botBubble.textContent = 'Error: ' + event.error;
+            botBubble.classList.remove('typing');
+          }
+        }
+      }
+
+      // signal queue that no more audio events are coming, then wait
+      if (!audioPlaying && audioQueue.length === 0) allAudioDoneResolve();
+      await allAudioDone;
+
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        botBubble.textContent = botBubble.textContent || ('Network error: ' + e.message);
+        botBubble.classList.remove('typing');
+        setOrbState('');
+        setStatus(`Network error: ${e.message}`, 'Error');
+      } else {
+        botBubble.classList.remove('typing');
+      }
+    }
+
+    // resume voice call or go idle
+    if (inCall && callRecognition) {
+      setOrbState('listening');
+      setStatus('<strong>Listening…</strong> Speak naturally. Tap again to end.', 'In call');
+      try { callRecognition.start(); } catch (e) {}
+    } else {
+      setOrbState('');
+      setStatus('Ready when you are.', 'Ready');
+      const sugEl = document.getElementById('suggestions');
+      if (sugEl) {
+        sugEl.style.display = '';
+        sugEl.style.opacity = '1';
+        updateChips(currentLang);
+      }
+    }
+
+    isBusy = false;
+    sendBtn.disabled = false;
+    _currentAbort = null;
+    _showStop(false);
+  }
+
+  // ─── form submit ───
   form.addEventListener('submit', e => {
     e.preventDefault();
     const text = input.value.trim();
     if (!text) return;
-
-    addMessage('user', text);
     input.value = '';
     input.style.height = 'auto';
-
-    setOrbState('listening');
-    setStatus('<strong>Voxtera is listening…</strong>', 'Listening');
-
-    // TODO: replace with real backend call
-    // fetch('/api/chat', { method:'POST', body: JSON.stringify({ text, lang: currentLang }) })
-    //   .then(r => r.json())
-    //   .then(data => renderBotReply(data.reply));
-    //
-    // For now: a mocked reply, with a typing animation,
-    // simulating the bot "speaking" for ~2s.
-    setTimeout(() => {
-      setOrbState('speaking');
-      setStatus('<strong>Voxtera is speaking…</strong>', 'Speaking');
-      const bubble = addMessage('bot', '', true);
-      const reply = mockReply(text, currentLang);
-      typeOut(bubble, reply, () => {
-        bubble.classList.remove('typing');
-        setOrbState('');
-        setStatus('Ready when you are.', 'Ready');
-      });
-    }, 600);
+    sendMessage(text);
   });
 
-  // ─── mock typewriter ───
-  function typeOut(el, text, done) {
-    let i = 0;
-    el.textContent = '';
-    const speed = 22; // ms per char
-    const tick = () => {
-      if (i < text.length) {
-        el.textContent += text[i++];
-        transcript.scrollTop = transcript.scrollHeight;
-        setTimeout(tick, speed);
-      } else if (done) {
-        done();
-      }
-    };
-    tick();
-  }
+  // ─── SpeechRecognition (browser STT) ───
+  const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-  // ─── mocked replies, language-aware (purely for the prototype) ───
-  function mockReply(userText, lang) {
-    const lower = userText.toLowerCase();
-    const replies = {
-      en: {
-        greet: "Hi — I'm Voxtera, the multilingual concierge. How can I help?",
-        wifi:  "The wifi network is 'Casa-Lisboa-Guest', password 'welcome2024'. Let me know if it doesn't connect.",
-        pool:  "The pool is open from 7am to 10pm. There's a yoga session by the pool every morning at 9.",
-        food:  "Four minutes' walk away, you'll find Casa Lola — authentic tapas, no reservation needed. Want me to text you the address?",
-        default: "Got it. In the real product I'd handle this from your property's knowledge base — for now this is a prototype."
-      },
-      fr: {
-        greet: "Bonjour — je suis Voxtera, le concierge multilingue. Comment puis-je vous aider ?",
-        wifi:  "Le réseau wifi est 'Casa-Lisboa-Guest', mot de passe 'welcome2024'.",
-        default: "Compris. Dans le produit réel, je traiterais cela depuis la base de connaissances de votre propriété."
-      },
-      es: {
-        greet: "Hola — soy Voxtera, el conserje multilingüe. ¿En qué puedo ayudarle?",
-        wifi:  "La red wifi es 'Casa-Lisboa-Guest', contraseña 'welcome2024'.",
-        default: "Entendido. En el producto real lo gestionaría desde la base de conocimientos de su propiedad."
-      },
-      de: {
-        greet: "Hallo — ich bin Voxtera, der mehrsprachige Concierge. Wie kann ich helfen?",
-        wifi:  "Das WLAN heißt 'Casa-Lisboa-Guest', Passwort 'welcome2024'.",
-        default: "Verstanden. In der echten Anwendung würde ich das aus der Wissensdatenbank Ihrer Unterkunft beantworten."
-      },
-      ja: {
-        greet: "こんにちは、Voxteraです。多言語対応のコンシェルジュです。ご用件は？",
-        wifi:  "WiFiは 'Casa-Lisboa-Guest'、パスワードは 'welcome2024' です。",
-        default: "了解しました。本番では、お宿の情報から正確にお答えします。"
-      },
-      pt: {
-        greet: "Olá — sou o Voxtera, o concierge multilíngue. Como posso ajudar?",
-        wifi:  "A rede wifi é 'Casa-Lisboa-Guest', palavra-passe 'welcome2024'.",
-        default: "Entendido. No produto real, eu trataria isto a partir da base de conhecimento do seu alojamento."
-      },
-      it: {
-        greet: "Ciao — sono Voxtera, il concierge multilingue. Come posso aiutarla?",
-        wifi:  "La rete wifi è 'Casa-Lisboa-Guest', password 'welcome2024'.",
-        default: "Capito. Nel prodotto reale gestirei la richiesta dalla base di conoscenza della struttura."
-      },
-      zh: {
-        greet: "您好,我是Voxtera多语种礼宾。请问需要什么帮助?",
-        wifi:  "WiFi名称是 'Casa-Lisboa-Guest',密码是 'welcome2024'。",
-        default: "明白了。正式产品中,我会基于您住宿的知识库来回答。"
-      },
-      auto: {
-        greet: "Hi — I'm Voxtera. (Auto-detect mode — I'll reply in whichever language you use.)",
-        default: "Got it. Auto-detect mode is on — I'd match your language in the real product."
-      }
-    };
-    const L = replies[lang] || replies.en;
-    if (/hi|hello|bonjour|hola|hallo|olá|ciao|你好|こんにちは/i.test(lower)) return L.greet;
-    if (/wifi|wi-fi|password|wlan|wifi の|无线|wi fi/i.test(lower)) return L.wifi || L.default;
-    if (/pool|piscina|piscine|swimming/i.test(lower)) return L.pool || L.default;
-    if (/eat|food|restaurant|dinner|brunch|comer|manger|essen|食べ|吃/i.test(lower)) return L.food || L.default;
-    return L.default;
-  }
-
-  // ─── call button: toggle voice-call state ───
-  callBtn.addEventListener('click', () => {
-    inCall = !inCall;
-    if (inCall) {
-      callBtn.classList.add('in-call');
-      setOrbState('listening');
-      setStatus('<strong>Voice call connecting…</strong> Tap again to end.', 'In call');
-      addMessage('bot', '— Voice call started (prototype: backend would connect here) —');
-
-      // TODO: replace with real Daily.co / WebRTC / phone call initiation
-      // startVoiceCall({ language: currentLang });
-    } else {
-      callBtn.classList.remove('in-call');
-      setOrbState('');
-      setStatus('Voice call ended.', 'Ready');
-      addMessage('bot', '— Voice call ended —');
-
-      // TODO: replace with real call teardown
-      // endVoiceCall();
-    }
-  });
-
-  // ─── mic button: hold-to-speak (prototype only) ───
-  let recording = false;
+  // mic button: single-shot voice input
   micBtn.addEventListener('click', () => {
-    recording = !recording;
-    micBtn.classList.toggle('recording', recording);
-    micBtn.classList.toggle('active', recording);
-    if (recording) {
-      setOrbState('listening');
-      setStatus('<strong>Listening…</strong> Tap mic again to stop.', 'Recording');
-
-      // TODO: replace with real Web Speech API or MediaRecorder
-      // startMicrophone();
-    } else {
+    if (!SpeechRecognitionAPI) {
+      alert('Speech recognition is not supported in this browser. Please use Chrome.');
+      return;
+    }
+    if (micActive) {
+      micActive = false;
+      micBtn.classList.remove('recording', 'active');
+      if (micRecognition) micRecognition.stop();
       setOrbState('');
       setStatus('Ready when you are.', 'Ready');
+      return;
+    }
+    micActive = true;
+    micBtn.classList.add('recording', 'active');
+    setOrbState('listening');
+    setStatus('<strong>Listening…</strong> Tap mic again to stop.', 'Listening');
 
-      // TODO: stop microphone, send audio to backend
-      // stopMicrophoneAndTranscribe();
+    micRecognition = new SpeechRecognitionAPI();
+    micRecognition.lang = currentLang === 'auto' ? '' : currentLang;
+    micRecognition.continuous = false;
+    micRecognition.interimResults = false;
+
+    micRecognition.onresult = (event) => {
+      const transcribed = event.results[0][0].transcript;
+      micActive = false;
+      micBtn.classList.remove('recording', 'active');
+      sendMessage(transcribed);
+    };
+    micRecognition.onerror = () => {
+      micActive = false;
+      micBtn.classList.remove('recording', 'active');
+      setOrbState('');
+      setStatus('Mic error — try again.', 'Ready');
+    };
+    micRecognition.onend = () => {
+      if (micActive) {
+        micActive = false;
+        micBtn.classList.remove('recording', 'active');
+        setOrbState('');
+        setStatus('Ready when you are.', 'Ready');
+      }
+    };
+    micRecognition.start();
+  });
+
+  // ─── Daily.co voice call helpers ───────────────────────────────────
+  async function _startVoiceCall() {
+    if (!window.DailyIframe) {
+      setStatus('<strong>Daily SDK not loaded.</strong> Please refresh.', 'Error');
+      return;
+    }
+    callBtn.disabled = true;
+    setOrbState('listening');
+    setStatus('<strong>Starting voice session…</strong>', 'Connecting');
+
+    // Resume AudioContext inside the user gesture so Safari allows audio.
+    try {
+      const _ac = new (window.AudioContext || window.webkitAudioContext)();
+      if (_ac.state === 'suspended') _ac.resume();
+    } catch (_) {}
+
+    let roomUrl, sessionId;
+    try {
+      const resp = await fetch('/api/start-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          language: currentLang === 'auto' ? 'en' : currentLang,
+          llm: 'claude-haiku-4-5',
+          stt: 'gladia',
+          ttsProvider: 'elevenlabs',
+          voice: '21m00Tcm4TlvDq8ikWAM'
+        })
+      });
+      if (resp.status === 409) {
+        setStatus('<strong>Session busy.</strong> Another call is active — try again shortly.', 'Busy');
+        callBtn.disabled = false;
+        setOrbState('');
+        return;
+      }
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      roomUrl   = data.room_url;
+      sessionId = data.session_id;
+    } catch (e) {
+      setStatus(`<strong>Could not start session:</strong> ${e.message}`, 'Error');
+      callBtn.disabled = false;
+      setOrbState('');
+      return;
+    }
+
+    _dailySessionId = sessionId;
+
+    // Use the device selected in the panel dropdown (or default if none chosen)
+    const _audioSource = _selectedMicDeviceId || true;
+
+    try {
+      _dailyCallObj = window.DailyIframe.createCallObject({ audioSource: _audioSource, videoSource: false });
+    } catch (e) {
+      diagLog('warn', '⚠ createCallObject failed: ' + (e && e.message) + ' — retrying with default');
+      _dailyCallObj = window.DailyIframe.createCallObject({ audioSource: true, videoSource: false });
+    }
+
+    let _greetingReadySent = false;
+
+    function _sendVoxteraReady() {
+      if (!_greetingReadySent && _dailyCallObj) {
+        _greetingReadySent = true;
+        diagLog('info', '▶ Sending voxtera-ready → greeting trigger');
+        _dailyCallObj.sendAppMessage({ type: 'voxtera-ready' }, '*');
+      }
+    }
+
+    _dailyCallObj.on('participant-joined', (evt) => {
+      // When the bot joins, send config app-messages so it knows which
+      // language/TTS/STT/model to use before playing the greeting.
+      if (!evt.participant.local) {
+        diagLog('info', '🤖 Bot joined Daily room — sending config');
+        _dailyCallObj.sendAppMessage({ type: 'voxtera-stt',          provider: 'gladia' }, '*');
+        _dailyCallObj.sendAppMessage({ type: 'voxtera-language',     language: currentLang === 'auto' ? 'en' : currentLang }, '*');
+        _dailyCallObj.sendAppMessage({ type: 'voxtera-timezone',     tz: (Intl.DateTimeFormat().resolvedOptions().timeZone || '') }, '*');
+        _dailyCallObj.sendAppMessage({ type: 'voxtera-model',        model: 'claude-haiku-4-5' }, '*');
+        _dailyCallObj.sendAppMessage({ type: 'voxtera-tts-provider', provider: 'elevenlabs' }, '*');
+        _dailyCallObj.sendAppMessage({ type: 'voxtera-voice',        voice: '21m00Tcm4TlvDq8ikWAM' }, '*');
+        // Fallback: if audio track never becomes playable, still trigger greeting after 4s.
+        setTimeout(_sendVoxteraReady, 4000);
+      }
+    });
+
+    _dailyCallObj.on('participant-updated', (evt) => {
+      // Orb state is managed by app-message events (bot-speaking/bot-stopped).
+      // Do not update orb here — participant-updated fires for track state
+      // changes unrelated to the bot actually speaking.
+    });
+
+    _dailyCallObj.on('app-message', (evt) => {
+      const msg = evt.data;
+      if (!msg || msg.type !== 'voxtera-event') return;
+      if (msg.event === 'bot-reply') {
+        const text = msg.data && msg.data.text ? msg.data.text : '';
+        addMessage('bot', text);
+        diagLog('bot', '🤖 BOT: ' + text);
+        setOrbState('speaking');
+        setStatus('<strong>Voxtera is speaking…</strong>', 'Speaking');
+      } else if (msg.event === 'user-transcript') {
+        const text = msg.data && msg.data.text ? msg.data.text : '';
+        addMessage('user', text);
+        diagLog('stt', '✅ STT: ' + text);
+      } else if (msg.event === 'user-started') {
+        diagLog('vad-start', '🎤 VAD: user started speaking');
+      } else if (msg.event === 'user-stopped') {
+        diagLog('vad-stop', '🔇 VAD: user stopped speaking');
+      } else if (msg.event === 'bot-thinking') {
+        diagLog('info', '💭 LLM thinking…');
+      } else if (msg.event === 'bot-speaking') {
+        setOrbState('speaking');
+        setStatus('<strong>Voxtera is speaking…</strong>', 'Speaking');
+        diagLog('bot', '🔊 Bot speaking');
+      } else if (msg.event === 'bot-done-speaking') {
+        setOrbState('listening');
+        setStatus('<strong>Listening…</strong> Speak naturally. Tap the phone to end.', 'In call');
+        diagLog('info', '⏹ Bot done speaking');
+      }
+    });
+
+    _dailyCallObj.on('track-started', (evt) => {
+      if (!evt.participant.local && evt.track && evt.track.kind === 'audio') {
+        diagLog('info', '🔉 Remote audio track started');
+        try {
+          const ms = new MediaStream([evt.track]);
+          remoteAudioEl.srcObject = ms;
+          remoteAudioEl.play().then(() => {
+            diagLog('info', '▶ Remote audio playing — triggering greeting');
+            // Audio is confirmed playing — now tell the bot to speak the greeting.
+            _sendVoxteraReady();
+          }).catch((e) => {
+            diagLog('warn', '⚠ play() failed: ' + (e && e.message) + ' — sending ready anyway');
+            // play() failed (autoplay policy) — send voxtera-ready anyway.
+            _sendVoxteraReady();
+          });
+        } catch (_) {}
+        setOrbState('listening');
+        setStatus('<strong>Listening…</strong> Speak naturally. Tap the phone to end.', 'In call');
+      }
+    });
+
+    _dailyCallObj.on('track-stopped', (evt) => {
+      if (!evt.participant || !evt.participant.local) {
+        if (inCall) {
+          setOrbState('listening');
+          setStatus('<strong>Listening…</strong> Speak naturally. Tap to end.', 'In call');
+        }
+      }
+    });
+
+    _dailyCallObj.on('participant-left', (evt) => {
+      // Bot left — hang up cleanly from our side too.
+      if (!evt.participant.local) _endVoiceCall(false);
+    });
+
+    _dailyCallObj.on('left-meeting', () => {
+      _cleanupDailyCall();
+    });
+
+    _dailyCallObj.on('error', (e) => {
+      setStatus(`<strong>Call error:</strong> ${e.errorMsg || 'unknown'}`, 'Error');
+      _endVoiceCall(true);
+    });
+
+    try {
+      diagLog('info', '📡 Joining Daily room: ' + roomUrl);
+      await _dailyCallObj.join({ url: roomUrl, startAudioOff: false, userName: 'Guest' });
+      diagLog('info', '✅ Joined Daily room');
+    } catch (e) {
+      setStatus(`<strong>Failed to join room:</strong> ${e.message}`, 'Error');
+      _endVoiceCall(true);
+      return;
+    }
+
+    inCall = true;
+    callBtn.disabled = false;
+    callBtn.classList.add('in-call');
+    callBtn.setAttribute('aria-label', 'End voice call');
+    // Change phone icon to hang-up (rotated)
+    callBtn.style.transform = 'rotate(135deg)';
+    setOrbState('listening');
+    setStatus('<strong>Listening…</strong> Speak naturally. Tap the phone to end.', 'In call');
+    const sugEl = document.getElementById('suggestions');
+    if (sugEl) { sugEl.style.opacity = '0'; sugEl.style.pointerEvents = 'none'; }
+    _startCallTimer();
+    // Auto-open diagnostic panel when call starts
+    diagPanel.classList.add('open');
+    diagToggle.classList.add('open');
+    diagLog('info', '📞 Voice call started — session ' + (sessionId || '?'));
+    _startMicMonitor();
+  }
+
+  // ─── mic level monitor ───
+  let _micMonitorInterval = null;
+  let _micAnalyser = null;
+
+  function _startMicMonitor() {
+    _stopMicMonitor();
+    diagLog('info', '🎙 Mic monitor starting…');
+    let silentFrames = 0;
+    const constraints = { video: false, audio: _selectedMicDeviceId
+      ? { deviceId: { exact: _selectedMicDeviceId } }
+      : true };
+    try {
+      navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+        const track = stream.getAudioTracks()[0];
+        if (track) diagLog('info', 'Monitor track: ' + track.label);
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        const src = ac.createMediaStreamSource(stream);
+        const analyser = ac.createAnalyser();
+        analyser.fftSize = 256;
+        src.connect(analyser);
+        _micAnalyser = { ac, stream, analyser };
+        const buf = new Float32Array(analyser.frequencyBinCount);
+        _micMonitorInterval = setInterval(() => {
+          analyser.getFloatTimeDomainData(buf);
+          let rms = 0;
+          for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+          rms = Math.sqrt(rms / buf.length);
+          const pct = Math.min(100, rms * 800);
+          if (diagFill) diagFill.style.width = pct + '%';
+          if (diagLabel) diagLabel.textContent = 'MIC ' + (rms * 1000).toFixed(1);
+          if (diagWarn) {
+            if (rms < 0.005) {
+              silentFrames++;
+              if (silentFrames > 10) {
+                diagWarn.textContent = '⚠ silent';
+                if (silentFrames === 11) diagLog('warn', '⚠ Mic silent — no audio reaching browser');
+              }
+            } else {
+              if (silentFrames > 10) diagLog('info', '✅ Mic active (RMS=' + rms.toFixed(4) + ')');
+              silentFrames = 0;
+              diagWarn.textContent = '';
+            }
+          }
+        }, 200);
+      }).catch(e => {
+        diagLog('warn', '⚠ getUserMedia failed: ' + (e && e.message));
+      });
+    } catch (e) {
+      diagLog('warn', '⚠ Mic monitor error: ' + (e && e.message));
+    }
+  }
+
+  function _stopMicMonitor() {
+    if (_micMonitorInterval) { clearInterval(_micMonitorInterval); _micMonitorInterval = null; }
+    if (_micAnalyser) {
+      try { _micAnalyser.stream.getTracks().forEach(t => t.stop()); } catch (_) {}
+      try { _micAnalyser.ac.close(); } catch (_) {}
+      _micAnalyser = null;
+    }
+    if (diagFill) diagFill.style.width = '0%';
+    if (diagLabel) diagLabel.textContent = 'MIC —';
+    if (diagWarn) diagWarn.textContent = '';
+  }
+
+  async function _endVoiceCall(alsoHitServer = true) {
+    _stopCallTimer();
+    _stopMicMonitor();
+    inCall = false;
+    callBtn.classList.remove('in-call');
+    callBtn.setAttribute('aria-label', 'Start voice call');
+    callBtn.style.transform = '';
+    callBtn.disabled = false;
+
+    // Stop remote audio immediately.
+    remoteAudioEl.pause();
+    remoteAudioEl.srcObject = null;
+
+    // Leave the Daily room from our side.
+    if (_dailyCallObj) {
+      try { await _dailyCallObj.leave(); } catch (_) {}
+      try { _dailyCallObj.destroy(); } catch (_) {}
+      _dailyCallObj = null;
+    }
+
+    // Tell the server to SIGTERM the bot and eject everyone from Daily.
+    // This is the critical step that stops Daily billing.
+    if (alsoHitServer && _dailySessionId) {
+      try {
+        await fetch('/api/end-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: _dailySessionId })
+        });
+      } catch (_) {}
+    }
+    _dailySessionId = null;
+
+    setOrbState('');
+    setStatus('Voice session ended.', 'Ready');
+    addMessage('bot', '— Voice session ended —');
+    const sugEl = document.getElementById('suggestions');
+    if (sugEl) { sugEl.style.opacity = '1'; sugEl.style.pointerEvents = ''; }
+  }
+
+  function _cleanupDailyCall() {
+    if (_dailyCallObj) {
+      try { _dailyCallObj.destroy(); } catch (_) {}
+      _dailyCallObj = null;
+    }
+  }
+
+  // ─── call button ─────────────────────────────────────────────────────
+  callBtn.addEventListener('click', () => {
+    if (inCall) {
+      _endVoiceCall(true);
+    } else {
+      _startVoiceCall();
     }
   });
 
-  // ─── language menu open/close ───
+  // ─── session countdown timer (3 min max) ──────────────────────────────
+  // Shows a visible warning at 2:45 so the user isn't surprised when
+  // the server's watchdog disconnects them at 3:00.
+  const _MAX_CALL_MS   = 180000; // 3 min — must match serve.py
+  const _WARN_CALL_MS  = 165000; // 2:45
+  let _callStartTime   = null;
+  let _countdownTimer  = null;
+  let _warnShown       = false;
+
+  function _startCallTimer() {
+    _callStartTime = Date.now();
+    _warnShown = false;
+    _countdownTimer = setInterval(() => {
+      if (!inCall) { clearInterval(_countdownTimer); _countdownTimer = null; return; }
+      const elapsed = Date.now() - _callStartTime;
+      const remaining = _MAX_CALL_MS - elapsed;
+      if (remaining <= 0) {
+        clearInterval(_countdownTimer);
+        _countdownTimer = null;
+        return;
+      }
+      // Show warning at 15 s remaining
+      if (!_warnShown && elapsed >= _WARN_CALL_MS) {
+        _warnShown = true;
+        const secs = Math.ceil(remaining / 1000);
+        setStatus(
+          `<strong>⚠ Session ending in ${secs}s</strong> — maximum call duration reached.`,
+          'Ending soon'
+        );
+      }
+    }, 500);
+  }
+
+  function _stopCallTimer() {
+    if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
+    _callStartTime = null;
+    _warnShown = false;
+  }
+
+  // ─── tab close / navigate away → end the voice session ────────────────
+  // sendBeacon is fire-and-forget and works even when the page is unloading.
+  window.addEventListener('beforeunload', () => {
+    if (inCall && _dailySessionId) {
+      const payload = JSON.stringify({ session_id: _dailySessionId });
+      navigator.sendBeacon('/api/end-session', new Blob([payload], { type: 'application/json' }));
+    }
+  });
+
+  // ─── chips data per language ───
+  const CHIPS = {
+    en: [
+      { prompt: "What's the WiFi password?",              label: 'WiFi password?' },
+      { prompt: 'Any good restaurants nearby?',           label: 'Restaurants nearby' },
+      { prompt: 'Is the pool open right now?',            label: 'Pool hours' },
+      { prompt: "I'd like a late checkout, is that possible?", label: 'Late checkout' },
+      { prompt: 'What are the spa opening hours?',        label: 'Spa hours' },
+      { prompt: 'Can you recommend something to do in Paris?', label: 'Things to do' },
+    ],
+    fr: [
+      { prompt: 'Quel est le mot de passe WiFi ?',          label: 'Mot de passe WiFi ?' },
+      { prompt: 'Des bons restaurants près d\u2019ici ?',        label: 'Restaurants proches' },
+      { prompt: 'La piscine est-elle ouverte maintenant ?', label: 'Horaires piscine' },
+      { prompt: 'Un checkout tardif est-il possible ?',    label: 'Départ tardif' },
+      { prompt: 'Quels sont les horaires du spa ?',         label: 'Horaires spa' },
+      { prompt: 'Que me conseillez-vous de faire à Paris ?', label: 'À faire à Paris' },
+    ],
+    es: [
+      { prompt: '¿Cuál es la contraseña del WiFi?',            label: 'Contraseña WiFi' },
+      { prompt: '¿Hay buenos restaurantes cerca?',              label: 'Restaurantes cercanos' },
+      { prompt: '¿Está abierta la piscina ahora?',             label: 'Horario piscina' },
+      { prompt: '¿Puedo hacer un check-out tardío?',           label: 'Check-out tardío' },
+      { prompt: '¿Cuál es el horario del spa?',               label: 'Horario spa' },
+      { prompt: '¿Qué me recomienda hacer en París?',         label: 'Qué hacer' },
+    ],
+    de: [
+      { prompt: 'Wie lautet das WLAN-Passwort?',             label: 'WLAN-Passwort' },
+      { prompt: 'Gibt es gute Restaurants in der Nähe?',      label: 'Restaurants' },
+      { prompt: 'Ist der Pool jetzt geöffnet?',              label: 'Poolöffnungszeiten' },
+      { prompt: 'Ist ein spätes Auschecken möglich?',         label: 'Spätes Auschecken' },
+      { prompt: 'Wann hat der Spa geöffnet?',                label: 'Spa-Zeiten' },
+      { prompt: 'Was empfehlen Sie in Paris zu unternehmen?', label: 'Tipps für Paris' },
+    ],
+    it: [
+      { prompt: 'Qual è la password del WiFi?',               label: 'Password WiFi' },
+      { prompt: 'Ci sono buoni ristoranti qui vicino?',       label: 'Ristoranti vicini' },
+      { prompt: 'La piscina è aperta adesso?',               label: 'Orari piscina' },
+      { prompt: 'Posso fare un check-out tardivo?',          label: 'Check-out tardivo' },
+      { prompt: 'Quali sono gli orari della spa?',           label: 'Orari spa' },
+      { prompt: 'Cosa mi consiglia di fare a Parigi?',       label: 'Cosa fare' },
+    ],
+    pt: [
+      { prompt: 'Qual é a senha do WiFi?',                   label: 'Senha WiFi' },
+      { prompt: 'Há bons restaurantes perto daqui?',         label: 'Restaurantes próximos' },
+      { prompt: 'A piscina está aberta agora?',              label: 'Horários piscina' },
+      { prompt: 'Posso fazer um check-out tardio?',          label: 'Check-out tardio' },
+      { prompt: 'Qual é o horário do spa?',                 label: 'Horários spa' },
+      { prompt: 'O que me recomenda fazer em Paris?',        label: 'O que fazer' },
+    ],
+    tr: [
+      { prompt: 'WiFi şifresi nedir?',                        label: 'WiFi şifresi' },
+      { prompt: 'Yakında iyi restoranlar var mı?',            label: 'Yakın restoranlar' },
+      { prompt: 'Havuz şu an açık mı?',                      label: 'Havuz saatleri' },
+      { prompt: 'Geç çıkış yapabilir miyim?',                label: 'Geç çıkış' },
+      { prompt: 'Spa\'nın açılış saatleri nelerdir?',        label: 'Spa saatleri' },
+      { prompt: 'Paris\'te ne yapmanızı önerirsiniz?',         label: 'Paris\'te yapacaklar' },
+    ],
+    ru: [
+      { prompt: 'Какой пароль от WiFi?',                   label: 'Пароль WiFi' },
+      { prompt: 'Есть ли рядом хорошие рестораны?',       label: 'Рестораны' },
+      { prompt: 'Бассейн сейчас открыт?',               label: 'Часы бассейна' },
+      { prompt: 'Можно ли сделать поздний выезд?',      label: 'Поздний выезд' },
+      { prompt: 'Когда работает спа?',                    label: 'Часы спа' },
+      { prompt: 'Что посоветуете посетить в Париже?',   label: 'Что посмотреть' },
+    ],
+    ar: [
+      { prompt: 'ما هي كلمة مرور WiFi؟',               label: 'كلمة مرور WiFi' },
+      { prompt: 'هل توجد مطاعم جيدة بالقرب؟',         label: 'مطاعم قريبة' },
+      { prompt: 'هل المسبح مفتوح الآن؟',             label: 'مواعيد المسبح' },
+      { prompt: 'هل يمكن تأخير وقت المغادرة؟',       label: 'مغادرة متأخرة' },
+      { prompt: 'ما هي مواعيد عمل السبا؟',           label: 'مواعيد السبا' },
+      { prompt: 'ما الذي تنصحون به في باريس؟',         label: 'ماذا تفعل في باريس' },
+    ],
+    ja: [
+      { prompt: 'WiFiのパスワードを教えてください',         label: 'WiFiパスワード' },
+      { prompt: '近くにおすすめのレストランはありますか？',   label: '近くのレストラン' },
+      { prompt: 'プールは今開いていますか？',            label: 'プールの営業時間' },
+      { prompt: 'レイトチェックアウトは可能ですか？',    label: 'レイトチェックアウト' },
+      { prompt: 'スパの営業時間を教えてください',        label: 'スパの営業時間' },
+      { prompt: 'パリでおすすめの場所はありますか？',   label: 'パリのおすすめ' },
+    ],
+    zh: [
+      { prompt: 'WiFi密码是多少？',                       label: 'WiFi密码' },
+      { prompt: '附近有好的餐厅推荐吗？',               label: '附近餐厅' },
+      { prompt: '游泳池现在开放吗？',                   label: '游泳池时间' },
+      { prompt: '可以申请延迟退房吗？',               label: '延迟退房' },
+      { prompt: 'Spa的营业时间是？',                   label: 'Spa时间' },
+      { prompt: '您有什么巴黎推荐？',                label: '巴黎推荐' },
+    ],
+    auto: [
+      { prompt: "What's the WiFi password?",              label: 'WiFi password?' },
+      { prompt: 'Any good restaurants nearby?',           label: 'Restaurants nearby' },
+      { prompt: 'Is the pool open right now?',            label: 'Pool hours' },
+      { prompt: "I'd like a late checkout, is that possible?", label: 'Late checkout' },
+      { prompt: 'What are the spa opening hours?',        label: 'Spa hours' },
+      { prompt: 'Can you recommend something to do in Paris?', label: 'Things to do' },
+    ],
+  };
+
+  const PLACEHOLDERS = {
+    en: 'Send a message to start a chat',
+    fr: 'Envoyez un message pour commencer',
+    es: 'Envíe un mensaje para comenzar',
+    de: 'Nachricht senden, um zu beginnen',
+    it: 'Invia un messaggio per iniziare',
+    pt: 'Envie uma mensagem para começar',
+    tr: 'Başlamak için bir mesaj gönderin',
+    ru: 'Отправьте сообщение чтобы начать',
+    ar: 'أرسل رسالة للبدء',
+    ja: 'メッセージを送って開始',
+    zh: '发送消息开始对话',
+    auto: 'Send a message to start a chat',
+  };
+
+  function updateChips(lang) {
+    const chips = CHIPS[lang] || CHIPS.en;
+    const el = document.getElementById('suggestions');
+    if (!el || el.style.display === 'none') return;
+    el.innerHTML = chips.map(c =>
+      `<button class="chip" data-prompt="${c.prompt.replace(/"/g, '&quot;')}">${c.label}</button>`
+    ).join('');
+    el.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        sendMessage(chip.dataset.prompt);
+      });
+    });
+  }
+
+  // ─── language menu ───
   langBtn.addEventListener('click', e => {
     e.stopPropagation();
     langMenu.classList.toggle('open');
@@ -919,31 +1952,82 @@
       langMenu.classList.remove('open');
     }
   });
-
-  // ─── language selection ───
   langMenu.querySelectorAll('button').forEach(btn => {
     btn.addEventListener('click', () => {
       const lang  = btn.dataset.lang;
       const flag  = btn.dataset.flag;
-      const label = btn.textContent.replace(/^\S+\s/, ''); // drop the flag emoji from label
-      langFlag.textContent = flag;
+      const label = btn.textContent.replace(/^\S+\s/, '');
+      langFlag.textContent  = flag;
       langLabel.textContent = label;
       currentLang = lang;
       langMenu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       langMenu.classList.remove('open');
-
-      // TODO: tell backend the preferred language for the next message
+      if (micRecognition)  micRecognition.lang  = lang === 'auto' ? '' : lang;
+      if (callRecognition) callRecognition.lang = lang === 'auto' ? '' : lang;
+      // update chips and placeholder
+      updateChips(lang);
+      input.placeholder = PLACEHOLDERS[lang] || PLACEHOLDERS.en;
+      // RTL support for Arabic
+      input.dir = lang === 'ar' ? 'rtl' : 'ltr';
     });
   });
 
   // ─── settings button (placeholder) ───
   document.getElementById('settings-btn').addEventListener('click', () => {
-    alert('Settings: TODO — would open voice/audio/notification preferences.');
+    alert('Settings: in the next version you will be able to pick voice, LLM model, and TTS provider here.');
   });
 
-  // initial focus
+  // ─── welcome message on load — spoken aloud via TTS ───
+  async function playWelcome() {
+    const welcomeText = 'Hello, and a very warm welcome. It\u2019s a pleasure to have you with us \u2014 I\u2019m Voxtera, your concierge at Grand H\u00f4tel Lumi\u00e8re. I speak any language you prefer. Feel free to ask me about room amenities, restaurants, the spa, pool hours, local tips, or anything else about your stay.';
+
+    // render the bubble immediately
+    const wrap   = document.createElement('div');
+    wrap.className = 'msg bot';
+    const lbl    = document.createElement('div');
+    lbl.className = 'who';
+    lbl.textContent = 'Voxtera';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = welcomeText;
+    wrap.appendChild(lbl);
+    wrap.appendChild(bubble);
+    transcript.appendChild(wrap);
+    transcript.scrollTop = transcript.scrollHeight;
+
+    // speak it — /api/tts-test returns raw audio/mpeg bytes
+    setOrbState('speaking');
+    setStatus('<strong>Voxtera is speaking\u2026</strong>', 'Speaking');
+    try {
+      const resp = await fetch('/api/tts-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'elevenlabs', voice: '21m00Tcm4TlvDq8ikWAM', language: 'en' })
+      });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const url  = URL.createObjectURL(blob);
+        audioEl.src = url;
+        await audioEl.play().catch(() => {});
+        await new Promise(resolve => { audioEl.onended = resolve; audioEl.onerror = resolve; });
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      // TTS unavailable — bubble already visible, continue silently
+    }
+    setOrbState('');
+    setStatus('Tap the orb, or send a message below to begin.', 'Ready');
+  }
+  setTimeout(playWelcome, 900);
+
+  // initialise chips for default language
+  updateChips('en');
+
   setTimeout(() => input.focus(), 800);
+
+  // Pre-enumerate mic devices at page load so the selector is populated
+  _populateMicSelect();
 })();
 </script>
 

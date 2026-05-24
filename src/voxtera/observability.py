@@ -24,6 +24,7 @@ from pipecat.frames.frames import (
     ErrorFrame,
     FatalErrorFrame,
     InterimTranscriptionFrame,
+    InterruptionFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
     LLMTextFrame,
@@ -42,6 +43,12 @@ try:
 except Exception:  # daily-python not available on Windows
     DailyOutputTransportMessageFrame = None  # type: ignore[assignment,misc]
 
+from voxtera.call_record import (
+    record_bot_turn,
+    record_interruption,
+    record_usage,
+    record_user_turn,
+)
 from voxtera.conversation_logger import log_bot_reply, log_user_query
 from voxtera.stt import STT_MODEL_DEEPGRAM, STT_MODEL_GOOGLE, STT_MODEL_WHISPER
 from voxtera.trace import emit as _trace_emit
@@ -210,6 +217,12 @@ class PipelineTracer(FrameProcessor):
                 data={"event": "user_stopped"},
             )
 
+        elif isinstance(frame, InterruptionFrame):
+            # A barge-in: the guest cut the bot off mid-reply. Counted on the
+            # per-call record so the post-call summary can flag choppy calls.
+            logger.debug("[{}] interruption (barge-in)", self._label)
+            record_interruption()
+
         elif isinstance(frame, InterimTranscriptionFrame):
             text = (frame.text or "").strip()
             if text:
@@ -299,6 +312,8 @@ class PipelineTracer(FrameProcessor):
             # Structured conversation log for audit / evaluation.
             if reply:
                 log_bot_reply(reply=reply, elapsed_ms=think_ms)
+                # Per-call record: append this reply as a transcript turn.
+                record_bot_turn(text=reply, latency_ms=think_ms)
 
         # ``TTSStartedFrame`` and ``TTSStoppedFrame`` originate downstream of
         # this processor and don't bubble back. ``TTSStageTimer`` (positioned
@@ -349,6 +364,14 @@ class PipelineTracer(FrameProcessor):
                             "cache_creation_input_tokens": cc,
                             "completion_tokens": ct,
                         },
+                    )
+                    # Per-call record: accumulate this turn's token usage so
+                    # the finished record carries the call's total LLM cost.
+                    record_usage(
+                        prompt_tokens=pt,
+                        completion_tokens=ct,
+                        cache_read_tokens=cr,
+                        cache_creation_tokens=cc,
                     )
 
         elif isinstance(frame, BotStartedSpeakingFrame):
@@ -440,6 +463,9 @@ class TranscriptStageTimer(FrameProcessor):
             if text:
                 logger.info("[{}] heard: {!r}", self._label, text)
                 log_user_query(user_query=text, hotel_id=self._hotel_id)
+                # Per-call record: append this utterance as a transcript turn,
+                # carrying the language Whisper/Gladia detected for it.
+                record_user_turn(text=text, language=str(getattr(frame, "language", "") or ""))
                 tracker = _trace_tracker()
                 # ``stt`` duration: VADUserStoppedSpeakingFrame → TranscriptionFrame.
                 # ``user_stopped`` was stamped by PipelineTracer.

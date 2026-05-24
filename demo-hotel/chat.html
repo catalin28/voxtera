@@ -41,7 +41,9 @@
     cursor: pointer;
   }
   #btn-send { background: #c9a84c; color: #111; }
-  #btn-end { background: #ef5350; color: #fff; }
+  #btn-stop { background: #555; color: #aaa; cursor: not-allowed; }
+  #btn-stop.active { background: #ef5350; color: #fff; cursor: pointer; }
+  #btn-end { background: #555; color: #fff; }
   #btn-send:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>
 </head>
@@ -71,6 +73,7 @@
   <div id="input-wrap">
     <input id="chat-input" type="text" placeholder="Type your question..." autocomplete="off" />
     <button id="btn-send" type="submit">Send</button>
+    <button id="btn-stop" type="button" disabled>⏹ Stop</button>
   </div>
   <button id="btn-end" type="button">End</button>
 </form>
@@ -81,6 +84,30 @@
 var sessionId = null;
 var audioEl = document.getElementById('bot-audio');
 var isSending = false;
+var currentAbortCtrl = null;
+
+function showStop(show) {
+  var btn = document.getElementById('btn-stop');
+  if (show) {
+    btn.classList.add('active');
+    btn.disabled = false;
+  } else {
+    btn.classList.remove('active');
+    btn.disabled = true;
+  }
+}
+
+document.getElementById('btn-stop').addEventListener('click', function() {
+  // cancel in-flight fetch
+  if (currentAbortCtrl) { currentAbortCtrl.abort(); currentAbortCtrl = null; }
+  // stop audio
+  if (!audioEl.paused) { audioEl.pause(); audioEl.currentTime = 0; }
+  showStop(false);
+  isSending = false;
+  document.getElementById('btn-send').disabled = false;
+  setStatus('connected', 'Ready');
+  document.getElementById('chat-input').focus();
+});
 var qs = new URLSearchParams(window.location.search);
 var settings = {
   language: qs.get('language') || 'en',
@@ -117,10 +144,13 @@ async function sendMessage(text) {
   isSending = true;
   addBubble('user', text);
   document.getElementById('btn-send').disabled = true;
+  showStop(true);
   setStatus('connected', 'Thinking...');
 
+  currentAbortCtrl = new AbortController();
   try {
     var resp = await fetch('/api/chat', {
+      signal: currentAbortCtrl.signal,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -146,20 +176,24 @@ async function sendMessage(text) {
         setStatus('speaking', 'Speaking...');
         audioEl.src = 'data:audio/mpeg;base64,' + data.audio;
         audioEl.play().then(function() {
-          audioEl.onended = function() { setStatus('connected', 'Ready'); };
+          audioEl.onended = function() { showStop(false); setStatus('connected', 'Ready'); };
         }).catch(function() {
-          setStatus('connected', 'Ready');
+          showStop(false); setStatus('connected', 'Ready');
         });
       } else {
-        setStatus('connected', 'Ready');
+        showStop(false); setStatus('connected', 'Ready');
       }
     }
   } catch (e) {
-    var box = document.getElementById('error-box');
-    box.textContent = 'Network error: ' + e.message;
-    box.classList.add('show');
-    setStatus('connected', 'Error');
+    if (e.name !== 'AbortError') {
+      var box = document.getElementById('error-box');
+      box.textContent = 'Network error: ' + e.message;
+      box.classList.add('show');
+      setStatus('connected', 'Error');
+    }
   } finally {
+    currentAbortCtrl = null;
+    showStop(false);
     isSending = false;
     document.getElementById('btn-send').disabled = false;
     document.getElementById('chat-input').focus();

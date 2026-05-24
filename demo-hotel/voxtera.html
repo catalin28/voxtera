@@ -1276,6 +1276,190 @@
   /* fade-in on scroll */
   .reveal{opacity:0;transform:translateY(30px);transition:opacity .9s cubic-bezier(.2,.7,.2,1), transform .9s cubic-bezier(.2,.7,.2,1);}
   .reveal.in{opacity:1;transform:translateY(0);}
+
+  /* ============================================================
+     VOXTERA WIDGET
+     ============================================================ */
+  .voxtera-widget{
+    position:fixed;
+    bottom:1.75rem;
+    right:1.75rem;
+    z-index:9999;
+    font-family:'Fraunces',serif;
+  }
+  .vx-launcher{
+    display:flex;
+    align-items:center;
+    gap:0.9rem;
+    background:#ffffff;
+    border-radius:999px;
+    padding:0.55rem 0.6rem 0.55rem 1rem;
+    box-shadow:
+      0 1px 2px rgba(26,24,20,0.06),
+      0 20px 40px -18px rgba(26,24,20,0.22),
+      0 30px 80px -30px rgba(26,24,20,0.18);
+    border:1px solid rgba(26,24,20,0.06);
+    cursor:pointer;
+    transition:transform .3s cubic-bezier(.2,.7,.2,1), box-shadow .3s;
+    user-select:none;
+  }
+  .vx-launcher:hover{
+    transform:translateY(-3px);
+    box-shadow:
+      0 1px 2px rgba(26,24,20,0.06),
+      0 28px 50px -18px rgba(26,24,20,0.28),
+      0 40px 90px -30px rgba(26,24,20,0.22);
+  }
+  .vx-launcher.hidden{opacity:0;transform:scale(0.85) translateY(8px);pointer-events:none;}
+  .vx-orb{
+    width:36px;height:36px;
+    border-radius:50%;flex-shrink:0;
+    background:conic-gradient(from 180deg at 50% 50%,#1e88e5 0deg,#5fc3e4 45deg,#ffffff 90deg,#5fc3e4 135deg,#1565c0 180deg,#0d47a1 225deg,#ffffff 270deg,#5fc3e4 315deg,#1e88e5 360deg);
+    box-shadow:inset 0 0 8px rgba(255,255,255,0.4),0 2px 6px rgba(13,71,161,0.25);
+    position:relative;
+  }
+  .vx-orb::after{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,0.5),transparent 50%);}
+  .vx-orb.lg{width:100px;height:100px;animation:vx-spin 14s linear infinite;transition:width .4s ease,height .4s ease;}
+  .vx-orb.lg.compact{width:48px;height:48px;}
+  @keyframes vx-spin{to{transform:rotate(360deg);}}
+  .vx-launcher-label{
+    font-family:'Fraunces',serif;font-weight:500;font-size:1.05rem;
+    color:var(--ink);letter-spacing:-0.01em;padding-right:0.4rem;white-space:nowrap;
+  }
+  .vx-launcher-cta{
+    display:inline-flex;align-items:center;gap:0.55rem;
+    background:var(--ink);color:#ffffff;border-radius:999px;
+    padding:0.7rem 1.2rem 0.7rem 1rem;
+    font-family:'Fraunces',serif;font-weight:500;font-size:0.98rem;
+    letter-spacing:-0.005em;transition:background .25s;
+  }
+  .vx-launcher:hover .vx-launcher-cta{background:var(--rust);}
+  .vx-launcher-cta svg{width:16px;height:16px;stroke:#ffffff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+  .vx-panel{
+    position:absolute;bottom:0;right:0;
+    width:380px;max-width:calc(100vw - 2rem);max-height:calc(100vh - 3rem);
+    background:#ffffff;border-radius:24px;
+    box-shadow:
+      0 2px 4px rgba(26,24,20,0.06),
+      0 30px 60px -20px rgba(26,24,20,0.28),
+      0 50px 100px -30px rgba(26,24,20,0.22);
+    border:1px solid rgba(26,24,20,0.06);
+    display:flex;flex-direction:column;
+    opacity:0;transform:scale(0.92) translateY(20px);
+    pointer-events:none;transform-origin:bottom right;
+    transition:opacity .35s cubic-bezier(.2,.7,.2,1),transform .35s cubic-bezier(.2,.7,.2,1);
+    overflow:hidden;
+  }
+  .vx-panel.open{opacity:1;transform:scale(1) translateY(0);pointer-events:auto;}
+  .vx-panel-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:1.1rem 1.2rem 0.6rem;
+    border-bottom:1px solid var(--line);flex-shrink:0;
+  }
+  .vx-brand{display:flex;align-items:center;gap:0.6rem;}
+  .vx-brand-mark{
+    width:24px;height:24px;border-radius:50%;
+    background:conic-gradient(from 180deg at 50% 50%,#1e88e5 0deg,#5fc3e4 90deg,#ffffff 180deg,#1565c0 270deg,#1e88e5 360deg);
+  }
+  .vx-brand-text{font-family:'Fraunces',serif;font-weight:500;font-size:0.95rem;letter-spacing:-0.01em;}
+  .vx-brand-status{
+    font-family:'JetBrains Mono',monospace;font-size:0.62rem;
+    text-transform:uppercase;letter-spacing:0.14em;color:var(--gold-deep);
+    display:inline-flex;align-items:center;gap:0.4rem;margin-top:0.15rem;
+  }
+  .vx-brand-status::before{
+    content:"";width:6px;height:6px;border-radius:50%;
+    background:#3a8a3a;box-shadow:0 0 0 0 rgba(58,138,58,0.6);
+    animation:vx-pulse 1.8s infinite;
+  }
+  @keyframes vx-pulse{
+    0%{box-shadow:0 0 0 0 rgba(58,138,58,0.55);}
+    70%{box-shadow:0 0 0 6px rgba(58,138,58,0);}
+    100%{box-shadow:0 0 0 0 rgba(58,138,58,0);}
+  }
+  .vx-close{
+    width:32px;height:32px;border-radius:50%;background:transparent;border:none;
+    cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+    color:var(--ink-soft);transition:background .2s,color .2s;
+  }
+  .vx-close:hover{background:var(--cream);color:var(--ink);}
+  .vx-close svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;}
+  .vx-panel-body{flex:1;display:flex;flex-direction:column;align-items:center;overflow:hidden;position:relative;}
+  .vx-orb-area{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:2.5rem 1.5rem 1.5rem;flex-shrink:0;
+    transition:padding .35s ease;
+  }
+  .vx-orb-area.compact{padding:1rem 1.5rem 0.5rem;}
+  .vx-orb-wrap{position:relative;display:flex;align-items:flex-end;justify-content:center;}
+  .vx-call-btn{
+    position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);
+    width:56px;height:56px;border-radius:50%;
+    background:var(--ink);border:4px solid #ffffff;cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;color:#ffffff;
+    box-shadow:0 4px 12px rgba(26,24,20,0.25),0 12px 30px -8px rgba(26,24,20,0.3);
+    transition:background .25s,transform .25s,box-shadow .25s;z-index:2;
+  }
+  .vx-call-btn:hover{
+    background:var(--rust);transform:translateX(-50%) scale(1.06);
+    box-shadow:0 4px 12px rgba(164,57,28,0.3),0 16px 36px -8px rgba(164,57,28,0.4);
+  }
+  .vx-call-btn svg{width:22px;height:22px;fill:currentColor;}
+  .vx-call-btn .vx-pulse-ring{
+    position:absolute;inset:-4px;border-radius:50%;
+    border:2px solid var(--ink);opacity:0;
+    animation:vx-ring 2.5s ease-out infinite;pointer-events:none;
+  }
+  @keyframes vx-ring{
+    0%{transform:scale(0.95);opacity:0.7;}
+    80%{transform:scale(1.4);opacity:0;}
+    100%{transform:scale(1.4);opacity:0;}
+  }
+  .vx-helper{
+    margin-top:2.5rem;text-align:center;
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:0.95rem;color:var(--ink-soft);line-height:1.5;max-width:18rem;
+  }
+  .vx-helper.hidden{display:none;}
+  .vx-messages{
+    width:100%;flex:1;overflow-y:auto;
+    padding:0.75rem 1.1rem;
+    display:flex;flex-direction:column;gap:0.75rem;min-height:0;
+  }
+  .vx-msg{
+    max-width:85%;padding:0.6rem 0.9rem;border-radius:16px;
+    font-family:'Fraunces',serif;font-size:0.92rem;line-height:1.5;word-break:break-word;
+  }
+  .vx-msg.user{align-self:flex-end;background:var(--ink);color:#ffffff;border-bottom-right-radius:4px;}
+  .vx-msg.bot{align-self:flex-start;background:var(--cream);color:var(--ink);border-bottom-left-radius:4px;}
+  .vx-msg.typing{align-self:flex-start;background:var(--cream);color:rgba(26,24,20,0.5);font-style:italic;font-family:'Instrument Serif',serif;}
+  .vx-chat-input{
+    border-top:1px solid var(--line);padding:0.9rem 1rem;
+    background:var(--paper);display:flex;align-items:center;gap:0.6rem;flex-shrink:0;
+  }
+  .vx-input-field{
+    flex:1;background:#ffffff;border:1px solid var(--line);border-radius:14px;
+    padding:0.7rem 0.9rem;font-family:'Fraunces',serif;font-size:0.95rem;
+    color:var(--ink);transition:border-color .2s;resize:none;
+    min-height:42px;max-height:120px;line-height:1.4;font-weight:400;
+  }
+  .vx-input-field::placeholder{color:rgba(26,24,20,0.4);font-family:'Fraunces',serif;}
+  .vx-input-field:focus{outline:none;border-color:var(--gold-deep);}
+  .vx-send-btn{
+    width:38px;height:38px;border-radius:50%;
+    background:var(--ink);border:none;cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;
+    color:#ffffff;flex-shrink:0;transition:background .25s,transform .25s;
+  }
+  .vx-send-btn:hover{background:var(--rust);transform:translateY(-1px);}
+  .vx-send-btn:active{transform:translateY(0);}
+  .vx-send-btn svg{width:16px;height:16px;fill:currentColor;}
+  .vx-send-btn:disabled{background:var(--line-strong);cursor:not-allowed;transform:none;}
+  @media (max-width:480px){
+    .voxtera-widget{bottom:1rem;right:1rem;left:1rem;}
+    .vx-launcher{width:fit-content;margin-left:auto;}
+    .vx-panel{width:auto;left:0;right:0;}
+  }
 </style>
 </head>
 <body>
@@ -1321,7 +1505,8 @@
       Built for properties where the front desk shouldn't sleep, switch staff, or fumble for a translator.
     </p>
     <div class="hero-actions">
-      <button class="btn btn-primary" id="listen-btn" type="button">
+      <a href="voxtera-demo.html" class="btn btn-primary">Try Voxtera <span class="arrow">→</span></a>
+      <button class="btn btn-ghost" id="listen-btn" type="button">
         <span class="listen-icon" aria-hidden="true">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4 L4 12 L12 8 Z" fill="currentColor"/></svg>
         </span>
@@ -1707,7 +1892,7 @@
       </div>
       <div class="compare-row">
         <div class="compare-cell label">Try before buying</div>
-        <div class="compare-cell us">Try it</div>
+        <div class="compare-cell us"><a href="voxtera-demo.html" style="color:var(--rust);font-family:'Fraunces',serif;font-weight:500;">Try it →</a></div>
         <div class="compare-cell them">"Request a demo"</div>
       </div>
       <div class="compare-row">
@@ -2009,6 +2194,174 @@
 
     // Stop if user leaves the page
     window.addEventListener('beforeunload', stop);
+  })();
+</script>
+
+<!-- ============================================================
+     VOXTERA WIDGET
+     ============================================================ -->
+<div class="voxtera-widget" id="voxtera-widget">
+  <div class="vx-launcher" id="vx-launcher" role="button" tabindex="0" aria-label="Open Voxtera concierge">
+    <div class="vx-orb" aria-hidden="true"></div>
+    <span class="vx-launcher-label">Need help?</span>
+    <span class="vx-launcher-cta">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      Start a call
+    </span>
+  </div>
+  <div class="vx-panel" id="vx-panel" role="dialog" aria-label="Voxtera assistant" aria-hidden="true">
+    <div class="vx-panel-header">
+      <div class="vx-brand">
+        <div class="vx-brand-mark" aria-hidden="true"></div>
+        <div>
+          <div class="vx-brand-text">Voxtera</div>
+          <div class="vx-brand-status">Online · 99 languages</div>
+        </div>
+      </div>
+      <button class="vx-close" id="vx-close" type="button" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg>
+      </button>
+    </div>
+    <div class="vx-panel-body">
+      <div class="vx-orb-area" id="vx-orb-area">
+        <div class="vx-orb-wrap">
+          <div class="vx-orb lg" id="vx-orb-lg" aria-hidden="true"></div>
+          <button class="vx-call-btn" id="vx-call-btn" type="button" aria-label="Start a voice call">
+            <span class="vx-pulse-ring" aria-hidden="true"></span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          </button>
+        </div>
+        <div class="vx-helper" id="vx-helper">
+          Tap the phone to talk&nbsp;— or type a message below.<br/>Voxtera speaks your language.
+        </div>
+      </div>
+      <div class="vx-messages" id="vx-messages"></div>
+    </div>
+    <div class="vx-chat-input">
+      <textarea class="vx-input-field" id="vx-input" rows="1" placeholder="Send a message…" aria-label="Type your message"></textarea>
+      <button class="vx-send-btn" id="vx-send" type="button" aria-label="Send message" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12 L21 4 L13 22 L11 13 Z"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const launcher  = document.getElementById('vx-launcher');
+    const panel     = document.getElementById('vx-panel');
+    const closeBtn  = document.getElementById('vx-close');
+    const callBtn   = document.getElementById('vx-call-btn');
+    const inputEl   = document.getElementById('vx-input');
+    const sendBtn   = document.getElementById('vx-send');
+    const msgList   = document.getElementById('vx-messages');
+    const orbArea   = document.getElementById('vx-orb-area');
+    const orbLg     = document.getElementById('vx-orb-lg');
+    const helper    = document.getElementById('vx-helper');
+    let sessionId   = null;
+    let hasMessages = false;
+
+    function openPanel() {
+      panel.classList.add('open');
+      panel.setAttribute('aria-hidden', 'false');
+      launcher.classList.add('hidden');
+      setTimeout(() => inputEl.focus(), 350);
+    }
+    function closePanel() {
+      panel.classList.remove('open');
+      panel.setAttribute('aria-hidden', 'true');
+      launcher.classList.remove('hidden');
+    }
+    launcher.addEventListener('click', openPanel);
+    launcher.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPanel(); }
+    });
+    closeBtn.addEventListener('click', closePanel);
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && panel.classList.contains('open')) closePanel();
+    });
+
+    // Call button — open the voice demo
+    callBtn.addEventListener('click', () => window.open('chat.html', '_blank'));
+
+    // Auto-grow textarea
+    inputEl.addEventListener('input', () => {
+      inputEl.style.height = 'auto';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+      sendBtn.disabled = inputEl.value.trim().length === 0;
+    });
+    inputEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!sendBtn.disabled) sendBtn.click(); }
+    });
+
+    function appendMsg(text, role) {
+      if (!hasMessages) {
+        hasMessages = true;
+        orbArea.classList.add('compact');
+        orbLg.classList.add('compact');
+        helper.classList.add('hidden');
+      }
+      const el = document.createElement('div');
+      el.className = 'vx-msg ' + role;
+      el.textContent = text;
+      msgList.appendChild(el);
+      msgList.scrollTop = msgList.scrollHeight;
+      return el;
+    }
+
+    sendBtn.addEventListener('click', async () => {
+      const msg = inputEl.value.trim();
+      if (!msg) return;
+      inputEl.value = '';
+      inputEl.style.height = 'auto';
+      sendBtn.disabled = true;
+      appendMsg(msg, 'user');
+
+      const typingEl = document.createElement('div');
+      typingEl.className = 'vx-msg typing';
+      typingEl.textContent = 'Thinking…';
+      if (!hasMessages) { hasMessages = true; orbArea.classList.add('compact'); orbLg.classList.add('compact'); helper.classList.add('hidden'); }
+      msgList.appendChild(typingEl);
+      msgList.scrollTop = msgList.scrollHeight;
+
+      try {
+        const res = await fetch('/api/product-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: msg, session_id: sessionId }),
+        });
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '', botEl = null, fullText = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) {
+            const t = line.trim(); if (!t) continue;
+            let evt; try { evt = JSON.parse(t); } catch { continue; }
+            if (evt.type === 'text') {
+              if (!botEl) { typingEl.remove(); botEl = appendMsg('', 'bot'); }
+              fullText += evt.chunk;
+              botEl.textContent = fullText;
+              msgList.scrollTop = msgList.scrollHeight;
+            } else if (evt.type === 'done') {
+              if (evt.session_id) sessionId = evt.session_id;
+              if (!botEl && evt.text) { typingEl.remove(); appendMsg(evt.text, 'bot'); }
+            } else if (evt.type === 'error') {
+              typingEl.remove();
+              appendMsg('Sorry, something went wrong. Please try again.', 'bot');
+            }
+          }
+        }
+        if (typingEl.isConnected) { typingEl.remove(); if (!botEl) appendMsg('No response received. Please try again.', 'bot'); }
+      } catch (_) {
+        typingEl.remove();
+        appendMsg('Could not reach the server. Make sure it is running on localhost:8080.', 'bot');
+      }
+    });
   })();
 </script>
 

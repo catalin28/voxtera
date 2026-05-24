@@ -69,6 +69,15 @@ class Settings:
     # Whether user speech can interrupt/cancel in-flight bot responses.
     # Default False for noisy speaker scenarios to avoid <empty> replies.
     allow_interruptions: bool = False
+    # Interruption resume: when a guest barges in early in the bot's reply,
+    # inject a context note so the answering LLM can decide whether to return
+    # to the unfinished topic. Only has any effect when allow_interruptions is
+    # on (no barge-in → no InterruptionFrame → the processor stays inert).
+    interruption_resume_enabled: bool = True
+    # A barge-in counts as "early enough to resume" only if it lands within
+    # this many seconds of the reply starting. Past that the reply is treated
+    # as near-complete and is not resumed.
+    interruption_resume_window_secs: float = 5.0
     # Pipeline idle timeout in seconds. `None` disables idle cancellation.
     # Demo sessions often include long pauses while users reload browser UI.
     pipeline_idle_timeout_secs: float | None = None
@@ -179,6 +188,15 @@ class Settings:
     # silence — it never delays the real answer. See voxtera.prompts.fillers
     # and voxtera.controllers.InstantAckFiller.
     filler_enabled: bool = False
+    # Call recording: write a per-call record to logs/calls/<session_id>/.
+    # When True, record.json (metadata header + turn-by-turn transcript) is
+    # produced for every call — the building block for the post-call CRM
+    # summary webhook. See voxtera.call_record.
+    call_recording_enabled: bool = True
+    # When True (and call_recording_enabled is also True), the call audio is
+    # additionally captured as a stereo WAV (recording.wav — guest left, bot
+    # right). Set False to keep transcripts + metadata without storing audio.
+    call_recording_audio: bool = True
 
 
 def _require(name: str) -> str:
@@ -263,6 +281,11 @@ def load_settings() -> Settings:
         rnnoise_enabled=os.environ.get("RNNOISE_ENABLED", "false").lower() in ("1", "true", "yes"),
         allow_interruptions=os.environ.get("ALLOW_INTERRUPTIONS", "false").lower()
         in ("1", "true", "yes"),
+        interruption_resume_enabled=os.environ.get("INTERRUPTION_RESUME_ENABLED", "true").lower()
+        in ("1", "true", "yes"),
+        interruption_resume_window_secs=float(
+            os.environ.get("INTERRUPTION_RESUME_WINDOW_SECS", "5.0")
+        ),
         pipeline_idle_timeout_secs=idle_timeout_secs,
         rag_enabled=os.environ.get("RAG_ENABLED", "false").lower() in ("1", "true", "yes"),
         hotel_id=os.environ.get("HOTEL_ID", "demo"),
@@ -309,6 +332,10 @@ def load_settings() -> Settings:
         ),
         actions_enabled=os.environ.get("ACTIONS_ENABLED", "false").lower() in ("1", "true", "yes"),
         filler_enabled=os.environ.get("FILLER_ENABLED", "false").lower() in ("1", "true", "yes"),
+        call_recording_enabled=os.environ.get("CALL_RECORDING_ENABLED", "true").lower()
+        not in ("0", "false", "no"),
+        call_recording_audio=os.environ.get("CALL_RECORD_AUDIO", "true").lower()
+        not in ("0", "false", "no"),
         stt_thresholds_path=os.environ.get("STT_THRESHOLDS_PATH", "config/stt_thresholds.json")
         or None,
     )

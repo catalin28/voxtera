@@ -46,6 +46,7 @@ from pipecat.frames.frames import (
     TTSSpeakFrame,
 )
 
+from voxtera import call_record
 from voxtera.config import Settings, load_settings
 from voxtera.controllers import LLM_MODEL
 from voxtera.conversation_logger import log_user_query
@@ -96,6 +97,8 @@ async def _keyboard_input_loop(task, *, hotel_id: str | None = None) -> None:
             return
         logger.info("[voxtera] you typed: {!r}", line)
         log_user_query(user_query=line, hotel_id=hotel_id)
+        # Typed turns have no STT language detection — record without one.
+        call_record.record_user_turn(text=line)
         await task.queue_frames(
             [
                 LLMMessagesAppendFrame([{"role": "user", "content": line}]),
@@ -120,6 +123,20 @@ async def run_bot(settings: Settings) -> None:
             action_runtime = None
 
     task, runner = build_pipeline(settings, action_runtime=action_runtime)
+
+    # Begin the per-call record: metadata header + turn-by-turn transcript,
+    # written to logs/calls/<session_id>/record.json. The pipeline processors
+    # populate it as the call runs (see voxtera.observability hooks); the
+    # finally block below calls finalize() to stamp the end time.
+    call_record.init_call(
+        enabled=settings.call_recording_enabled,
+        hotel_id=settings.hotel_id,
+        bot_name=settings.bot_name,
+        transport_mode=settings.transport_mode,
+        stt_provider=settings.stt_provider,
+        tts_provider=settings.tts_provider,
+        llm_model=LLM_MODEL,
+    )
 
     if settings.input_mode == "text":
         logger.info("Voxtera ready (text mode — mic disabled). Type to chat. Ctrl-C to quit.")
@@ -192,6 +209,16 @@ async def run_bot(settings: Settings) -> None:
         )
         try:
             await tune_server.start()
+
+            # Register a speak callback so the launcher's watchdog can
+            # announce session timeout via the bot's TTS before disconnecting.
+            def _speak_via_pipeline(text: str) -> None:
+                asyncio.get_event_loop().call_soon_threadsafe(
+                    lambda: asyncio.ensure_future(task.queue_frame(TTSSpeakFrame(text=text)))
+                )
+
+            tune_server.register_speak_callback(_speak_via_pipeline)
+
         except OSError as exc:
             # Port already in use (another bot still running, or VOXTERA_BOT_PORT
             # collision). Log and continue — the bot still runs, just no live
@@ -223,6 +250,11 @@ async def run_bot(settings: Settings) -> None:
         except Exception:  # noqa: BLE001
             logger.exception("[trace] forwarder stop failed")
         await task.queue_frame(EndFrame())
+        # Stamp the end time and write the final record.json. The call audio
+        # WAV was already written during pipeline cleanup (the recorder's
+        # on_audio_data handler is awaited there), so the finished record
+        # carries the audio pointer too.
+        call_record.finalize()
 
 
 def main() -> int:

@@ -225,6 +225,7 @@ from voxtera.controllers import (  # noqa: E402
     BrowserTextInputController,
     GreetingController,
     InstantAckFiller,
+    InterruptionResumer,
     LanguageSwitcher,
     LLMRunGuard,
     ModelSwitcher,
@@ -802,6 +803,7 @@ def build_pipeline(
     rnnoise_denoiser_ref = None
     leakage_guard_ref = None
     user_frame_suppressor_ref = None
+    interruption_resumer_ref = None
     if mic_enabled:
         if settings.rnnoise_enabled:
             if _RNNoise is None:
@@ -917,6 +919,26 @@ def build_pipeline(
         if _probing:
             processors.append(PipelineProbe("after_filler"))
         logger.info("[filler] instant-acknowledgment filler enabled")
+    # Interruption resume: observes barge-ins and, when the guest cuts the bot
+    # off early, injects a note so the answering LLM can decide whether to
+    # return to the unfinished answer. Built whenever the mic is live — NOT
+    # gated on allow_interruptions (itself a live knob), so it is ready if
+    # interruptions are toggled on mid-session; it stays inert until a real
+    # InterruptionFrame arrives. Must sit upstream of context_aggregator.user()
+    # so the injected note lands in context before the LLM run.
+    if mic_enabled:
+        interruption_resumer_ref = InterruptionResumer(
+            enabled=settings.interruption_resume_enabled,
+            resume_window_secs=settings.interruption_resume_window_secs,
+        )
+        processors.append(interruption_resumer_ref)
+        if _probing:
+            processors.append(PipelineProbe("after_interruption_resumer"))
+        logger.info(
+            "[interruption-resumer] enabled={} window={}s",
+            settings.interruption_resume_enabled,
+            settings.interruption_resume_window_secs,
+        )
     processors.append(context_aggregator.user())
     if _probing:
         processors.append(PipelineProbe("after_ctx_user"))
@@ -1051,6 +1073,18 @@ def build_pipeline(
     )
     if _probing:
         processors.append(PipelineProbe("after_transport_out"))
+    # Call recording: capture the whole call as a stereo WAV. Placement is
+    # load-bearing — it must sit AFTER transport.output() so it sees both the
+    # guest's input audio (passed through the pipeline; audio_in_passthrough
+    # is on) and the bot's output audio. It auto-starts on StartFrame and the
+    # base AudioBufferProcessor writes the WAV on EndFrame/CancelFrame. See
+    # voxtera.call_record.CallAudioRecorder. Transcript + metadata recording
+    # is independent of this and stays on whenever call_recording_enabled.
+    if settings.call_recording_enabled and settings.call_recording_audio:
+        from voxtera.call_record import CallAudioRecorder
+
+        processors.append(CallAudioRecorder())
+        logger.info("[call-record] audio recorder attached to pipeline")
     processors.append(context_aggregator.assistant())
 
     pipeline = Pipeline(processors)
@@ -1086,6 +1120,7 @@ def build_pipeline(
         vad_processor=vad_processor,
         leakage_guard=leakage_guard_ref,
         user_frame_suppressor=user_frame_suppressor_ref,
+        interruption_resumer=interruption_resumer_ref,
         rnnoise_denoiser=rnnoise_denoiser_ref,
         stt_router=stt_router,
         tts_router=tts_router,

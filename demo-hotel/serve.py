@@ -22,6 +22,7 @@ return ``503`` so the page can render a clear "admin disabled" state.
 
 import asyncio
 import base64
+import concurrent.futures as _futures
 import contextlib
 import http.server
 import json
@@ -46,6 +47,8 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+import audit_log as _audit  # noqa: E402  — local module, writes logs/audit/
+
 from voxtera.actions import (  # noqa: E402
     build_openai_tools,
     compose_system_prompt,
@@ -65,6 +68,24 @@ from voxtera.lang_config import (  # noqa: E402
 )
 from voxtera.prompts.greetings import GREETINGS  # noqa: E402
 from voxtera.prompts.system_prompt import SYSTEM_PROMPT  # noqa: E402
+
+# Thread pool for non-blocking TTS synthesis — allows LLM streaming and TTS
+# to run in parallel so sentence audio overlaps with token generation.
+_tts_executor = _futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="demo-tts")
+
+# Module-level OpenAI client — reuses HTTP connection pool across requests,
+# avoiding TCP+TLS handshake overhead (~200-400ms) on every /api/chat call.
+import openai as _openai_mod  # noqa: E402
+
+_oai_client: "_openai_mod.OpenAI | None" = None
+
+
+def _get_oai_client() -> "_openai_mod.OpenAI":
+    global _oai_client
+    if _oai_client is None:
+        _oai_client = _openai_mod.OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+    return _oai_client
+
 
 # ---------------------------------------------------------------------------
 # Admin config — read once at import time. Empty values disable the admin
@@ -463,6 +484,20 @@ class BotSessionRegistry:
             if sess is not None:
                 sess["process"] = proc
 
+    def attach_watchdog(self, session_id: str, timer: threading.Timer) -> None:
+        """Stash the watchdog Timer so reap() can cancel it on clean exit."""
+        with self._lock:
+            sess = self._sessions.get(session_id)
+            if sess is not None:
+                sess["watchdog"] = timer
+
+    def attach_watchdog_warn(self, session_id: str, timer: threading.Timer) -> None:
+        """Stash the warning Timer so reap() can cancel it on clean hang-up."""
+        with self._lock:
+            sess = self._sessions.get(session_id)
+            if sess is not None:
+                sess["watchdog_warn"] = timer
+
     def deliver(self, session_id: str, event: dict) -> None:
         """Push an event from the bot onto its session's queue.
 
@@ -483,6 +518,13 @@ class BotSessionRegistry:
             sess = self._sessions.pop(session_id, None)
             if self._active_id == session_id:
                 self._active_id = None
+        # Cancel the watchdog timers so they don't fire after a clean hang-up.
+        if sess is not None:
+            for key in ("watchdog", "watchdog_warn"):
+                wd = sess.get(key)
+                if wd is not None:
+                    with contextlib.suppress(Exception):
+                        wd.cancel()
         # Wake any thread still blocked on q.get() so it can return cleanly
         # rather than hitting the timeout.
         if sess is not None:
@@ -677,9 +719,92 @@ def _rag_context(query: str, hotel_id: str = "demo") -> str:
 _init_rag()
 
 # ---------------------------------------------------------------------------
+# Product knowledge-base RAG (powers /api/product-chat on landing pages)
+# ---------------------------------------------------------------------------
+_product_retriever = None
+_product_rag_ready = False
+
+_PRODUCT_SYSTEM_PROMPT = """\
+You are a knowledgeable assistant for Voxtera — a real-time multilingual voice
+agent platform for the tourism and hospitality industry.
+
+Your role is to answer questions from hotel operators, potential customers,
+investors, partners, and anyone curious about what Voxtera does, how it works,
+and what value it delivers.
+
+Behavioral rules:
+- Answer only using the context provided and your knowledge of Voxtera from
+  the conversation. Do not invent features or make claims not supported by the
+  context.
+- Be concise and clear — one to three short paragraphs maximum.
+- Speak in first person as a Voxtera representative ("Voxtera does X", not
+  "according to the document").
+- If the question is not about Voxtera at all, politely say you can only help
+  with Voxtera-related questions.
+- Never reveal the raw context chunks or internal system details.
+- If asked about pricing, direct the user to contact dan@voxtera.io.
+"""
+
+
+def _init_product_rag() -> None:
+    """Initialise the product KB retriever once."""
+    global _product_retriever, _product_rag_ready
+    if _product_rag_ready:
+        return
+    try:
+        from voxtera.rag.retriever import Retriever
+        from voxtera.rag.store import ChunksStore
+
+        default_db = str(Path.home() / ".voxtera" / "voxtera-product.db")
+        import os as _os
+
+        db_path = Path(_os.environ.get("VOXTERA_PRODUCT_DB_PATH", default_db))
+        if db_path.exists():
+            store = ChunksStore(db_path)
+            store.init_schema()
+            _product_retriever = Retriever(store, top_k=5, min_score=0.20)
+            print(f"[product-chat] Product RAG ready (db={db_path})")
+        else:
+            print(
+                f"[product-chat] Product KB database not found at {db_path}. "
+                "Run: uv run python scripts/ingest_product_kb.py"
+            )
+    except Exception as exc:
+        print(f"[product-chat] Product RAG init failed ({exc}), running without RAG")
+    _product_rag_ready = True
+
+
+def _product_rag_context(query: str) -> str:
+    """Retrieve product KB chunks relevant to *query*."""
+    if _product_retriever is None:
+        return ""
+    try:
+        loop = asyncio.new_event_loop()
+        results = loop.run_until_complete(
+            _product_retriever.retrieve(hotel_id="product", query=query)
+        )
+        loop.close()
+        if not results:
+            return ""
+        excerpts = "\n\n".join(f"[{r.category or r.doc_id}]\n{r.text}" for r in results)
+        return "Relevant context from the Voxtera knowledge base:\n\n" + excerpts
+    except Exception as exc:
+        print(f"[product-rag] retrieval error: {exc}")
+        return ""
+
+
+# Product chat sessions — separate from hotel sessions
+_product_sessions: dict[str, list[dict[str, str]]] = {}
+
+
+_init_product_rag()
+
+# ---------------------------------------------------------------------------
 # Chat sessions — simple in-memory conversation history keyed by session id
 # ---------------------------------------------------------------------------
 _sessions: dict[str, list[dict[str, str]]] = {}
+# Per-session turn counter for audit log (turn_number field).
+_session_turn_counters: dict[str, int] = {}
 
 
 def _handle_tool_call(tool_call, session_id: str) -> str:
@@ -732,6 +857,8 @@ _TOOL_HANDLERS = {
 def _chat_completion(session_id: str, user_text: str, model: str, language: str) -> str:
     """Run one chat turn: RAG retrieval → OpenAI chat completion → reply text."""
     import os
+    import time as _time
+    from datetime import datetime
 
     import openai
 
@@ -740,10 +867,29 @@ def _chat_completion(session_id: str, user_text: str, model: str, language: str)
 
     messages = _sessions[session_id]
 
+    # Always inject current date/time so the bot can answer date/time questions.
+    now_str = datetime.now(UTC).strftime("%A, %d %B %Y — %H:%M UTC")
+    messages.append({"role": "system", "content": f"Current date and time: {now_str}."})
+
     # Inject RAG context before the user message.
+    t0_rag = _time.monotonic()
     rag_ctx = _rag_context(user_text)
+    print(f"[timing] rag={(_time.monotonic()-t0_rag)*1000:.0f}ms  query={user_text[:60]!r}")
     if rag_ctx:
         messages.append({"role": "system", "content": rag_ctx})
+
+    # Enforce reply language regardless of what the guest typed.
+    if language and language not in ("auto", "en"):
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    f"IMPORTANT: You MUST reply in language code '{language}'. "
+                    f"Do not switch to English even if the guest wrote in English. "
+                    f"Reply only in '{language}'."
+                ),
+            }
+        )
 
     messages.append({"role": "user", "content": user_text})
 
@@ -977,6 +1123,18 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         msg = format % args
         sys.stderr.write(f"{self.address_string()} - - [{self.log_date_time_string()}] {msg}\n")
 
+    def _client_ip(self) -> tuple[str, str | None]:
+        """Return (direct_ip, x_forwarded_for) for audit logging.
+
+        Uses X-Forwarded-For / X-Real-IP when running behind a reverse proxy
+        or CDN so the logged IP is the real client address, not the proxy.
+        """
+        direct = self.client_address[0]
+        fwd = (
+            self.headers.get("X-Forwarded-For") or self.headers.get("X-Real-IP") or ""
+        ).strip() or None
+        return direct, fwd
+
     def do_GET(self):  # noqa: N802
         # Admin endpoints first; everything else falls through to the static
         # file handler in SimpleHTTPRequestHandler.
@@ -1034,6 +1192,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_tts_test()
         if self.path == "/api/chat":
             return self._handle_chat()
+        if self.path == "/api/product-chat":
+            return self._handle_product_chat()
         if self.path == "/api/admin/eject":
             return self._handle_admin_eject()
         if self.path == "/api/admin/end-session":
@@ -1043,6 +1203,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # Phase 3 — on-demand bot launcher
         if self.path == "/api/start-session":
             return self._handle_start_session()
+        if self.path == "/api/end-session":
+            return self._handle_end_session()
         if self.path == "/api/bot-event":
             return self._handle_bot_event()
         self.send_error(404)
@@ -1155,6 +1317,19 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         provided = self.headers.get("X-Admin-Token", "")
         if provided != _ADMIN_TOKEN:
             self._send_json(401, {"error": "unauthorized"})
+            _audit.write_failure(
+                client_ip=self.client_address[0],
+                forwarded_for=(
+                    self.headers.get("X-Forwarded-For") or self.headers.get("X-Real-IP") or ""
+                ).strip()
+                or None,
+                user_agent=self.headers.get("User-Agent", ""),
+                method=self.command,
+                path=self.path,
+                status_code=401,
+                error="invalid_admin_token",
+                request_id=str(uuid.uuid4()),
+            )
             return False, {}
         return True, None
 
@@ -1505,6 +1680,77 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         REGISTRY.attach_process(session_id, proc)
         _start_reaper_thread(session_id, proc)
 
+        # ── Hard session timeout (3 minutes) ──────────────────────────────
+        # If the browser never calls /api/end-session (tab closed, network
+        # drop, user walked away) the bot would run and bill indefinitely.
+        # Two-stage watchdog:
+        #   T+165s (2:45) — bot speaks a warning via /speak on TuneServer
+        #   T+180s (3:00) — force-kill the bot and eject from Daily
+        _MAX_SESSION_SECS = 180  # hard kill  # noqa: N806
+        _WARN_SESSION_SECS = 165  # voice warning 15 s before kill  # noqa: N806
+        _WARN_TEXT = (  # noqa: N806
+            "I'm sorry, your session will end in 15 seconds due to the time limit. "
+            "Please call again if you need further assistance. Goodbye!"
+        )
+
+        def _session_warn(sid: str) -> None:
+            """Speak a warning via the bot's TuneServer /speak endpoint."""
+            import contextlib as _ctx
+
+            tune_port = _get_bot_tune_port()
+            if tune_port is None:
+                return
+            try:
+                import urllib.request as _ur
+
+                payload = json.dumps({"text": _WARN_TEXT}).encode()
+                req = _ur.Request(
+                    f"http://127.0.0.1:{tune_port}/speak",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with _ctx.suppress(Exception), _ur.urlopen(req, timeout=3):
+                    pass
+                print(f"[watchdog] sent session-timeout warning to bot (session={sid[:8]})")
+            except Exception as exc:
+                print(f"[watchdog] warn failed: {exc}")
+
+        def _session_kill(sid: str) -> None:
+            import contextlib as _ctx
+
+            print(f"[watchdog] session {sid[:8]} hit {_MAX_SESSION_SECS}s limit — force-ending")
+            with REGISTRY._lock:
+                _proc = REGISTRY._sessions.get(sid, {}).get("process")
+            if _proc is not None and _proc.poll() is None:
+                with _ctx.suppress(Exception):
+                    _proc.terminate()
+            if _DAILY_API_KEY and _DAILY_ROOM_NAME:
+                with _ctx.suppress(Exception):
+                    _presence_cache["fetched_at"] = 0.0
+                    participants = list_room_participants(
+                        api_key=_DAILY_API_KEY, room_name=_DAILY_ROOM_NAME
+                    )
+                    ids = [p.id for p in participants if p.id]
+                    if ids:
+                        eject_participants(
+                            api_key=_DAILY_API_KEY,
+                            room_name=_DAILY_ROOM_NAME,
+                            participant_ids=ids,
+                        )
+            REGISTRY.reap(sid)
+
+        _wd_warn = threading.Timer(_WARN_SESSION_SECS, _session_warn, args=[session_id])
+        _wd_warn.daemon = True
+        _wd_warn.start()
+
+        _wd = threading.Timer(_MAX_SESSION_SECS, _session_kill, args=[session_id])
+        _wd.daemon = True
+        _wd.start()
+        # Store both timers so reap() can cancel them on a clean hang-up.
+        REGISTRY.attach_watchdog(session_id, _wd)
+        REGISTRY.attach_watchdog_warn(session_id, _wd_warn)
+
         # Block until either the bot posts {type:"ready"} or we hit the
         # spawn timeout. Reaper events ({"type":"_reaped"}) also unblock us
         # — that path means the bot exited before posting ready (crash).
@@ -1553,6 +1799,61 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             200,
             {"session_id": session_id, "room_url": room_url, "bot_name": _BOT_NAME},
         )
+
+    def _handle_end_session(self) -> None:
+        """POST /api/end-session — browser asks the server to kill the bot and
+        eject everyone from the Daily room.
+
+        Called by the orb page when the user presses the phone hang-up button.
+        Does NOT require an admin token — the session_id in the body is used
+        as a lightweight proof of ownership (the browser received it from
+        /api/start-session moments earlier).
+
+        Steps:
+          1. SIGTERM the bot subprocess (it will leave Daily gracefully).
+          2. If DAILY_API_KEY is set, eject all participants via Daily REST
+             so the room is empty even if the bot crashed before self-leaving.
+          3. Free the REGISTRY slot so the next Start click works immediately.
+        """
+        body = self._read_json_body()
+        session_id = (body.get("session_id") or "").strip()
+
+        # Kill the bot subprocess for this session.
+        proc = None
+        with REGISTRY._lock:
+            if session_id and session_id in REGISTRY._sessions:
+                proc = REGISTRY._sessions[session_id].get("process")
+            elif not session_id and REGISTRY._active_id:
+                session_id = REGISTRY._active_id
+                proc = REGISTRY._sessions.get(session_id, {}).get("process")
+
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+                print(f"[end-session] sent SIGTERM to bot (session={session_id[:8]})")
+            except Exception as e:
+                print(f"[end-session] terminate error: {e}")
+        # Eject all participants via Daily REST (belt-and-suspenders).
+        if _DAILY_API_KEY and _DAILY_ROOM_NAME:
+            try:
+                _presence_cache["fetched_at"] = 0.0
+                participants = self._fetch_participants_cached()
+                ids = [p.id for p in participants if p.id]
+                if ids:
+                    eject_participants(
+                        api_key=_DAILY_API_KEY,
+                        room_name=_DAILY_ROOM_NAME,
+                        participant_ids=ids,
+                    )
+                    print(f"[end-session] ejected {len(ids)} participant(s) from room")
+            except Exception as e:
+                print(f"[end-session] Daily eject error: {e}")
+
+        # Free the launcher slot so the next Start click isn't rejected as busy.
+        if session_id:
+            REGISTRY.reap(session_id)
+
+        self._send_json(200, {"ok": True, "session_id": session_id})
 
     def _handle_bot_event(self) -> None:
         """POST /api/bot-event — receive an event from a bot subprocess.
@@ -1892,66 +2193,444 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(error_msg)
 
     def _handle_chat(self):
-        """POST /api/chat — LLM chat with RAG + TTS audio response."""
+        """POST /api/chat — streaming NDJSON: text chunks + sentence-level TTS.
+
+        Each line of the response is a JSON object:
+          {"type": "text",  "chunk": "<token>"}          — LLM token
+          {"type": "audio", "data": "<base64 mp3>"}   — first-sentence TTS
+          {"type": "done",  "session_id": "...", "text": "<full reply>"}
+          {"type": "error", "error": "..."}
+        """
+        import os
+
+        import openai as _oai  # noqa — kept for local references
+
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length)) if length else {}
-            text = (body.get("text") or "").strip()
-            session_id = body.get("session_id") or str(uuid.uuid4())
-            model = body.get("model") or "gpt-4o-mini"
-            language = body.get("language") or "en"
-            tts_provider = body.get("tts_provider") or "openai"
-            voice = body.get("voice") or "nova"
+        except Exception:
+            body = {}
 
-            if not text:
-                resp = json.dumps({"error": "text is required"}).encode()
-                self.send_response(400)
-                self._cors_headers()
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(resp)))
-                self.end_headers()
-                self.wfile.write(resp)
-                return
+        text = (body.get("text") or "").strip()
+        session_id = body.get("session_id") or str(uuid.uuid4())
+        model = body.get("model") or "gpt-4o-mini"
+        language = body.get("language") or "en"
+        tts_provider = body.get("tts_provider") or "openai"
+        voice = body.get("voice") or "nova"
 
-            # LLM chat with RAG context injection.
-            reply = _chat_completion(session_id, text, model, language)
+        request_id = str(uuid.uuid4())
+        client_ip, forwarded_for = self._client_ip()
+        user_agent = self.headers.get("User-Agent", "")
+        rag_elapsed_ms: float | None = None
+        llm_elapsed_ms: float | None = None
 
-            # Generate TTS audio for the reply.
-            audio_b64 = ""
+        # ── streaming response headers ──
+        self.send_response(200)
+        self._cors_headers()
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+        def push(obj: dict) -> None:
+            line = (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+            self.wfile.write(f"{len(line):x}\r\n".encode() + line + b"\r\n")
+            self.wfile.flush()
+
+        def finish() -> None:
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+
+        if not text:
+            push({"type": "error", "error": "text is required"})
+            finish()
+            _audit.write_failure(
+                client_ip=client_ip,
+                forwarded_for=forwarded_for,
+                user_agent=user_agent,
+                method="POST",
+                path="/api/chat",
+                status_code=400,
+                error="empty_text",
+                request_id=request_id,
+                session_id=session_id,
+            )
+            return
+
+        # ── build messages ──
+        import time as _time
+        from datetime import datetime
+
+        if session_id not in _sessions:
+            _sessions[session_id] = [{"role": "system", "content": _ACTIONS_SYSTEM_PROMPT}]
+        messages = _sessions[session_id]
+
+        # Always inject current date/time so the bot can answer "what day is today" etc.
+        now_str = datetime.now(UTC).strftime("%A, %d %B %Y — %H:%M UTC")
+        messages.append({"role": "system", "content": f"Current date and time: {now_str}."})
+
+        t0_rag = _time.monotonic()
+        rag_ctx = _rag_context(text)
+        rag_elapsed_ms = (_time.monotonic() - t0_rag) * 1000
+        print(f"[timing] rag={rag_elapsed_ms:.0f}ms  query={text[:60]!r}")
+        if rag_ctx:
+            messages.append({"role": "system", "content": rag_ctx})
+        if language and language not in ("auto", "en"):
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        f"IMPORTANT: You MUST reply in language code '{language}'. "
+                        f"Do not switch to English. Reply only in '{language}'."
+                    ),
+                }
+            )
+        messages.append({"role": "user", "content": text})
+
+        # ── stream the LLM ──
+        full_text = ""
+        sent_buf = ""  # accumulates text until first sentence boundary
+        audio_fired = False
+        tts_futures: list[_futures.Future[bytes | None]] = []
+        tool_chunks: dict = {}
+        SENT_END = frozenset(  # noqa: N806
+            "!?\u3002\uff01\uff1f\u2026"
+        )  # period removed — caught by SENT_END_PERIOD below
+        SENT_END_PERIOD = frozenset(".")  # noqa: N806
+        MIN_LEN = 28  # raised: avoids cutting on "Good morning, Mr." (18 chars)  # noqa: N806
+        t0_llm = _time.monotonic()
+        t_first_tok = None
+
+        def _do_tts(text: str) -> bytes | None:
+            """Synthesise speech for *text* — runs in a thread pool worker."""
+            t0 = _time.monotonic()
             try:
                 if tts_provider == "google":
-                    audio = _tts_google(reply, voice, language)
+                    au = _tts_google(text, voice, language)
                 elif tts_provider == "cartesia":
-                    audio = _tts_cartesia(reply, voice, language)
+                    au = _tts_cartesia(text, voice, language)
                 elif tts_provider == "elevenlabs":
-                    audio = _tts_elevenlabs(reply, voice, language)
+                    au = _tts_elevenlabs(text, voice, language)
                 else:
-                    audio = _tts_openai(reply, voice)
-                audio_b64 = base64.b64encode(audio).decode("ascii")
-            except Exception as tts_exc:
-                print(f"[chat] TTS failed ({tts_exc}), returning text only")
+                    au = _tts_openai(text, voice)
+                print(f"[timing] tts={(_time.monotonic()-t0)*1000:.0f}ms  chars={len(text)}")
+                return au
+            except Exception as tts_err:
+                print(f"[chat] TTS error: {tts_err}")
+                return None
 
-            resp = json.dumps(
+        def _drain_tts() -> None:
+            """Push any TTS futures that completed, in submission order."""
+            while tts_futures and tts_futures[0].done():
+                fut = tts_futures.pop(0)
+                try:
+                    au = fut.result()
+                    if au:
+                        push({"type": "audio", "data": base64.b64encode(au).decode()})
+                except Exception as _e:
+                    print(f"[chat] TTS drain: {_e}")
+
+        def _stream_tok(tok: str) -> None:
+            nonlocal full_text, sent_buf, t_first_tok, audio_fired
+            if t_first_tok is None:
+                t_first_tok = _time.monotonic()
+                print(f"[timing] llm_first_token={(_time.monotonic()-t0_llm)*1000:.0f}ms")
+            full_text += tok
+            sent_buf += tok
+            push({"type": "text", "chunk": tok})
+            # Push any TTS that finished while we were streaming — every token
+            _drain_tts()
+            last_ch = sent_buf[-1]
+            if len(sent_buf) < MIN_LEN or (
+                last_ch not in SENT_END and last_ch not in SENT_END_PERIOD
+            ):
+                return
+            # For period: skip abbreviations — word before "." is ≤3 chars (Mr., Dr., etc.)
+            if last_ch in SENT_END_PERIOD:
+                words = sent_buf.rstrip().rsplit(None, 1)
+                if words and len(words[-1].rstrip(".")) <= 3:
+                    return
+            # Submit TTS to thread pool — does NOT block LLM stream consumption
+            sentence = sent_buf.strip()
+            sent_buf = ""
+            audio_fired = True
+            tts_futures.append(_tts_executor.submit(_do_tts, sentence))
+
+        try:
+            if model.startswith("claude"):
+                import anthropic as _ant
+
+                ant_client = _ant.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+                system_parts, conv_msgs = [], []
+                for m in messages:
+                    if m["role"] == "system":
+                        system_parts.append(m.get("content") or "")
+                    elif m["role"] in ("user", "assistant") and m.get("content"):
+                        conv_msgs.append({"role": m["role"], "content": m["content"]})
+                print(f"[timing] model={model}  turns={len(conv_msgs)}")
+                with ant_client.messages.stream(
+                    model=model,
+                    max_tokens=150,
+                    system="\n\n".join(system_parts),
+                    messages=conv_msgs,
+                ) as stream:
+                    for tok in stream.text_stream:
+                        _stream_tok(tok)
+            else:
+                oai_client = _get_oai_client()
+                t_api_call = _time.monotonic()
+                oai_stream = oai_client.chat.completions.create(
+                    model=model,
+                    max_tokens=250,
+                    messages=messages,
+                    stream=True,
+                    tools=_TOOLS or None,
+                    tool_choice="auto" if _TOOLS else None,
+                )
+                print(
+                    f"[timing] oai_stream_connected="
+                    f"{(_time.monotonic()-t_api_call)*1000:.0f}ms  "
+                    f"input_msgs={len(messages)}"
+                )
+                finish_reason = None
+                for chunk in oai_stream:
+                    if not chunk.choices:
+                        continue
+                    if chunk.choices[0].finish_reason:
+                        finish_reason = chunk.choices[0].finish_reason
+                    delta = chunk.choices[0].delta
+                    if delta.tool_calls:
+                        for tc in delta.tool_calls:
+                            idx = tc.index
+                            if idx not in tool_chunks:
+                                tool_chunks[idx] = {
+                                    "id": tc.id or "",
+                                    "name": (tc.function.name or "") if tc.function else "",
+                                    "args": "",
+                                }
+                            if tc.function and tc.function.arguments:
+                                tool_chunks[idx]["args"] += tc.function.arguments
+                        continue
+                    if delta.content:
+                        _stream_tok(delta.content)
+                if finish_reason:
+                    print(f"[timing] finish_reason={finish_reason}")
+                    if finish_reason == "length":
+                        print("[WARNING] reply truncated at max_tokens")
+
+            print(
+                f"[timing] llm_full={(_time.monotonic()-t0_llm)*1000:.0f}ms  "
+                f"tokens\u2248{len(full_text.split())}"
+            )
+
+        except Exception as llm_err:
+            push({"type": "error", "error": str(llm_err)})
+            finish()
+            _audit.write_failure(
+                client_ip=client_ip,
+                forwarded_for=forwarded_for,
+                user_agent=user_agent,
+                method="POST",
+                path="/api/chat",
+                status_code=500,
+                error=f"llm_error: {str(llm_err)[:200]}",
+                request_id=request_id,
+                session_id=session_id,
+            )
+            return
+
+        llm_elapsed_ms = round((_time.monotonic() - t0_llm) * 1000, 1)
+
+        # ── queue any trailing text (reply too short or last sentence fragment) ──
+        if sent_buf.strip():
+            tts_futures.append(_tts_executor.submit(_do_tts, sent_buf.strip()))
+            audio_fired = True
+            sent_buf = ""
+
+        # ── execute tool calls → second non-streaming LLM pass ──
+        if tool_chunks:
+            tc_list = [
                 {
-                    "text": reply,
-                    "audio": audio_b64,
-                    "session_id": session_id,
+                    "id": tool_chunks[i]["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tool_chunks[i]["name"],
+                        "arguments": tool_chunks[i]["args"],
+                    },
                 }
-            ).encode()
-            self.send_response(200)
-            self._cors_headers()
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(resp)))
-            self.end_headers()
-            self.wfile.write(resp)
-        except Exception as exc:
-            error_msg = json.dumps({"error": str(exc)}).encode()
-            self.send_response(500)
-            self._cors_headers()
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(error_msg)))
-            self.end_headers()
-            self.wfile.write(error_msg)
+                for i in sorted(tool_chunks)
+            ]
+            messages.append({"role": "assistant", "content": None, "tool_calls": tc_list})
+            for tcd in tc_list:
+
+                class _TC:  # minimal stand-in matching openai ToolCall interface
+                    id = tcd["id"]
+                    function = type(
+                        "_F",
+                        (),
+                        {
+                            "name": tcd["function"]["name"],
+                            "arguments": tcd["function"]["arguments"],
+                        },
+                    )()
+
+                result = _handle_tool_call(_TC(), session_id)
+                messages.append({"role": "tool", "tool_call_id": tcd["id"], "content": result})
+            try:
+                t0_llm2 = _time.monotonic()
+                r2 = client.chat.completions.create(  # noqa: F821
+                    model=model, max_tokens=150, messages=messages, stream=False
+                )
+                print(f"[timing] llm_tool_followup={(_time.monotonic()-t0_llm2)*1000:.0f}ms")
+                full_text = (r2.choices[0].message.content or "").strip()
+                messages.append({"role": "assistant", "content": full_text})
+                push({"type": "text", "chunk": full_text})
+            except Exception as e2:
+                push({"type": "error", "error": str(e2)})
+                finish()
+                return
+        else:
+            messages.append({"role": "assistant", "content": full_text})
+
+        # ── flush remaining TTS futures (any not yet drained during streaming) ──
+        # _drain_tts() already pushed completed ones per-token; this catches
+        # anything that was still in-flight when the LLM loop finished.
+        for fut in list(tts_futures):
+            try:
+                au = fut.result(timeout=20)
+                if au:
+                    push({"type": "audio", "data": base64.b64encode(au).decode()})
+            except Exception as tts_err:
+                print(f"[chat] TTS future error: {tts_err}")
+        tts_futures.clear()
+
+        # ── fallback TTS: whole reply was too short to hit any sentence boundary ──
+        if not audio_fired and full_text:
+            au = _do_tts(full_text)
+            if au:
+                push({"type": "audio", "data": base64.b64encode(au).decode()})
+
+        # ── bound history ──
+        if len(messages) > 42:
+            _sessions[session_id] = [messages[0]] + messages[-40:]
+
+        _session_turn_counters[session_id] = _session_turn_counters.get(session_id, 0) + 1
+        _audit.write_turn(
+            session_id=session_id,
+            turn_number=_session_turn_counters[session_id],
+            client_ip=client_ip,
+            forwarded_for=forwarded_for,
+            user_agent=user_agent,
+            channel="chat_http",
+            hotel_id="demo",
+            user_query=text,
+            bot_reply=full_text,
+            model=model,
+            language=language,
+            tts_provider=tts_provider,
+            llm_ms=llm_elapsed_ms,
+            rag_ms=round(rag_elapsed_ms, 1) if rag_elapsed_ms is not None else None,
+            status="answered",
+            request_id=request_id,
+        )
+        push({"type": "done", "session_id": session_id, "text": full_text})
+        finish()
+
+    def _handle_product_chat(self):
+        """POST /api/product-chat — streaming NDJSON: Voxtera product Q&A backed by the
+        product knowledge base (docs/voxtera-rag-knowledge-base.md).
+
+        Same NDJSON protocol as /api/chat:
+          {"type": "text",  "chunk": "<token>"}
+          {"type": "done",  "session_id": "...", "text": "<full reply>"}
+          {"type": "error", "error": "..."}
+        """
+        import os as _os
+        import time as _time
+
+        import openai as _oai
+
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length)) if length else {}
+        except Exception:
+            body = {}
+
+        text = (body.get("text") or "").strip()
+        session_id = body.get("session_id") or str(uuid.uuid4())
+        model = body.get("model") or "gpt-4o-mini"
+
+        self.send_response(200)
+        self._cors_headers()
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+        def push(obj: dict) -> None:
+            line = (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+            self.wfile.write(f"{len(line):x}\r\n".encode() + line + b"\r\n")
+            self.wfile.flush()
+
+        def finish() -> None:
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+
+        if not text:
+            push({"type": "error", "error": "text is required"})
+            finish()
+            return
+
+        # Build / retrieve session history
+        if session_id not in _product_sessions:
+            _product_sessions[session_id] = [{"role": "system", "content": _PRODUCT_SYSTEM_PROMPT}]
+        messages = _product_sessions[session_id]
+
+        # RAG retrieval from product KB
+        rag_ctx = _product_rag_context(text)
+
+        # Inject RAG context + user message
+        user_content = text
+        if rag_ctx:
+            user_content = rag_ctx + "\n\n---\n\nUser question: " + text
+        messages.append({"role": "user", "content": user_content})
+
+        api_key = _os.environ.get("OPENAI_API_KEY", "")
+        if not api_key:
+            push({"type": "error", "error": "OPENAI_API_KEY not configured on server."})
+            finish()
+            return
+
+        client = _oai.OpenAI(api_key=api_key)
+        full_text = ""
+
+        try:
+            t0 = _time.monotonic()
+            stream = client.chat.completions.create(
+                model=model,
+                max_tokens=300,
+                messages=messages,
+                stream=True,
+            )
+            for event in stream:
+                delta = event.choices[0].delta
+                if delta.content:
+                    full_text += delta.content
+                    push({"type": "text", "chunk": delta.content})
+            print(f"[product-chat] llm={(_time.monotonic()-t0)*1000:.0f}ms  chars={len(full_text)}")
+        except Exception as llm_err:
+            push({"type": "error", "error": str(llm_err)})
+            finish()
+            return
+
+        messages.append({"role": "assistant", "content": full_text})
+
+        # Bound history to last 20 turns + system prompt
+        if len(messages) > 42:
+            _product_sessions[session_id] = [messages[0]] + messages[-40:]
+
+        push({"type": "done", "session_id": session_id, "text": full_text})
+        finish()
 
 
 if __name__ == "__main__":
