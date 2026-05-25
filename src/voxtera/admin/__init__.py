@@ -16,6 +16,7 @@ from voxtera.admin.daily_client import (
     delete_room,
     eject_participants,
     list_room_participants,
+    list_rooms,
 )
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     "delete_room",
     "eject_participants",
     "list_room_participants",
+    "list_rooms",
 ]

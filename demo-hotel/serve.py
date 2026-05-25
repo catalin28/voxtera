@@ -28,6 +28,7 @@ import http.server
 import json
 import os
 import queue as _queue
+import signal
 import socketserver
 import subprocess
 import sys
@@ -62,6 +63,7 @@ from voxtera.admin import (  # noqa: E402
     delete_room,
     eject_participants,
     list_room_participants,
+    list_rooms,
 )
 from voxtera.lang_config import (  # noqa: E402
     LANG_CONFIG,
@@ -558,6 +560,23 @@ class BotSessionRegistry:
         with self._lock:
             return len(self._sessions) >= _MAX_CONCURRENT_SESSIONS
 
+    def cleanup_all_rooms(self) -> None:
+        """Delete all tracked Daily rooms. Called on server shutdown."""
+        with self._lock:
+            sessions = dict(self._sessions)
+        for sid, sess in sessions.items():
+            room_name = sess.get("room_name")
+            if room_name and _DAILY_API_KEY:
+                try:
+                    delete_room(api_key=_DAILY_API_KEY, room_name=room_name)
+                    print(f"[shutdown] deleted room {room_name} (session={sid[:8]})")
+                except Exception as exc:
+                    print(f"[shutdown] failed to delete room {room_name}: {exc}")
+            proc = sess.get("process")
+            if proc is not None:
+                with contextlib.suppress(Exception):
+                    proc.terminate()
+
     def active_sessions(self) -> list[str]:
         """Return all active session IDs."""
         with self._lock:
@@ -572,6 +591,30 @@ class BotSessionRegistry:
 
 
 REGISTRY = BotSessionRegistry()
+
+
+def _cleanup_orphaned_rooms() -> None:
+    """Delete any leftover vox-* rooms from previous server runs.
+
+    Called once on startup. These rooms are orphaned when the server is
+    killed without graceful shutdown (SIGKILL, crash, power loss).
+    """
+    if not _DAILY_DYNAMIC_ROOMS or not _DAILY_API_KEY:
+        return
+    try:
+        rooms = list_rooms(api_key=_DAILY_API_KEY, prefix="vox-")
+    except Exception as exc:
+        print(f"[startup] could not list Daily rooms for cleanup: {exc}")
+        return
+    if not rooms:
+        return
+    print(f"[startup] found {len(rooms)} orphaned vox-* room(s), deleting...")
+    for room_name in rooms:
+        try:
+            delete_room(api_key=_DAILY_API_KEY, room_name=room_name)
+            print(f"[startup] deleted orphaned room {room_name}")
+        except Exception as exc:
+            print(f"[startup] failed to delete {room_name}: {exc}")
 
 
 def _spawn_bot(
@@ -2919,6 +2962,9 @@ if __name__ == "__main__":
         os.environ["VOXTERA_EMBEDDING_URL"] = _EMBEDDING_URL
         print(f"Embedding sidecar starting on {_EMBEDDING_URL} (pid={_embedding_proc.pid})")
     # --------------------------------------------------------------------------
+    # Clean up orphaned rooms from previous server runs before accepting traffic.
+    _cleanup_orphaned_rooms()
+    # --------------------------------------------------------------------------
     socketserver.ThreadingTCPServer.allow_reuse_address = True
     with socketserver.ThreadingTCPServer(("", port), DemoHandler) as httpd:
         print(f"Serving demo on http://localhost:{port}/demo.html")
@@ -2944,11 +2990,20 @@ if __name__ == "__main__":
             print(f"Trace page on http://localhost:{port}/trace.html")
         else:
             print("Trace page disabled — set VOXTERA_ADMIN_TOKEN to enable")
+
+        def _shutdown_handler(signum, frame):
+            print(f"\n[shutdown] received signal {signum}, stopping...")
+            httpd.shutdown()
+
+        signal.signal(signal.SIGTERM, _shutdown_handler)
+
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
-            print("\nStopped.")
+            print("\nStopping...")
         finally:
+            if _DAILY_DYNAMIC_ROOMS:
+                REGISTRY.cleanup_all_rooms()
             if _embedding_proc is not None:
                 _embedding_proc.terminate()
                 _embedding_proc.wait(timeout=5)

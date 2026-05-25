@@ -287,3 +287,24 @@ def delete_room(*, api_key: str, room_name: str) -> bool:
         raise
     logger.info("[daily] deleted room {}", room_name)
     return True
+
+
+def list_rooms(*, api_key: str, prefix: str = "vox-") -> list[str]:
+    """Return names of all rooms whose name starts with *prefix*.
+
+    Uses Daily's ``GET /v1/rooms`` with a limit of 100. This is sufficient
+    for cleanup of orphaned dynamic rooms on startup.
+    """
+    if not api_key:
+        raise DailyAPIError("DAILY_API_KEY is not set")
+
+    payload = _request_json(
+        f"{_DAILY_REST_BASE}/rooms?limit=100",
+        api_key=api_key,
+    )
+    rooms: list[str] = []
+    for room in payload.get("data", []):
+        name = room.get("name", "")
+        if name.startswith(prefix):
+            rooms.append(name)
+    return rooms
