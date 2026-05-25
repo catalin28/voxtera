@@ -466,6 +466,39 @@ def _load_stt_vocabulary(hotel_id: str) -> list[str]:
     return unique
 
 
+def preimport_gladia() -> None:
+    """Import heavy Gladia/aiohttp modules so they're cached in sys.modules.
+
+    Call from a background thread early in bot startup so the cost (~500ms)
+    overlaps with other init work. By the time _build_gladia_stt runs, the
+    imports are instant cache hits.
+    """
+    import time as _t
+
+    try:
+        t0 = _t.perf_counter()
+        import aiohttp  # noqa: F401
+
+        logger.info("[stt] preimport aiohttp: {:.0f}ms", (_t.perf_counter() - t0) * 1000)
+
+        t0 = _t.perf_counter()
+        import pipecat.services.gladia.config  # noqa: F401
+
+        logger.info("[stt] preimport gladia.config: {:.0f}ms", (_t.perf_counter() - t0) * 1000)
+
+        t0 = _t.perf_counter()
+        import pipecat.services.gladia.stt  # noqa: F401
+
+        logger.info("[stt] preimport gladia.stt: {:.0f}ms", (_t.perf_counter() - t0) * 1000)
+
+        t0 = _t.perf_counter()
+        import pipecat.services.stt_service  # noqa: F401
+
+        logger.info("[stt] preimport stt_service: {:.0f}ms", (_t.perf_counter() - t0) * 1000)
+    except ImportError as exc:
+        logger.warning("[stt] preimport_gladia failed: {}", exc)
+
+
 def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     """Build the Gladia Solaria-1 STT service if its credentials are present.
 
@@ -497,6 +530,7 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     """
     if not settings.gladia_api_key:
         return None
+    _imp_t0 = time.perf_counter()
     try:
         from pipecat.frames.frames import StartFrame
         from pipecat.services.gladia.config import (
@@ -511,6 +545,7 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
             "[stt] gladia STT extras not installed — install with: " "uv add 'pipecat-ai[gladia]'"
         )
         return None
+    logger.info("[stt] gladia imports took {:.0f}ms", (time.perf_counter() - _imp_t0) * 1000)
 
     # ── Gladia session management helpers ─────────────────────────────────
     # Pipecat's GladiaSTTService never calls DELETE /v2/live/{id} — it only
@@ -777,6 +812,7 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     # auto-detect using all languages from languages.json. This avoids
     # Gladia's 99-language open mode which can produce translations
     # instead of transcriptions for non-English speech.
+    _t_lang = time.perf_counter()
     if not languages:
         from voxtera.lang_config import language_codes as _all_lang_codes
         from voxtera.lang_config import stt_code_for as _stt_code
@@ -784,6 +820,7 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
         languages = [c for c in (_stt_code(lc, "gladia") for lc in _all_lang_codes()) if c]
         if len(languages) >= 2:
             code_switching = True
+    logger.info("[stt] gladia lang_config took {:.0f}ms", (time.perf_counter() - _t_lang) * 1000)
 
     if code_switching and len(languages) < 2:
         # Silently degrade rather than ship a config that produces no
@@ -818,19 +855,23 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     # domain words ("breakfast", "amenities", the hotel's venue names) stop
     # being mis-transcribed. Travels once in the session-init payload, not
     # per utterance. Skipped silently when the vocabulary file is absent.
+    _t_vocab = time.perf_counter()
     vocabulary = _load_stt_vocabulary(settings.hotel_id)
     if vocabulary:
         settings_kwargs["realtime_processing"] = RealtimeProcessingConfig(
             custom_vocabulary=True,
             custom_vocabulary_config=CustomVocabularyConfig(vocabulary=vocabulary),
         )
+    logger.info("[stt] gladia vocab took {:.0f}ms", (time.perf_counter() - _t_vocab) * 1000)
 
+    _t_ctor = time.perf_counter()
     stt = _LazyConnectGladiaSTTService(
         api_key=settings.gladia_api_key,
         region=settings.gladia_region,
         sample_rate=16000,
         settings=GladiaSTTService.Settings(**settings_kwargs),
     )
+    logger.info("[stt] gladia constructor took {:.0f}ms", (time.perf_counter() - _t_ctor) * 1000)
 
     # Explicit connect/disconnect logging. Pipecat's GladiaSTTService logs
     # an ERROR-level message itself if the /v2/live init returns a non-2xx

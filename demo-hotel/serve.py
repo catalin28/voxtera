@@ -905,7 +905,7 @@ def _chat_completion(session_id: str, user_text: str, model: str, language: str)
     # Inject RAG context before the user message.
     t0_rag = _time.monotonic()
     rag_ctx = _rag_context(user_text)
-    print(f"[timing] rag={(_time.monotonic()-t0_rag)*1000:.0f}ms  query={user_text[:60]!r}")
+    print(f"[timing] rag={(_time.monotonic() - t0_rag) * 1000:.0f}ms  query={user_text[:60]!r}")
     if rag_ctx:
         messages.append({"role": "system", "content": rag_ctx})
 
@@ -1346,7 +1346,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 {
                     "error": "daily_unconfigured",
                     "detail": (
-                        "DAILY_API_KEY and DAILY_ROOM_NAME" " (or DAILY_DYNAMIC_ROOMS) must be set."
+                        "DAILY_API_KEY and DAILY_ROOM_NAME (or DAILY_DYNAMIC_ROOMS) must be set."
                     ),
                 },
             )
@@ -2013,7 +2013,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
         if event_type == "_reaped":
             rc = proc.returncode
-            print(f"[launcher] session {session_id}: bot exited before ready " f"(rc={rc})")
+            print(f"[launcher] session {session_id}: bot exited before ready (rc={rc})")
             self._send_json(
                 500,
                 {"error": f"bot exited before ready (rc={rc})"},
@@ -2021,7 +2021,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         if event_type != "ready":
-            print(f"[launcher] session {session_id}: unexpected first event " f"{event_type!r}")
+            print(f"[launcher] session {session_id}: unexpected first event {event_type!r}")
             with contextlib.suppress(Exception):
                 proc.kill()
             self._send_json(500, {"error": f"unexpected first event: {event_type}"})
@@ -2571,7 +2571,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                     au = _tts_elevenlabs(text, voice, language)
                 else:
                     au = _tts_openai(text, voice)
-                print(f"[timing] tts={(_time.monotonic()-t0)*1000:.0f}ms  chars={len(text)}")
+                print(f"[timing] tts={(_time.monotonic() - t0) * 1000:.0f}ms  chars={len(text)}")
                 return au
             except Exception as tts_err:
                 print(f"[chat] TTS error: {tts_err}")
@@ -2592,7 +2592,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             nonlocal full_text, sent_buf, t_first_tok, audio_fired
             if t_first_tok is None:
                 t_first_tok = _time.monotonic()
-                print(f"[timing] llm_first_token={(_time.monotonic()-t0_llm)*1000:.0f}ms")
+                print(f"[timing] llm_first_token={(_time.monotonic() - t0_llm) * 1000:.0f}ms")
             full_text += tok
             sent_buf += tok
             push({"type": "text", "chunk": tok})
@@ -2647,7 +2647,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 )
                 print(
                     f"[timing] oai_stream_connected="
-                    f"{(_time.monotonic()-t_api_call)*1000:.0f}ms  "
+                    f"{(_time.monotonic() - t_api_call) * 1000:.0f}ms  "
                     f"input_msgs={len(messages)}"
                 )
                 finish_reason = None
@@ -2677,7 +2677,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                         print("[WARNING] reply truncated at max_tokens")
 
             print(
-                f"[timing] llm_full={(_time.monotonic()-t0_llm)*1000:.0f}ms  "
+                f"[timing] llm_full={(_time.monotonic() - t0_llm) * 1000:.0f}ms  "
                 f"tokens\u2248{len(full_text.split())}"
             )
 
@@ -2739,7 +2739,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 r2 = client.chat.completions.create(  # noqa: F821
                     model=model, max_tokens=150, messages=messages, stream=False
                 )
-                print(f"[timing] llm_tool_followup={(_time.monotonic()-t0_llm2)*1000:.0f}ms")
+                print(f"[timing] llm_tool_followup={(_time.monotonic() - t0_llm2) * 1000:.0f}ms")
                 full_text = (r2.choices[0].message.content or "").strip()
                 messages.append({"role": "assistant", "content": full_text})
                 push({"type": "text", "chunk": full_text})
@@ -2875,7 +2875,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 if delta.content:
                     full_text += delta.content
                     push({"type": "text", "chunk": delta.content})
-            print(f"[product-chat] llm={(_time.monotonic()-t0)*1000:.0f}ms  chars={len(full_text)}")
+            elapsed = (_time.monotonic() - t0) * 1000
+            print(f"[product-chat] llm={elapsed:.0f}ms  chars={len(full_text)}")
         except Exception as llm_err:
             push({"type": "error", "error": str(llm_err)})
             finish()
@@ -2897,6 +2898,27 @@ if __name__ == "__main__":
     # subprocesses receive this as ``VOXTERA_LAUNCHER_URL`` and POST events to
     # ``{LAUNCHER_BASE_URL}/api/bot-event`` via ``launcher_client.post_event``.
     LAUNCHER_BASE_URL = f"http://127.0.0.1:{port}"
+
+    # --- Embedding sidecar ---------------------------------------------------
+    # Start the embedding server so bot subprocesses can get embeddings without
+    # loading the ONNX model themselves (saves 3-8s per session cold-start).
+    _EMBEDDING_PORT = 9400
+    _EMBEDDING_URL = f"http://127.0.0.1:{_EMBEDDING_PORT}"
+    _embedding_proc: subprocess.Popen | None = None
+    _rag_enabled = os.environ.get("RAG_ENABLED", "false").lower() in ("1", "true", "yes")
+
+    if _rag_enabled:
+        _embedding_script = str(
+            Path(__file__).resolve().parent.parent / "scripts" / "embedding_server.py"
+        )
+        _embedding_proc = subprocess.Popen(
+            [sys.executable, _embedding_script, "--port", str(_EMBEDDING_PORT)],
+            cwd=str(_VOXTERA_ROOT),
+        )
+        # Expose the URL so bot subprocesses (which inherit os.environ) use it.
+        os.environ["VOXTERA_EMBEDDING_URL"] = _EMBEDDING_URL
+        print(f"Embedding sidecar starting on {_EMBEDDING_URL} (pid={_embedding_proc.pid})")
+    # --------------------------------------------------------------------------
     socketserver.ThreadingTCPServer.allow_reuse_address = True
     with socketserver.ThreadingTCPServer(("", port), DemoHandler) as httpd:
         print(f"Serving demo on http://localhost:{port}/demo.html")
@@ -2926,3 +2948,7 @@ if __name__ == "__main__":
             httpd.serve_forever()
         except KeyboardInterrupt:
             print("\nStopped.")
+        finally:
+            if _embedding_proc is not None:
+                _embedding_proc.terminate()
+                _embedding_proc.wait(timeout=5)

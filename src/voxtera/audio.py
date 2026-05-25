@@ -356,6 +356,7 @@ class TranscriptionNoiseFilter(FrameProcessor):
         self._stt = stt
         self._domain_vec: np.ndarray | None = None
         self._embed_sync = None
+        self._domain_vec_ready = False
         self._last_text = ""
         self._last_text_at = 0.0
         # Language consistency tracking: detect suspicious switches on short
@@ -363,11 +364,16 @@ class TranscriptionNoiseFilter(FrameProcessor):
         self._prev_language: str | None = None
         self._consistent_lang_turns: int = 0
 
+    def _ensure_domain_vec(self) -> None:
+        """Lazily compute the domain embedding on first use."""
+        if self._domain_vec_ready:
+            return
+        self._domain_vec_ready = True
         try:
             from voxtera.rag.embeddings import embed_sync
 
             self._embed_sync = embed_sync
-            vec = np.asarray(embed_sync([SYSTEM_PROMPT])[0], dtype=np.float32)
+            vec = np.asarray(self._embed_sync([SYSTEM_PROMPT])[0], dtype=np.float32)
             self._domain_vec = vec
             logger.info("[stt-filter] semantic mode enabled")
         except Exception as exc:
@@ -393,6 +399,7 @@ class TranscriptionNoiseFilter(FrameProcessor):
         return sentence_like >= 3 and n_tokens >= 18 and punct_density >= 0.10 and rep >= 0.25
 
     def _is_semantically_relevant(self, text: str) -> float | None:
+        self._ensure_domain_vec()
         if self._domain_vec is None or self._embed_sync is None:
             return None
         try:

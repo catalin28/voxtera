@@ -386,6 +386,7 @@ def build_pipeline(
     the system prompt is augmented with the per-hotel actions fragment,
     and the ``create_ticket`` tool is registered on the LLM service.
     """
+    _pipeline_t0 = _time.perf_counter()
     mic_enabled = settings.input_mode in ("voice", "hybrid")
 
     if settings.transport_mode not in {"local", "daily"}:
@@ -418,7 +419,28 @@ def build_pipeline(
             )
 
         room_url = f"https://{settings.daily_domain}/{settings.daily_room_name}"
+
+        # Start pre-importing heavy Gladia modules in a background thread.
+        # _eject_stale_bots() below does ~290ms of network I/O which releases
+        # the GIL, giving the background thread time to do CPU-bound imports.
+        _preimport_thread: threading.Thread | None = None
+        if settings.stt_provider == "gladia":
+            from voxtera.stt import preimport_gladia
+
+            _preimport_thread = threading.Thread(target=preimport_gladia, daemon=True)
+            _preimport_thread.start()
+
+        _t0 = _time.perf_counter()
         _eject_stale_bots(settings)
+        logger.info(
+            "[startup] _eject_stale_bots took {:.0f}ms", (_time.perf_counter() - _t0) * 1000
+        )
+
+        # Ensure preimport finished before we hit _build_gladia_stt.
+        if _preimport_thread is not None:
+            _preimport_thread.join(timeout=5.0)
+
+        _t0 = _time.perf_counter()
         transport = DailyTransport(
             room_url,
             None,
@@ -442,6 +464,10 @@ def build_pipeline(
                 camera_out_enabled=False,
                 microphone_out_enabled=True,
             ),
+        )
+        logger.info(
+            "[startup] DailyTransport creation took {:.0f}ms",
+            (_time.perf_counter() - _t0) * 1000,
         )
         logger.info("[daily] transport enabled for room {}", room_url)
 
@@ -495,9 +521,24 @@ def build_pipeline(
                 async def _do_rag_warmup() -> None:
                     from voxtera.rag.embeddings import embed_sync
 
+                    _wt0 = _time.perf_counter()
                     await asyncio.to_thread(embed_sync, ["warmup"])
+                    logger.info(
+                        "[startup] RAG embed model warmup took {:.0f}ms",
+                        (_time.perf_counter() - _wt0) * 1000,
+                    )
+                    _wt1 = _time.perf_counter()
                     await _rag_retriever.warmup(hotel_id=settings.hotel_id)
+                    logger.info(
+                        "[startup] RAG chunk_cache warmup took {:.0f}ms",
+                        (_time.perf_counter() - _wt1) * 1000,
+                    )
+                    _wt2 = _time.perf_counter()
                     await _rag_retriever.warmup_queries(hotel_id=settings.hotel_id)
+                    logger.info(
+                        "[startup] RAG warmup_queries took {:.0f}ms",
+                        (_time.perf_counter() - _wt2) * 1000,
+                    )
 
                 asyncio.create_task(_do_rag_warmup())
 
@@ -584,55 +625,68 @@ def build_pipeline(
     # text-only mode we skip building them — keeps the pipeline lean and
     # avoids loading the Silero ONNX model unnecessarily.
     #
-    # In Daily mode we build *all* STT providers whose credentials are
-    # configured, run them in parallel branches gated by STTRouter, and let
-    # the browser flip the active branch at runtime via voxtera-stt
-    # messages. In local mode we keep the simple single-STT path because
-    # the CLI has no UI to switch from.
+    # Build only the configured STT provider (STT_PROVIDER env var) to
+    # minimize startup time. Runtime switching is not supported.
     stt = None
     needs_vad = True
     stt_branches: dict[str, dict] = {}
     stt_router: STTRouter | None = None
     if mic_enabled:
+        _t0 = _time.perf_counter()
         if settings.transport_mode == "daily":
-            for name, builder in _STT_BUILDERS.items():
-                try:
-                    built = builder(settings)
-                except Exception as exc:  # noqa: BLE001 — log and skip the branch
-                    logger.warning("[stt-router] failed to build {}: {}", name, exc)
-                    built = None
-                if built is not None:
-                    stt_branches[name] = {
-                        "stt": built,
-                        "input_gate": STTGate(kind="input", label=name),
-                        "output_gate": STTGate(kind="output", label=name),
-                        "noise_filter": TranscriptionNoiseFilter(stt=built),
-                    }
-            if not stt_branches:
+            name = settings.stt_provider
+            builder = _STT_BUILDERS.get(name)
+            if builder is None:
                 raise RuntimeError(
-                    "No STT provider could be built. Set at least one of "
-                    "OPENAI_API_KEY, DEEPGRAM_API_KEY, GLADIA_API_KEY, "
-                    "or GOOGLE_APPLICATION_CREDENTIALS."
+                    f"Unknown STT_PROVIDER={name!r}. Use one of: {', '.join(_STT_BUILDERS)}."
                 )
-            initial_provider = (
-                settings.stt_provider
-                if settings.stt_provider in stt_branches
-                else next(iter(stt_branches))
+            _t_build = _time.perf_counter()
+            built = builder(settings)
+            logger.info(
+                "[startup] STT builder() took {:.0f}ms", (_time.perf_counter() - _t_build) * 1000
             )
-            if initial_provider != settings.stt_provider:
-                logger.warning(
-                    "[stt-router] requested provider {!r} not available — " "starting with {!r}",
-                    settings.stt_provider,
-                    initial_provider,
-                )
+            if built is None:
+                raise RuntimeError(f"STT_PROVIDER={name!r} is missing required credentials.")
+            _t_router = _time.perf_counter()
+            _ig = STTGate(kind="input", label=name)
+            logger.info(
+                "[startup]   STTGate(input) {:.0f}ms", (_time.perf_counter() - _t_router) * 1000
+            )
+            _t2 = _time.perf_counter()
+            _og = STTGate(kind="output", label=name)
+            logger.info("[startup]   STTGate(output) {:.0f}ms", (_time.perf_counter() - _t2) * 1000)
+            _t2 = _time.perf_counter()
+            _nf = TranscriptionNoiseFilter(stt=built)
+            logger.info("[startup]   NoiseFilter {:.0f}ms", (_time.perf_counter() - _t2) * 1000)
+            stt_branches[name] = {
+                "stt": built,
+                "input_gate": _ig,
+                "output_gate": _og,
+                "noise_filter": _nf,
+            }
+            logger.info(
+                "[startup] STT branches dict took {:.0f}ms",
+                (_time.perf_counter() - _t_router) * 1000,
+            )
+            _t_router2 = _time.perf_counter()
+            initial_provider = name
             stt_router = STTRouter(stt_branches, initial=initial_provider)
             stt = stt_branches[initial_provider]["stt"]
+            logger.info(
+                "[startup] STTRouter() took {:.0f}ms", (_time.perf_counter() - _t_router2) * 1000
+            )
+            logger.info(
+                "[startup] STT router/gates took {:.0f}ms",
+                (_time.perf_counter() - _t_router) * 1000,
+            )
             # Always run Silero VAD: at least one branch (Whisper or Google)
             # needs it, and Deepgram tolerates redundant VAD events.
             needs_vad = True
         else:
             stt, needs_vad = _build_stt(settings)
+        logger.info("[startup] STT providers took {:.0f}ms", (_time.perf_counter() - _t0) * 1000)
 
+    _t0 = _time.perf_counter()
     vad_processor = None
     if mic_enabled and needs_vad:
         vad_processor = VADProcessor(
@@ -648,7 +702,9 @@ def build_pipeline(
         )
     if mic_enabled and not needs_vad:
         logger.info("[vad] external VAD skipped (STT provides its own)")
+    logger.info("[startup] VAD (Silero) took {:.0f}ms", (_time.perf_counter() - _t0) * 1000)
 
+    _t0 = _time.perf_counter()
     if LLM_MODEL in ("gpt-4o-mini",):
         llm: FrameProcessor = OpenAILLMService(
             api_key=settings.openai_api_key,
@@ -680,11 +736,13 @@ def build_pipeline(
             "[llm] using Anthropic model {} (prompt-caching=on, max_tokens=250)",
             LLM_MODEL,
         )
+    logger.info("[startup] LLM service took {:.0f}ms", (_time.perf_counter() - _t0) * 1000)
 
     # Build TTS providers. In Daily mode we build every provider with valid
     # credentials and run them as gated parallel branches like STT, so the
     # browser can flip between OpenAI tts-1 and Google Chirp 3 HD instantly.
     # In local mode we keep a single TTS instance.
+    _t0 = _time.perf_counter()
     tts_branches: dict[str, dict] = {}
     tts_router: TTSRouter | None = None
     if settings.transport_mode == "daily":
@@ -712,7 +770,7 @@ def build_pipeline(
         )
         if initial_tts_provider != settings.tts_provider:
             logger.warning(
-                "[tts-router] requested provider {!r} not available — " "starting with {!r}",
+                "[tts-router] requested provider {!r} not available — starting with {!r}",
                 settings.tts_provider,
                 initial_tts_provider,
             )
@@ -732,6 +790,7 @@ def build_pipeline(
                 f"TTS_PROVIDER={settings.tts_provider!r} is missing required credentials."
             )
         tts = built
+    logger.info("[startup] TTS providers took {:.0f}ms", (_time.perf_counter() - _t0) * 1000)
 
     # Conversation context. The system prompt does the heavy lifting on the
     # multilingual requirement — see src/voxtera/prompts/system_prompt.py.
@@ -761,10 +820,12 @@ def build_pipeline(
     #    this single value is the entire source of the ~3s stt->llm p95
     #    spikes — turns where the model mispredicts "incomplete" wait out the
     #    full window. settings.smart_turn_stop_secs (default 2.0) caps it.
+    _t0 = _time.perf_counter()
     _smart_turn = LocalSmartTurnAnalyzerV3(
         cpu_count=settings.smart_turn_cpu_count,
         params=SmartTurnParams(stop_secs=settings.smart_turn_stop_secs),
     )
+    logger.info("[startup] SmartTurn ONNX took {:.0f}ms", (_time.perf_counter() - _t0) * 1000)
     _user_turn_strategies = UserTurnStrategies(
         start=default_user_turn_start_strategies(),
         stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=_smart_turn)],
@@ -954,6 +1015,7 @@ def build_pipeline(
 
     # RAG: optionally inject hotel knowledge before the LLM sees the context.
     if settings.rag_enabled:
+        _t0 = _time.perf_counter()
         # The embedding model load (3-8s cold) is deferred to _on_joined so
         # it doesn't block the "ready" event. The Retriever/Store/Injector are
         # cheap to create (object init + SQLite schema) and are wired in now.
@@ -981,6 +1043,10 @@ def build_pipeline(
         if _probing:
             processors.append(PipelineProbe("after_rag"))
         logger.info("[rag] enabled for hotel_id={!r}", settings.hotel_id)
+        logger.info(
+            "[startup] RAG init (store+retriever) took {:.0f}ms",
+            (_time.perf_counter() - _t0) * 1000,
+        )
 
     # Time context: give the LLM the guest's current local time on every turn,
     # so it can answer time-sensitive questions (opening hours, checkout time,
@@ -1133,4 +1199,8 @@ def build_pipeline(
         tts=tts,
     )
 
+    logger.info(
+        "[startup] build_pipeline TOTAL took {:.0f}ms",
+        (_time.perf_counter() - _pipeline_t0) * 1000,
+    )
     return task, runner
