@@ -2958,6 +2958,37 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
+
+    # --- Kill stale bot processes from previous runs --------------------------
+    # Prevents ghost bots from holding Daily rooms or STT sessions open.
+    import signal
+
+    _my_pid = os.getpid()
+    _killed = []
+    try:
+        import psutil
+
+        for proc in psutil.process_iter(["pid", "cmdline"]):
+            if proc.info["pid"] == _my_pid:
+                continue
+            cmdline = proc.info.get("cmdline") or []
+            if any("voxtera.bot" in arg for arg in cmdline):
+                proc.send_signal(signal.SIGKILL)
+                _killed.append(proc.info["pid"])
+    except ImportError:
+        # psutil not available — fall back to pkill
+        import subprocess as _sp
+
+        result = _sp.run(
+            ["pkill", "-9", "-f", "voxtera.bot"],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            _killed.append("(pkill)")
+    if _killed:
+        print(f"[startup] killed stale bot processes: {_killed}")
+    # --------------------------------------------------------------------------
+
     # Resolve the launcher base URL once we know the actual port. Spawned bot
     # subprocesses receive this as ``VOXTERA_LAUNCHER_URL`` and POST events to
     # ``{LAUNCHER_BASE_URL}/api/bot-event`` via ``launcher_client.post_event``.
