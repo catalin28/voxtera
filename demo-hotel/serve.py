@@ -623,6 +623,7 @@ def _spawn_bot(
     tune_port: int,
     llm_model: str | None = None,
     room_name: str | None = None,
+    stt_provider: str | None = None,
 ) -> subprocess.Popen:
     """Spawn ``python -m voxtera.bot`` as a subprocess for this session.
 
@@ -639,6 +640,8 @@ def _spawn_bot(
         env["LLM_MODEL_OVERRIDE"] = llm_model
     if room_name:
         env["DAILY_ROOM_NAME"] = room_name
+    if stt_provider:
+        env["STT_PROVIDER"] = stt_provider
 
     proc = subprocess.Popen(
         [sys.executable, "-m", "voxtera.bot"],
@@ -1214,6 +1217,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # file handler in SimpleHTTPRequestHandler.
         if self.path == "/api/languages":
             return self._handle_languages()
+        if self.path == "/api/stt-providers":
+            return self._handle_stt_providers()
         if self.path == "/api/admin/health":
             return self._handle_admin_health()
         if self.path == "/api/admin/config":
@@ -1912,6 +1917,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         except Exception:  # noqa: BLE001
             pass
         llm_model = body.get("llm") or None
+        stt_provider = body.get("stt") or None
 
         # --- Dynamic room creation ---
         if _DAILY_DYNAMIC_ROOMS and _DAILY_API_KEY:
@@ -1956,6 +1962,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 tune_port,
                 llm_model=llm_model,
                 room_name=room_name,
+                stt_provider=stt_provider,
             )
         except Exception as exc:
             print(f"[launcher] spawn failed: {exc}")
@@ -2451,6 +2458,20 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "public, max-age=300")
         self.end_headers()
         self.wfile.write(body)
+
+    def _handle_stt_providers(self):
+        """GET /api/stt-providers — available STT engines and current default."""
+        from voxtera.stt import _STT_BUILDERS
+
+        current = os.environ.get("STT_PROVIDER", "whisper").lower()
+        providers = list(_STT_BUILDERS.keys())
+        payload = json.dumps({"providers": providers, "current": current}).encode("utf-8")
+        self.send_response(200)
+        self._cors_headers()
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
 
     def _handle_tts_test(self):
         try:

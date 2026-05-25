@@ -50,7 +50,12 @@ from voxtera.call_record import (
     record_user_turn,
 )
 from voxtera.conversation_logger import log_bot_reply, log_user_query
-from voxtera.stt import STT_MODEL_DEEPGRAM, STT_MODEL_GOOGLE, STT_MODEL_WHISPER
+from voxtera.stt import (
+    STT_MODEL_DEEPGRAM,
+    STT_MODEL_ELEVENLABS,
+    STT_MODEL_GOOGLE,
+    STT_MODEL_WHISPER,
+)
 from voxtera.trace import emit as _trace_emit
 from voxtera.trace import tracker as _trace_tracker
 from voxtera.tts import (
@@ -73,6 +78,7 @@ _STT_MODEL_BY_PROVIDER = {
     # so the dashboard doesn't fall back to a stale model name from a
     # previous provider when the user switches to chirp2.
     "google-chirp2": "chirp_2",
+    "elevenlabs": STT_MODEL_ELEVENLABS,
 }
 _TTS_MODEL_BY_PROVIDER = {
     "openai": TTS_MODEL,

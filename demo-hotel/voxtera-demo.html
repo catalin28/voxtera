@@ -661,6 +661,27 @@
     font-size:0.8rem;color:var(--ink-soft);flex-shrink:0;
   }
   #diag-refresh-devices:hover{background:var(--line-strong);}
+  #diag-stt-row{
+    padding:0.4rem 0.8rem 0.5rem;
+    border-bottom:1px solid var(--line);
+    flex-shrink:0;
+    display:flex;align-items:center;gap:6px;
+    font-size:0.63rem;font-family:'JetBrains Mono',monospace;
+  }
+  #diag-stt-row label{
+    color:var(--ink-soft);white-space:nowrap;flex-shrink:0;
+  }
+  #diag-stt-select{
+    flex:1;min-width:0;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.62rem;
+    background:var(--cream-deep,#e8e2d9);
+    border:1px solid var(--line-strong);
+    border-radius:5px;
+    color:var(--ink);
+    padding:3px 4px;
+    cursor:pointer;
+  }
   #diag-actions{
     padding:0.5rem 0.8rem;
     border-bottom:1px solid var(--line);
@@ -906,6 +927,10 @@
   <div id="diag-actions">
     <button id="diag-mic-test" title="Click to record, click again to stop">&#127908; Test mic</button>
   </div>
+  <div id="diag-stt-row">
+    <label for="diag-stt-select">STT Engine</label>
+    <select id="diag-stt-select"><option value="">— loading… —</option></select>
+  </div>
   <div id="diag-feed"></div>
 </aside>
 
@@ -934,7 +959,7 @@
   const stopBtn     = document.getElementById('stop-btn');
 
   // ─── state ───
-  let currentLang = 'en';
+  let currentLang = 'auto';
   let sessionId   = null;
   let isBusy      = false;
   let inCall      = false;
@@ -1045,6 +1070,34 @@
   document.getElementById('diag-refresh-devices').addEventListener('click', () => {
     diagLog('info', '🔄 Re-scanning devices…');
     _populateMicSelect();
+  });
+
+  // ─── STT engine selector ───
+  const diagSttSelect = document.getElementById('diag-stt-select');
+  let _selectedStt = ''; // will hold the user's choice (or default from server)
+
+  (async function _populateSttSelect() {
+    try {
+      const resp = await fetch('/api/stt-providers');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      diagSttSelect.innerHTML = '';
+      for (const p of data.providers) {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        if (p === data.current) opt.selected = true;
+        diagSttSelect.appendChild(opt);
+      }
+      _selectedStt = data.current;
+    } catch (e) {
+      diagSttSelect.innerHTML = '<option value="">— error —</option>';
+    }
+  })();
+
+  diagSttSelect.addEventListener('change', () => {
+    _selectedStt = diagSttSelect.value;
+    diagLog('info', `🔊 STT engine → ${_selectedStt}`);
   });
 
   // ─── mic test button ───
@@ -1478,7 +1531,7 @@
         body: JSON.stringify({
           language: currentLang === 'auto' ? 'multi' : currentLang,
           llm: 'claude-haiku-4-5',
-          stt: 'gladia',
+          stt: _selectedStt || undefined,
           ttsProvider: 'elevenlabs',
           voice: '21m00Tcm4TlvDq8ikWAM'
         })
@@ -1527,7 +1580,7 @@
       // language/TTS/STT/model to use before playing the greeting.
       if (!evt.participant.local) {
         diagLog('info', '🤖 Bot joined Daily room — sending config');
-        _dailyCallObj.sendAppMessage({ type: 'voxtera-stt',          provider: 'gladia' }, '*');
+        // STT provider is set server-side via STT_PROVIDER env var; no need to send voxtera-stt.
         _dailyCallObj.sendAppMessage({ type: 'voxtera-language',     language: currentLang === 'auto' ? 'multi' : currentLang }, '*');
         _dailyCallObj.sendAppMessage({ type: 'voxtera-timezone',     tz: (Intl.DateTimeFormat().resolvedOptions().timeZone || '') }, '*');
         _dailyCallObj.sendAppMessage({ type: 'voxtera-model',        model: 'claude-haiku-4-5' }, '*');
@@ -2027,7 +2080,7 @@
   setTimeout(playWelcome, 900);
 
   // initialise chips for default language
-  updateChips('en');
+  updateChips('auto');
 
   setTimeout(() => input.focus(), 800);
 

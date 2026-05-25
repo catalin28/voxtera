@@ -39,6 +39,8 @@ STT_MODEL_DEEPGRAM = "nova-3-general"
 # This is also Pipecat's default for GladiaSTTService, but we set it
 # explicitly so a future Pipecat upgrade can't silently change the model.
 STT_MODEL_GLADIA = "solaria-1"
+# ElevenLabs Scribe v2 realtime: WebSocket streaming, 100+ languages.
+STT_MODEL_ELEVENLABS = "scribe_v2_realtime"
 # Google Speech-to-Text V2 streaming model name.
 #
 # `latest_long` is the conservative default: broadly available across all
@@ -917,6 +919,42 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     return stt
 
 
+def _build_elevenlabs_stt(settings: Settings) -> FrameProcessor | None:
+    """Build ElevenLabs Realtime STT (Scribe v2) if API key is present."""
+    if not settings.elevenlabs_api_key:
+        return None
+    _imp_t0 = time.perf_counter()
+    try:
+        from pipecat.services.elevenlabs.stt import (
+            CommitStrategy,
+            ElevenLabsRealtimeSTTService,
+        )
+    except ImportError:
+        logger.warning(
+            "[stt] elevenlabs STT extras not installed — "
+            "install with: uv add 'pipecat-ai[elevenlabs]'"
+        )
+        return None
+    logger.debug("[stt] elevenlabs import took {:.0f}ms", (time.perf_counter() - _imp_t0) * 1000)
+
+    _t_ctor = time.perf_counter()
+    stt = ElevenLabsRealtimeSTTService(
+        api_key=settings.elevenlabs_api_key,
+        sample_rate=16000,
+        # MANUAL commit = Pipecat's Silero VAD controls turn boundaries
+        # (consistent with how we use Gladia/Whisper/Google).
+        commit_strategy=CommitStrategy.MANUAL,
+        include_language_detection=True,
+    )
+    logger.info(
+        "[stt] elevenlabs constructor took {:.0f}ms", (time.perf_counter() - _t_ctor) * 1000
+    )
+
+    stt.last_detected_language = None  # type: ignore[attr-defined]
+    logger.info("[stt] elevenlabs available (model={})", STT_MODEL_ELEVENLABS)
+    return stt
+
+
 def _build_google_stt(settings: Settings) -> FrameProcessor | None:
     """Build the Google STT service if its credentials are present and valid."""
     if not settings.google_application_credentials:
@@ -1006,6 +1044,7 @@ _STT_BUILDERS: dict[str, Callable[[Settings], FrameProcessor | None]] = {
     "whisper": _build_whisper_stt,
     "deepgram": _build_deepgram_stt,
     "gladia": _build_gladia_stt,
+    "elevenlabs": _build_elevenlabs_stt,
     "google": _build_google_stt,
     "google-chirp2": _build_google_chirp2_stt,
 }
@@ -1022,7 +1061,7 @@ def _build_stt(settings: Settings) -> tuple[FrameProcessor, bool]:
     if builder is None:
         raise RuntimeError(
             f"Unknown STT_PROVIDER={provider!r}. "
-            "Use one of: whisper, deepgram, gladia, google, google-chirp2."
+            "Use one of: whisper, deepgram, gladia, elevenlabs, google, google-chirp2."
         )
     stt = builder(settings)
     if stt is None:
@@ -1102,6 +1141,7 @@ _GOOGLE_AUTO_LANGUAGES: list[Language] = [
     Language.EN_US,
     Language.ES_ES,
     Language.FR_FR,
+    Language.RO_RO,
 ]
 
 _GOOGLE_LANGUAGE_MAP = {

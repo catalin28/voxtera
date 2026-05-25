@@ -241,6 +241,9 @@ def _provider_supports_language(provider: str, lang: str) -> bool:
         # auto-detection. Treat the same broad set as Whisper as
         # supported — anything we expose in the UI dropdown.
         return lang in _VALID_STT_LANGUAGES
+    if provider == "elevenlabs":
+        # ElevenLabs Scribe v2 supports 100+ languages.
+        return lang in _VALID_STT_LANGUAGES
     return False
 
 
