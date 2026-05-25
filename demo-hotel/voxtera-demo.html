@@ -102,11 +102,11 @@
   /* ============ MAIN STAGE ============ */
   main{
     position:relative;z-index:2;
-    flex:1;
+    flex:1 1 0;min-height:0;
     display:flex;flex-direction:column;
-    align-items:center;justify-content:center;
-    padding:2rem;
-    overflow:hidden;
+    align-items:center;justify-content:safe center;
+    padding:1rem 2rem 140px;
+    overflow-y:auto;
   }
 
   /* tagline */
@@ -154,8 +154,8 @@
   /* ============ ORB ============ */
   .orb-wrap{
     position:relative;
-    margin:1.5rem 0;
-    width:min(360px, 52vw);
+    margin:1rem 0;
+    width:min(260px, 40vw);
     aspect-ratio:1/1;
     display:flex;align-items:center;justify-content:center;
     opacity:0;
@@ -342,14 +342,55 @@
   }
   #stop-btn:hover{ background:var(--rust); color:var(--cream); }
 
-  /* ============ TRANSCRIPT ============ */
+  /* ============ CHAT DRAWER (transcript panel) ============ */
+  #chat-drawer{
+    position:fixed;
+    bottom:140px;left:0;right:0;
+    z-index:90;
+    max-height:50vh;
+    background:var(--paper);
+    border-top:1px solid var(--line-strong);
+    border-radius:20px 20px 0 0;
+    box-shadow:0 -8px 32px -6px rgba(26,24,20,0.15);
+    display:flex;flex-direction:column;
+    transform:translateY(calc(100% + 140px));
+    transition:transform .35s cubic-bezier(.2,.7,.2,1);
+    pointer-events:none;
+  }
+  #chat-drawer.open{
+    transform:translateY(0);
+    pointer-events:auto;
+  }
+  #chat-drawer-handle{
+    flex-shrink:0;
+    padding:10px 0 4px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:grab;
+  }
+  #chat-drawer-handle::before{
+    content:"";width:36px;height:4px;
+    border-radius:2px;background:var(--line-strong);
+  }
+  #chat-drawer-header{
+    flex-shrink:0;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0.3rem 1.2rem 0.6rem;
+  }
+  #chat-drawer-header h4{
+    margin:0;font-family:'JetBrains Mono',monospace;
+    font-size:0.65rem;text-transform:uppercase;
+    letter-spacing:0.14em;color:var(--rust);
+  }
+  #chat-drawer-close{
+    background:none;border:none;cursor:pointer;
+    color:var(--ink-soft);font-size:1rem;padding:2px 8px;
+    border-radius:6px;
+  }
+  #chat-drawer-close:hover{background:var(--cream-deep);}
   .transcript{
-    position:relative;z-index:2;
-    width:min(720px, 100% - 4rem);
-    margin:1rem auto 0;
-    max-height:32vh;
+    flex:1;
     overflow-y:auto;
-    padding:0 0.4rem;
+    padding:0 1.2rem 1rem;
     scrollbar-width:thin;
     scrollbar-color:var(--line-strong) transparent;
   }
@@ -411,8 +452,9 @@
 
   /* ============ INPUT BAR ============ */
   .input-bar-wrap{
-    position:relative;z-index:5;
-    padding:1.2rem 2rem 1.6rem;
+    position:fixed;bottom:0;left:0;right:0;
+    z-index:95;
+    padding:0.8rem 2rem 1.2rem;
     background:linear-gradient(to bottom, transparent, var(--cream) 30%);
   }
   .input-bar{
@@ -505,6 +547,18 @@
     background:#ccc;
     display:inline-flex;align-items:center;justify-content:center;
     font-size:0.9rem;
+  }
+  .flag-img{
+    width:22px;height:22px;
+    border-radius:50%;
+    object-fit:cover;
+    display:block;
+  }
+  .lang-menu .flag-img{
+    width:20px;height:20px;
+    border-radius:50%;
+    object-fit:cover;
+    flex-shrink:0;
   }
   .lang-chip .chev{opacity:0.6;font-size:0.6em;}
 
@@ -764,24 +818,144 @@
   }
   #diag-toggle.open{ right:340px; }
 
+  /* ============ HOTEL STRIP (topbar center) ============ */
+  .hotel-strip{
+    position:absolute;left:50%;transform:translateX(-50%);
+    text-align:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.68rem;
+    letter-spacing:0.08em;
+    display:flex;flex-direction:column;align-items:center;gap:0.1rem;
+  }
+  .hotel-name{
+    color:var(--ink);
+    font-weight:500;
+    text-transform:uppercase;
+    letter-spacing:0.14em;
+  }
+  .hotel-meta{
+    color:var(--gold-deep);
+    font-size:0.6rem;
+    letter-spacing:0.12em;
+  }
+
+  /* ============ SUGGESTION CHIPS ============ */
+  .suggestions{
+    display:flex;flex-wrap:nowrap;justify-content:center;
+    gap:0.5rem;
+    padding:0.75rem 1.5rem 0;
+    overflow-x:auto;
+    scrollbar-width:none;
+    -ms-overflow-style:none;
+    opacity:1;
+    transition:opacity .3s;
+    pointer-events:auto;
+  }
+  .suggestions::-webkit-scrollbar{display:none;}
+  .chip{
+    flex-shrink:0;
+    white-space:nowrap;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;
+    letter-spacing:0.04em;
+    padding:0.5rem 1rem;
+    border-radius:999px;
+    border:1px solid var(--line-strong);
+    background:var(--paper);
+    color:var(--ink);
+    cursor:pointer;
+    transition:background .2s, border-color .2s, color .2s, transform .15s;
+  }
+  .chip:hover{
+    background:var(--cream-deep);
+    border-color:var(--gold);
+    color:var(--rust);
+    transform:translateY(-1px);
+  }
+
   /* ============ RESPONSIVE ============ */
   @media (max-width:640px){
     .topbar{padding:1rem 1rem;}
     .topbar-right{gap:0.8rem;font-size:0.65rem;}
     .topbar-right a:not(.session-state){display:none;}
-    main{padding:1rem;}
+    .hotel-strip{display:none;}
+    main{padding:1rem 1rem 130px;}
     .stage-title{font-size:1.4rem;}
     .stage-sub{font-size:0.95rem;}
-    .orb-wrap{width:min(280px, 64vw);}
+    .orb-wrap{width:min(220px, 50vw);}
     .orb-call-btn{width:54px;height:54px;}
     .orb-call-btn svg{width:20px;height:20px;}
-    .transcript{max-height:24vh;}
+    .suggestions{gap:0.35rem;padding:0.5rem 1rem 0;}
+    .chip{font-size:0.65rem;padding:0.4rem 0.75rem;}
+    .transcript{min-height:unset;max-height:unset;}
+    #chat-drawer{bottom:120px;transform:translateY(calc(100% + 120px));}
     .input-bar-wrap{padding:0.8rem 1rem 1.2rem;}
     .input-bar{padding:0.7rem 0.9rem;border-radius:18px;}
   }
+
+  /* ─── Demo gate modal ─── */
+  .demo-badge{position:fixed;top:12px;right:12px;z-index:1100;font-size:0.75rem;
+    padding:4px 10px;border-radius:12px;font-weight:600;pointer-events:none;}
+  .demo-badge.limited{background:#fff3cd;color:#856404;}
+  .demo-badge.full{background:#d4edda;color:#155724;}
+  #demo-gate-modal{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;
+    justify-content:center;background:rgba(0,0,0,0.55);opacity:0;pointer-events:none;
+    transition:opacity .25s;}
+  #demo-gate-modal.open{opacity:1;pointer-events:auto;}
+  .gate-card{background:#fff;border-radius:16px;padding:2rem;max-width:380px;width:90%;
+    box-shadow:0 8px 32px rgba(0,0,0,0.25);text-align:center;position:relative;}
+  .gate-card h3{margin:0 0 0.5rem;font-size:1.2rem;color:#1a1a1a;}
+  .gate-card p{margin:0 0 1rem;font-size:0.9rem;color:#555;line-height:1.4;}
+  .gate-input{width:100%;padding:0.7rem;border:1.5px solid #ddd;border-radius:10px;
+    font-size:0.95rem;box-sizing:border-box;margin-bottom:0.75rem;transition:border-color .2s;}
+  .gate-input:focus{outline:none;border-color:#b88b4a;}
+  .gate-btn{width:100%;padding:0.7rem;border:none;border-radius:10px;font-size:0.95rem;
+    font-weight:600;cursor:pointer;transition:background .2s;}
+  .gate-btn-primary{background:#b88b4a;color:#fff;}
+  .gate-btn-primary:hover{background:#a07a3f;}
+  .gate-btn-secondary{background:#f0ebe3;color:#5a4a3a;margin-top:0.5rem;}
+  .gate-btn-secondary:hover{background:#e8e0d5;}
+  .gate-close{position:absolute;top:12px;right:14px;background:none;border:none;
+    font-size:1.3rem;cursor:pointer;color:#999;line-height:1;}
+  .gate-error{color:#c0392b;font-size:0.82rem;margin:0.5rem 0;display:none;}
+  .gate-success{color:#27ae60;font-size:0.82rem;margin:0.5rem 0;display:none;}
+  .gate-link{color:#b88b4a;text-decoration:underline;cursor:pointer;font-size:0.85rem;}
 </style>
 </head>
 <body>
+
+<!-- Demo gate badge -->
+<div id="demo-gate-badge" class="demo-badge limited"></div>
+
+<!-- Demo gate modal -->
+<div id="demo-gate-modal">
+  <div class="gate-card">
+    <button class="gate-close" onclick="document.getElementById('demo-gate-modal').classList.remove('open')">&times;</button>
+
+    <!-- Code entry view -->
+    <div class="gate-code-view">
+      <h3>Enter your access code</h3>
+      <p>Paste the code from your email to unlock the full demo (voice + unlimited text).</p>
+      <input class="gate-input" id="gate-code-input" placeholder="Paste access code here…" autocomplete="off">
+      <div class="gate-error" id="gate-code-error"></div>
+      <button class="gate-btn gate-btn-primary" id="gate-code-submit">Unlock demo</button>
+      <p style="margin-top:1rem"><span class="gate-link" id="gate-show-request">Don't have a code? Request one free</span></p>
+    </div>
+
+    <!-- Request code view -->
+    <div class="gate-request-view" style="display:none">
+      <h3>Request a free access code</h3>
+      <p>We'll email you a code that unlocks voice calls and unlimited text chat for 7 days.</p>
+      <input class="gate-input" id="gate-req-name" placeholder="Your name" autocomplete="name">
+      <input class="gate-input" id="gate-req-email" placeholder="Work email" autocomplete="email" type="email">
+      <input class="gate-input" id="gate-req-company" placeholder="Company (optional)" autocomplete="organization">
+      <div class="gate-error" id="gate-req-error"></div>
+      <div class="gate-success" id="gate-req-success"></div>
+      <button class="gate-btn gate-btn-primary" id="gate-req-submit">Send me a code</button>
+      <button class="gate-btn gate-btn-secondary" id="gate-show-code">I already have a code</button>
+    </div>
+  </div>
+</div>
 
 <!-- TOP BAR -->
 <header class="topbar">
@@ -829,7 +1003,22 @@
   <div class="stage-caption" id="stage-caption">Tap the orb, or send a message below to begin.</div>
   <button id="stop-btn" aria-label="Stop speaking">⏹ Stop</button>
 
-  <!-- SUGGESTION CHIPS (content updated by JS on language change) -->
+  <!-- TRANSCRIPT -->
+</main>
+
+<!-- CHAT DRAWER (slide-up panel) -->
+<div id="chat-drawer">
+  <div id="chat-drawer-handle"></div>
+  <div id="chat-drawer-header">
+    <h4>● Conversation</h4>
+    <button id="chat-drawer-close" aria-label="Minimize chat">✕</button>
+  </div>
+  <div class="transcript" id="transcript" aria-live="polite"></div>
+</div>
+
+<!-- INPUT BAR -->
+<div class="input-bar-wrap">
+  <!-- SUGGESTION CHIPS -->
   <div class="suggestions" id="suggestions" aria-label="Suggested questions">
     <button class="chip" data-prompt="What's the WiFi password?">WiFi password?</button>
     <button class="chip" data-prompt="Any good restaurants nearby?">Restaurants nearby</button>
@@ -838,13 +1027,6 @@
     <button class="chip" data-prompt="What are the spa opening hours?">Spa hours</button>
     <button class="chip" data-prompt="Can you recommend something to do in Paris?">Things to do</button>
   </div>
-
-  <!-- TRANSCRIPT -->
-  <div class="transcript" id="transcript" aria-live="polite"></div>
-</main>
-
-<!-- INPUT BAR -->
-<div class="input-bar-wrap">
   <form class="input-bar" id="chat-form" autocomplete="off">
     <div class="input-row">
       <textarea
@@ -873,24 +1055,24 @@
         </button>
         <div class="lang-wrap">
           <button type="button" class="lang-chip" id="lang-btn" aria-label="Change language" aria-haspopup="true">
-            <span class="flag" id="lang-flag">🇺🇸</span>
+            <span class="flag" id="lang-flag"><img class="flag-img" src="https://flagcdn.com/w40/us.png" alt=""></span>
             <span id="lang-label">English</span>
             <span class="chev">▾</span>
           </button>
           <div class="lang-menu" id="lang-menu" role="menu">
-            <button type="button" data-lang="en" data-flag="🇺🇸" class="active">🇺🇸 English</button>
-            <button type="button" data-lang="fr" data-flag="🇫🇷">🇫🇷 Français</button>
-            <button type="button" data-lang="es" data-flag="🇪🇸">🇪🇸 Español</button>
-            <button type="button" data-lang="de" data-flag="🇩🇪">🇩🇪 Deutsch</button>
-            <button type="button" data-lang="it" data-flag="🇮🇹">🇮🇹 Italiano</button>
-            <button type="button" data-lang="pt" data-flag="🇵🇹">🇵🇹 Português</button>
-            <button type="button" data-lang="ro" data-flag="🇷🇴">🇷🇴 Română</button>
-            <button type="button" data-lang="tr" data-flag="🇹🇷">🇹🇷 Türkçe</button>
-            <button type="button" data-lang="ru" data-flag="🇷🇺">🇷🇺 Русский</button>
-            <button type="button" data-lang="ar" data-flag="🇦🇪">🇦🇪 العربية</button>
-            <button type="button" data-lang="ja" data-flag="🇯🇵">🇯🇵 日本語</button>
-            <button type="button" data-lang="zh" data-flag="🇨🇳">🇨🇳 中文</button>
-            <button type="button" data-lang="auto" data-flag="🌐">🌐 Auto-detect</button>
+            <button type="button" data-lang="en" data-flag="us" class="active"><img class="flag-img" src="https://flagcdn.com/w40/us.png" alt=""> English</button>
+            <button type="button" data-lang="fr" data-flag="fr"><img class="flag-img" src="https://flagcdn.com/w40/fr.png" alt=""> Français</button>
+            <button type="button" data-lang="es" data-flag="es"><img class="flag-img" src="https://flagcdn.com/w40/es.png" alt=""> Español</button>
+            <button type="button" data-lang="de" data-flag="de"><img class="flag-img" src="https://flagcdn.com/w40/de.png" alt=""> Deutsch</button>
+            <button type="button" data-lang="it" data-flag="it"><img class="flag-img" src="https://flagcdn.com/w40/it.png" alt=""> Italiano</button>
+            <button type="button" data-lang="pt" data-flag="pt"><img class="flag-img" src="https://flagcdn.com/w40/pt.png" alt=""> Português</button>
+            <button type="button" data-lang="ro" data-flag="ro"><img class="flag-img" src="https://flagcdn.com/w40/ro.png" alt=""> Română</button>
+            <button type="button" data-lang="tr" data-flag="tr"><img class="flag-img" src="https://flagcdn.com/w40/tr.png" alt=""> Türkçe</button>
+            <button type="button" data-lang="ru" data-flag="ru"><img class="flag-img" src="https://flagcdn.com/w40/ru.png" alt=""> Русский</button>
+            <button type="button" data-lang="ar" data-flag="ae"><img class="flag-img" src="https://flagcdn.com/w40/ae.png" alt=""> العربية</button>
+            <button type="button" data-lang="ja" data-flag="jp"><img class="flag-img" src="https://flagcdn.com/w40/jp.png" alt=""> 日本語</button>
+            <button type="button" data-lang="zh" data-flag="cn"><img class="flag-img" src="https://flagcdn.com/w40/cn.png" alt=""> 中文</button>
+            <button type="button" data-lang="auto" data-flag="globe"><img class="flag-img" src="https://flagcdn.com/w40/un.png" alt=""> Auto-detect</button>
           </div>
         </div>
       </div>
@@ -963,13 +1145,95 @@
   let sessionId   = null;
   let isBusy      = false;
   let inCall      = false;
-  let callRecognition = null;
   let micRecognition  = null;
   let micActive       = false;
   let _currentAbort   = null;   // AbortController for in-flight fetch
   let _audioQueue     = [];     // shared audio queue ref for stop
   let _audioEl        = audioEl;
   let _selectedMicDeviceId = null;  // synced with the panel dropdown
+  let _dailyCallObj   = null;
+  let _dailySessionId = null;
+
+  // ─── Demo access gate state ───
+  const _DEMO_FREE_LIMIT = 3;
+  let _demoToken = localStorage.getItem('voxtera_demo_token') || '';
+  let _msgCount  = parseInt(localStorage.getItem('voxtera_demo_msg_count') || '0', 10);
+  let _msgCountResetAt = parseInt(localStorage.getItem('voxtera_demo_msg_reset') || '0', 10);
+  // Reset counter after 24h
+  if (Date.now() > _msgCountResetAt) {
+    _msgCount = 0;
+    _msgCountResetAt = Date.now() + 86400000;
+    localStorage.setItem('voxtera_demo_msg_count', '0');
+    localStorage.setItem('voxtera_demo_msg_reset', String(_msgCountResetAt));
+  }
+
+  function _demoHasToken() { return !!_demoToken; }
+  function _demoCanChat() { return _demoHasToken() || _msgCount < _DEMO_FREE_LIMIT; }
+  function _demoCanVoice() { return _demoHasToken(); }
+  function _demoIncrementCount() {
+    _msgCount++;
+    localStorage.setItem('voxtera_demo_msg_count', String(_msgCount));
+    if (!_msgCountResetAt || Date.now() > _msgCountResetAt) {
+      _msgCountResetAt = Date.now() + 86400000;
+      localStorage.setItem('voxtera_demo_msg_reset', String(_msgCountResetAt));
+    }
+  }
+  function _demoSetToken(token) {
+    _demoToken = token;
+    localStorage.setItem('voxtera_demo_token', token);
+    // Hide modal if open
+    const m = document.getElementById('demo-gate-modal');
+    if (m) m.classList.remove('open');
+    // Update remaining counter
+    _demoUpdateBadge();
+  }
+  function _demoUpdateBadge() {
+    const badge = document.getElementById('demo-gate-badge');
+    if (!badge) return;
+    if (_demoHasToken()) {
+      badge.textContent = '✓ Full access';
+      badge.className = 'demo-badge full';
+    } else {
+      const rem = Math.max(0, _DEMO_FREE_LIMIT - _msgCount);
+      badge.textContent = rem + ' free message' + (rem !== 1 ? 's' : '') + ' left';
+      badge.className = 'demo-badge limited';
+    }
+  }
+  function _demoShowModal(mode) {
+    const m = document.getElementById('demo-gate-modal');
+    if (!m) return;
+    m.classList.add('open');
+    const codeView = m.querySelector('.gate-code-view');
+    const reqView  = m.querySelector('.gate-request-view');
+    if (mode === 'request') {
+      codeView.style.display = 'none';
+      reqView.style.display = '';
+    } else {
+      codeView.style.display = '';
+      reqView.style.display = 'none';
+    }
+  }
+
+  // ─── Chat drawer ───
+  const chatDrawer = document.getElementById('chat-drawer');
+  const chatDrawerClose = document.getElementById('chat-drawer-close');
+  const suggestionsEl = document.getElementById('suggestions');
+  function _openChatDrawer() {
+    chatDrawer.classList.add('open');
+    suggestionsEl.style.opacity = '0';
+    suggestionsEl.style.pointerEvents = 'none';
+  }
+  function _closeChatDrawer() {
+    chatDrawer.classList.remove('open');
+    suggestionsEl.style.opacity = '1';
+    suggestionsEl.style.pointerEvents = 'auto';
+  }
+  chatDrawerClose.addEventListener('click', _closeChatDrawer);
+  // Tapping the handle also toggles
+  document.getElementById('chat-drawer-handle').addEventListener('click', () => {
+    if (chatDrawer.classList.contains('open')) _closeChatDrawer();
+    else _openChatDrawer();
+  });
 
   // ─── diagnostic panel ───
   const diagPanel   = document.getElementById('diag-panel');
@@ -1278,6 +1542,7 @@
 
   // ─── add message to transcript ───
   function addMessage(who, text) {
+    _openChatDrawer();
     const wrap   = document.createElement('div');
     wrap.className = `msg ${who}`;
     const label  = document.createElement('div');
@@ -1309,6 +1574,11 @@
   // ─── core: send text to /api/chat and play audio response ───
   async function sendMessage(text) {
     if (isBusy || !text.trim()) return;
+    // Demo gate check
+    if (!_demoCanChat()) {
+      _demoShowModal('code');
+      return;
+    }
     isBusy = true;
     sendBtn.disabled = true;
     _showStop(true);
@@ -1367,10 +1637,21 @@
           model: 'gpt-4o-mini',
           language: currentLang === 'auto' ? 'en' : currentLang,
           tts_provider: 'elevenlabs',
-          voice: '21m00Tcm4TlvDq8ikWAM'
+          voice: '21m00Tcm4TlvDq8ikWAM',
+          demo_token: _demoToken || undefined
         })
       });
 
+      if (resp.status === 403) {
+        // Demo limit reached — show gate modal
+        botBubble.classList.remove('typing');
+        botBubble.textContent = '';
+        botWrap.remove();
+        _demoShowModal('code');
+        isBusy = false; sendBtn.disabled = false; _showStop(false);
+        setOrbState(''); setStatus('');
+        return;
+      }
       if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
 
       const reader  = resp.body.getReader();
@@ -1426,10 +1707,9 @@
     }
 
     // resume voice call or go idle
-    if (inCall && callRecognition) {
+    if (inCall && _dailyCallObj) {
       setOrbState('listening');
       setStatus('<strong>Listening…</strong> Speak naturally. Tap again to end.', 'In call');
-      try { callRecognition.start(); } catch (e) {}
     } else {
       setOrbState('');
       setStatus('Ready when you are.', 'Ready');
@@ -1440,6 +1720,10 @@
         updateChips(currentLang);
       }
     }
+
+    // Count anonymous usage
+    if (!_demoHasToken()) _demoIncrementCount();
+    _demoUpdateBadge();
 
     isBusy = false;
     sendBtn.disabled = false;
@@ -1513,6 +1797,11 @@
       setStatus('<strong>Daily SDK not loaded.</strong> Please refresh.', 'Error');
       return;
     }
+    // Demo gate — voice always requires token
+    if (!_demoCanVoice()) {
+      _demoShowModal('code');
+      return;
+    }
     callBtn.disabled = true;
     setOrbState('listening');
     setStatus('<strong>Starting voice session…</strong>', 'Connecting');
@@ -1533,9 +1822,17 @@
           llm: 'claude-haiku-4-5',
           stt: _selectedStt || undefined,
           ttsProvider: 'elevenlabs',
-          voice: '21m00Tcm4TlvDq8ikWAM'
+          voice: '21m00Tcm4TlvDq8ikWAM',
+          demo_token: _demoToken || undefined
         })
       });
+      if (resp.status === 403) {
+        _demoShowModal('code');
+        callBtn.disabled = false;
+        setOrbState('');
+        setStatus('');
+        return;
+      }
       if (resp.status === 409) {
         setStatus('<strong>Session busy.</strong> Another call is active — try again shortly.', 'Busy');
         callBtn.disabled = false;
@@ -1925,6 +2222,14 @@
       { prompt: 'Spa\'nın açılış saatleri nelerdir?',        label: 'Spa saatleri' },
       { prompt: 'Paris\'te ne yapmanızı önerirsiniz?',         label: 'Paris\'te yapacaklar' },
     ],
+    ro: [
+      { prompt: 'Care este parola WiFi?',                     label: 'Parola WiFi' },
+      { prompt: 'Sunt restaurante bune în apropiere?',         label: 'Restaurante' },
+      { prompt: 'Piscina este deschisă acum?',                label: 'Program piscină' },
+      { prompt: 'Se poate face check-out mai târziu?',         label: 'Check-out târziu' },
+      { prompt: 'Care este programul spa-ului?',              label: 'Program spa' },
+      { prompt: 'Ce recomandați de vizitat în Paris?',        label: 'De vizitat' },
+    ],
     ru: [
       { prompt: 'Какой пароль от WiFi?',                   label: 'Пароль WiFi' },
       { prompt: 'Есть ли рядом хорошие рестораны?',       label: 'Рестораны' },
@@ -1975,6 +2280,7 @@
     it: 'Invia un messaggio per iniziare',
     pt: 'Envie uma mensagem para começar',
     tr: 'Başlamak için bir mesaj gönderin',
+    ro: 'Trimiteți un mesaj pentru a începe',
     ru: 'Отправьте сообщение чтобы начать',
     ar: 'أرسل رسالة للبدء',
     ja: 'メッセージを送って開始',
@@ -2010,15 +2316,15 @@
     btn.addEventListener('click', () => {
       const lang  = btn.dataset.lang;
       const flag  = btn.dataset.flag;
-      const label = btn.textContent.replace(/^\S+\s/, '');
-      langFlag.textContent  = flag;
+      const label = btn.textContent.trim();
+      const flagSrc = flag === 'globe' ? 'https://flagcdn.com/w40/un.png' : 'https://flagcdn.com/w40/' + flag + '.png';
+      langFlag.innerHTML = '<img class="flag-img" src="' + flagSrc + '" alt="">';
       langLabel.textContent = label;
       currentLang = lang;
       langMenu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       langMenu.classList.remove('open');
       if (micRecognition)  micRecognition.lang  = lang === 'auto' ? '' : lang;
-      if (callRecognition) callRecognition.lang = lang === 'auto' ? '' : lang;
       // Live-switch STT language on the bot if a call is active
       if (_dailyCallObj) {
         _dailyCallObj.sendAppMessage({ type: 'voxtera-language', language: lang === 'auto' ? 'multi' : lang }, '*');
@@ -2086,6 +2392,72 @@
 
   // Pre-enumerate mic devices at page load so the selector is populated
   _populateMicSelect();
+
+  // ─── Demo gate modal wiring ───
+  _demoUpdateBadge();
+
+  document.getElementById('gate-show-request').addEventListener('click', () => _demoShowModal('request'));
+  document.getElementById('gate-show-code').addEventListener('click', () => _demoShowModal('code'));
+
+  document.getElementById('gate-code-submit').addEventListener('click', async () => {
+    const code = document.getElementById('gate-code-input').value.trim();
+    const errEl = document.getElementById('gate-code-error');
+    errEl.style.display = 'none';
+    if (!code) { errEl.textContent = 'Please paste your access code.'; errEl.style.display = ''; return; }
+    try {
+      const resp = await fetch('/api/demo/validate-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      const data = await resp.json();
+      if (data.valid) {
+        _demoSetToken(code);
+      } else {
+        errEl.textContent = 'Invalid or expired code. Please try again.';
+        errEl.style.display = '';
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error — please try again.';
+      errEl.style.display = '';
+    }
+  });
+
+  document.getElementById('gate-req-submit').addEventListener('click', async () => {
+    const name    = document.getElementById('gate-req-name').value.trim();
+    const email   = document.getElementById('gate-req-email').value.trim();
+    const company = document.getElementById('gate-req-company').value.trim();
+    const errEl   = document.getElementById('gate-req-error');
+    const succEl  = document.getElementById('gate-req-success');
+    errEl.style.display = 'none';
+    succEl.style.display = 'none';
+    if (!name || name.length < 2) { errEl.textContent = 'Please enter your name.'; errEl.style.display = ''; return; }
+    if (!email || !email.includes('@')) { errEl.textContent = 'Please enter a valid email.'; errEl.style.display = ''; return; }
+    try {
+      const resp = await fetch('/api/demo/request-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, company })
+      });
+      const data = await resp.json();
+      if (resp.ok && data.ok) {
+        succEl.textContent = 'Code sent! Check your inbox (and spam folder).';
+        succEl.style.display = '';
+      } else {
+        errEl.textContent = data.detail || data.error || 'Something went wrong.';
+        errEl.style.display = '';
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error — please try again.';
+      errEl.style.display = '';
+    }
+  });
+
+  // Allow Enter key on code input
+  document.getElementById('gate-code-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('gate-code-submit').click();
+  });
+
 })();
 </script>
 

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Voxtera answers hotel guests in 99 languages and turns every request into a ticket for your team — via Telegram, WhatsApp, Slack, or your PMS. From voice to action in seconds." />
 <title>Voxtera for Hotels — From guest request to your team's chat, in seconds</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -88,15 +89,15 @@
   }
   .nav-links a:hover{color:var(--rust);}
   .nav-links a.active{color:var(--ink);font-weight:500;}
-  .nav-cta{
+  .nav-links a.nav-cta{
     background:var(--ink);
-    color:var(--cream);
+    color:#fff;
     padding:0.7rem 1.4rem;
     border-radius:999px;
     transition:all .3s;
     border:1px solid var(--ink);
   }
-  .nav-cta:hover{background:var(--rust);border-color:var(--rust);color:var(--cream);}
+  .nav-links a.nav-cta:hover{background:var(--rust);border-color:var(--rust);color:#fff;}
 
   /* ============ HERO ============ */
   .hero{
@@ -718,6 +719,13 @@
     position:relative;z-index:2;
     border-top:1px solid var(--line);
   }
+  .form-section::after{
+    content:"";
+    position:absolute;inset:0;
+    background:var(--paper);
+    z-index:-1;
+    pointer-events:none;
+  }
   .form-inner{max-width:880px;margin:0 auto;}
   .form-card{
     background:var(--cream);
@@ -1042,6 +1050,9 @@
   }
 
   /* ============ RESPONSIVE ============ */
+  @media (max-width:1200px){
+    .channel-grid{grid-template-columns:repeat(3,1fr);}
+  }
   @media (max-width:1024px){
     .loop-flow{grid-template-columns:1fr;}
     .loop-step{border-right:none;border-bottom:1px solid var(--line);}
@@ -1273,9 +1284,10 @@
     Voxtera<sup>™</sup>
   </div>
   <div class="nav-links">
-    <a href="voxtera-v3.html">Home</a>
+    <a href="voxtera.html">Home</a>
     <a href="voxtera-hotels.html" class="active">For hotels</a>
-    <a href="#pricing">Pricing</a>
+    <a href="voxtera-demo.html">Try demo</a>
+    <a href="voxtera.html#pricing">Pricing</a>
     <a href="#form" class="nav-cta">Talk to us →</a>
   </div>
 </nav>
@@ -1753,6 +1765,10 @@
       </div>
     </div>
   </div>
+  <div class="social-proof" style="margin-top:4rem;text-align:center;padding:1.5rem;border-top:1px solid var(--line);">
+    <p style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.14em;color:var(--gold-deep);margin-bottom:0.4rem;">Early access</p>
+    <p style="font-family:'Instrument Serif',serif;font-style:italic;font-size:1.05rem;color:var(--ink-soft);">Now accepting pilot properties — boutique hotels, residences, and vacation rental groups.</p>
+  </div>
 </section>
 
 <!-- FORM -->
@@ -1763,6 +1779,9 @@
     <p class="section-intro">
       Three short blocks. Ninety seconds. By the end, we'll both know whether a fifteen-minute conversation is worth scheduling — and what to lead with if it is.
     </p>
+    <p class="section-intro" style="margin-top:-1.5rem;font-family:'JetBrains Mono',monospace;font-size:0.74rem;letter-spacing:0.08em;color:var(--gold-deep);">
+      30-day pilot is free · paid plans from $250/mo · live in under a week
+    </p>
 
     <form class="form-card" id="discovery-form" novalidate>
       <!-- Block 1: Property -->
@@ -1771,11 +1790,11 @@
         <div class="form-row">
           <div class="form-field">
             <label>Property name <span class="required">*</span></label>
-            <input type="text" name="property_name" required placeholder="Hotel Casa Lisboa" />
+            <input type="text" name="property_name" required placeholder="The Riad Paloma" />
           </div>
           <div class="form-field">
             <label>City, country <span class="required">*</span></label>
-            <input type="text" name="location" required placeholder="Lisbon, Portugal" />
+            <input type="text" name="location" required placeholder="Marrakech, Morocco" />
           </div>
         </div>
         <div class="form-row">
@@ -2002,9 +2021,9 @@
     </div>
     <div>
       <h5>Product</h5>
-      <a href="voxtera-v3.html">Home</a>
+      <a href="voxtera.html">Home</a>
       <a href="voxtera-hotels.html">For hotels</a>
-      <a href="#">Pricing</a>
+      <a href="voxtera.html#pricing">Pricing</a>
       <a href="#">Technology</a>
     </div>
     <div>
@@ -2022,7 +2041,7 @@
     </div>
   </div>
   <div class="footer-bottom">
-    <span>© 2026 Voxtera — Built in EU</span>
+    <span>© 2026 Voxtera — Built in Canada</span>
     <span>Privacy · Terms · GDPR · DPA</span>
   </div>
 </footer>
@@ -2160,7 +2179,8 @@
       }
 
       // Success — render the personalized post-submit state.
-      const name = (payload.name || 'there').split(' ')[0];
+      const rawName = (payload.name || 'there').split(' ')[0];
+      const name = rawName.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       const nextStep = payload.next_step;
       const messages = {
         demo: {
@@ -2207,7 +2227,7 @@
 <div class="voxtera-widget" id="voxtera-widget">
   <div class="vx-launcher" id="vx-launcher" role="button" tabindex="0" aria-label="Open Voxtera concierge">
     <div class="vx-orb" aria-hidden="true"></div>
-    <span class="vx-launcher-label">Need help?</span>
+    <span class="vx-launcher-label">Ask Voxtera</span>
     <span class="vx-launcher-cta">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
       Start a call
@@ -2236,7 +2256,7 @@
           </button>
         </div>
         <div class="vx-helper" id="vx-helper">
-          Tap the phone to talk&nbsp;— or type a message below.<br/>Voxtera speaks your language.
+          Ask anything about Voxtera&nbsp;— or tap the phone to hear it in action.<br/>This is the same widget your guests would use.
         </div>
       </div>
       <div class="vx-messages" id="vx-messages"></div>
@@ -2363,7 +2383,7 @@
         if (typingEl.isConnected) { typingEl.remove(); if (!botEl) appendMsg('No response received. Please try again.', 'bot'); }
       } catch (_) {
         typingEl.remove();
-        appendMsg('Could not reach the server. Make sure it is running on localhost:8080.', 'bot');
+        appendMsg('Connection unavailable. Please try again later.', 'bot');
       }
     });
   })();

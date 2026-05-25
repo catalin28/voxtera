@@ -872,6 +872,7 @@ def _product_rag_context(query: str) -> str:
 
 # Product chat sessions — separate from hotel sessions
 _product_sessions: dict[str, list[dict[str, str]]] = {}
+_product_turn_counters: dict[str, int] = {}
 
 
 _init_product_rag()
@@ -1183,6 +1184,237 @@ def _tts_google(text: str, voice: str, language: str) -> bytes:
     return response.audio_content
 
 
+# ---------------------------------------------------------------------------
+# Inquiry form — rate limiting + email config
+# ---------------------------------------------------------------------------
+_INQUIRY_DIR = Path(__file__).resolve().parent.parent / "logs" / "inquiries"
+_INQUIRY_DIR.mkdir(parents=True, exist_ok=True)
+
+_ZOHO_SMTP_USER: str | None = os.environ.get("ZOHO_SMTP_USER") or None
+_ZOHO_SMTP_PASS: str | None = os.environ.get("ZOHO_SMTP_PASS") or None
+_INQUIRY_NOTIFY_EMAIL: str = os.environ.get("INQUIRY_NOTIFY_EMAIL", "hello@voxtera.ai")
+
+# Simple per-IP rate limiter: max 3 submissions per hour
+_INQUIRY_RATE_LIMIT = 3
+_INQUIRY_RATE_WINDOW = 3600  # seconds
+_inquiry_rate_map: dict[str, list[float]] = {}
+_inquiry_rate_lock = threading.Lock()
+
+
+def _inquiry_rate_ok(ip: str) -> bool:
+    """Return True if this IP hasn't exceeded the submission rate limit."""
+    now = time.time()
+    with _inquiry_rate_lock:
+        timestamps = _inquiry_rate_map.get(ip, [])
+        # Prune old entries
+        timestamps = [t for t in timestamps if now - t < _INQUIRY_RATE_WINDOW]
+        if len(timestamps) >= _INQUIRY_RATE_LIMIT:
+            _inquiry_rate_map[ip] = timestamps
+            return False
+        timestamps.append(now)
+        _inquiry_rate_map[ip] = timestamps
+        return True
+
+
+def _send_inquiry_email(payload: dict) -> None:
+    """Send inquiry notification via Zoho SMTP. Runs in a thread."""
+    if not _ZOHO_SMTP_USER or not _ZOHO_SMTP_PASS:
+        return
+    import email.mime.text
+    import smtplib
+
+    subject = f"New Voxtera inquiry: {payload.get('property_name', 'Unknown')} ({payload.get('location', '?')})"
+    lines = [
+        f"Property: {payload.get('property_name')} — {payload.get('location')}",
+        f"Size: {payload.get('size', '—')} keys | Type: {payload.get('property_type', '—')}",
+        f"",
+        f"Languages: {', '.join(payload.get('languages', []))}",
+        f"Pain: {payload.get('pain', '—')}",
+        f"PMS: {payload.get('pms', '—')}",
+        f"Channels: {', '.join(payload.get('channels', []))}",
+        f"",
+        f"Name: {payload.get('name')}",
+        f"Role: {payload.get('role', '—')}",
+        f"Email: {payload.get('email')}",
+        f"Next step: {payload.get('next_step', '—')}",
+        f"",
+        f"Submitted: {payload.get('submitted_at', '—')}",
+        f"IP: {payload.get('_ip', '—')}",
+    ]
+    body = "\n".join(lines)
+
+    msg = email.mime.text.MIMEText(body, "plain", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = _ZOHO_SMTP_USER
+    msg["To"] = _INQUIRY_NOTIFY_EMAIL
+
+    try:
+        with smtplib.SMTP("smtp.zoho.com", 587, timeout=10) as smtp:
+            smtp.starttls()
+            smtp.login(_ZOHO_SMTP_USER, _ZOHO_SMTP_PASS)
+            smtp.send_message(msg)
+    except Exception as exc:
+        sys.stderr.write(f"[inquiry] email send failed: {exc}\n")
+
+
+# ---------------------------------------------------------------------------
+# Demo access gate — HMAC-signed tokens with expiry
+# ---------------------------------------------------------------------------
+import hashlib  # noqa: E402
+import hmac  # noqa: E402
+
+_DEMO_SECRET: str = os.environ.get("VOXTERA_DEMO_SECRET", "dev-demo-secret-change-me")
+_DEMO_TOKEN_TTL_DAYS: int = int(os.environ.get("VOXTERA_DEMO_TOKEN_DAYS", "7"))
+_DEMO_FREE_MESSAGES: int = 3  # anonymous messages allowed per IP per 24h
+_DEMO_FREE_WINDOW: int = 86400  # 24 hours in seconds
+
+# Per-IP anonymous message counter
+_demo_anon_map: dict[str, list[float]] = {}
+_demo_anon_lock = threading.Lock()
+
+
+def _demo_anon_ok(ip: str) -> bool:
+    """Return True if IP hasn't exceeded anonymous free message limit."""
+    now = time.time()
+    with _demo_anon_lock:
+        timestamps = _demo_anon_map.get(ip, [])
+        timestamps = [t for t in timestamps if now - t < _DEMO_FREE_WINDOW]
+        if len(timestamps) >= _DEMO_FREE_MESSAGES:
+            _demo_anon_map[ip] = timestamps
+            return False
+        timestamps.append(now)
+        _demo_anon_map[ip] = timestamps
+        return True
+
+
+def _demo_anon_count(ip: str) -> int:
+    """Return how many anonymous messages this IP has used in the window."""
+    now = time.time()
+    with _demo_anon_lock:
+        timestamps = _demo_anon_map.get(ip, [])
+        return len([t for t in timestamps if now - t < _DEMO_FREE_WINDOW])
+
+
+def _generate_demo_token(email: str) -> str:
+    """Generate an HMAC-signed demo access token."""
+    import math
+    exp = int(time.time()) + (_DEMO_TOKEN_TTL_DAYS * 86400)
+    payload = json.dumps({"email": email, "exp": exp}, separators=(",", ":"))
+    payload_b64 = base64.urlsafe_b64encode(payload.encode()).decode()
+    sig = hmac.new(
+        _DEMO_SECRET.encode(), payload_b64.encode(), hashlib.sha256
+    ).hexdigest()[:32]
+    return f"{payload_b64}.{sig}"
+
+
+def _validate_demo_token(token: str) -> dict | None:
+    """Validate token. Returns payload dict if valid, None otherwise."""
+    if not token or "." not in token:
+        return None
+    parts = token.rsplit(".", 1)
+    if len(parts) != 2:
+        return None
+    payload_b64, sig = parts
+    expected_sig = hmac.new(
+        _DEMO_SECRET.encode(), payload_b64.encode(), hashlib.sha256
+    ).hexdigest()[:32]
+    if not hmac.compare_digest(sig, expected_sig):
+        return None
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+    except Exception:
+        return None
+    if payload.get("exp", 0) < time.time():
+        return None
+    return payload
+
+
+# Per-email rate limit for code requests: max 2 per email per 24h
+_demo_request_map: dict[str, list[float]] = {}
+_demo_request_lock = threading.Lock()
+
+# Predefined demo codes file (one code per line, # comments allowed)
+_DEMO_CODES_FILE: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "demo_codes.txt")
+
+
+def _load_demo_codes() -> set[str]:
+    """Load predefined codes from demo_codes.txt (re-reads each call for hot-reload)."""
+    codes: set[str] = set()
+    try:
+        with open(_DEMO_CODES_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    codes.add(line)
+    except FileNotFoundError:
+        pass
+    return codes
+
+
+def _demo_request_rate_ok(email: str) -> bool:
+    """Return True if this email hasn't exceeded code request rate limit."""
+    now = time.time()
+    key = email.lower().strip()
+    with _demo_request_lock:
+        timestamps = _demo_request_map.get(key, [])
+        timestamps = [t for t in timestamps if now - t < 86400]
+        if len(timestamps) >= 2:
+            _demo_request_map[key] = timestamps
+            return False
+        timestamps.append(now)
+        _demo_request_map[key] = timestamps
+        return True
+
+
+def _send_demo_code_email(name: str, email: str, token: str) -> None:
+    """Send demo access code via Zoho SMTP. Runs in a daemon thread."""
+    import email.mime.multipart as _mp
+    import email.mime.text as _mt
+    import smtplib
+
+    if not _ZOHO_SMTP_USER or not _ZOHO_SMTP_PASS:
+        sys.stderr.write("[demo-gate] SMTP not configured, skipping email\n")
+        return
+
+    subject = "Your Voxtera demo access code"
+    body_text = (
+        f"Hi {name},\n\n"
+        f"Here's your Voxtera demo access code:\n\n"
+        f"    {token}\n\n"
+        f"Paste it into the demo page to unlock full voice + text access "
+        f"for {_DEMO_TOKEN_TTL_DAYS} days.\n\n"
+        f"Questions? Just reply to this email.\n\n"
+        f"— The Voxtera team"
+    )
+    body_html = (
+        f"<p>Hi {name},</p>"
+        f"<p>Here's your Voxtera demo access code:</p>"
+        f"<pre style='background:#f4f0e8;padding:12px 16px;border-radius:8px;"
+        f"font-family:monospace;font-size:14px;word-break:break-all'>{token}</pre>"
+        f"<p>Paste it into the demo page to unlock full voice + text access "
+        f"for {_DEMO_TOKEN_TTL_DAYS} days.</p>"
+        f"<p>Questions? Just reply to this email.</p>"
+        f"<p>— The Voxtera team</p>"
+    )
+
+    msg = _mp.MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = _ZOHO_SMTP_USER
+    msg["To"] = email
+    msg["Reply-To"] = _INQUIRY_NOTIFY_EMAIL
+    msg.attach(_mt.MIMEText(body_text, "plain"))
+    msg.attach(_mt.MIMEText(body_html, "html"))
+
+    try:
+        with smtplib.SMTP("smtp.zoho.com", 587, timeout=10) as smtp:
+            smtp.starttls()
+            smtp.login(_ZOHO_SMTP_USER, _ZOHO_SMTP_PASS)
+            smtp.send_message(msg)
+        sys.stderr.write(f"[demo-gate] code sent to {email}\n")
+    except Exception as exc:
+        sys.stderr.write(f"[demo-gate] email send failed: {exc}\n")
+
+
 _SERVE_DIR = str(Path(__file__).resolve().parent)
 
 
@@ -1221,6 +1453,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_stt_providers()
         if self.path == "/api/admin/health":
             return self._handle_admin_health()
+        if self.path == "/api/admin/verify":
+            return self._handle_admin_verify()
         if self.path == "/api/admin/config":
             return self._handle_admin_config_get()
         if self.path == "/api/admin/sessions":
@@ -1231,6 +1465,13 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_trace_stream()
         if self.path == "/api/trace/sessions":
             return self._handle_list_sessions()
+        if self.path.startswith("/api/audit/sessions"):
+            return self._handle_audit_sessions()
+        if self.path.startswith("/api/audit/session/"):
+            filename = self.path[len("/api/audit/session/"):]
+            return self._handle_audit_session_detail(filename)
+        if self.path.startswith("/api/rag/chunks"):
+            return self._handle_rag_chunks()
         if self.path.startswith("/api/trace/sessions/") and self.path.endswith("/events"):
             sid = self.path[len("/api/trace/sessions/") : -len("/events")]
             return self._handle_session_events(sid)
@@ -1290,6 +1531,14 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_end_session()
         if self.path == "/api/bot-event":
             return self._handle_bot_event()
+        if self.path == "/api/inquiry":
+            return self._handle_inquiry()
+        if self.path == "/api/demo/request-code":
+            return self._handle_demo_request_code()
+        if self.path == "/api/demo/validate-code":
+            return self._handle_demo_validate_code()
+        if self.path == "/api/demo/check-allowance":
+            return self._handle_demo_check_allowance()
         self.send_error(404)
         return None
 
@@ -1445,6 +1694,21 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 "active_sessions": len(REGISTRY.active_sessions()),
             },
         )
+
+    # ------------------------------------------------------------------
+    # /api/admin/verify — lightweight token check for the admin portal
+    # ------------------------------------------------------------------
+
+    def _handle_admin_verify(self) -> None:
+        """GET /api/admin/verify — returns 200 if token is valid, 401 otherwise."""
+        if not _ADMIN_TOKEN:
+            self._send_json(503, {"error": "admin_disabled", "detail": "VOXTERA_ADMIN_TOKEN is not set."})
+            return
+        provided = self.headers.get("X-Admin-Token", "")
+        if not provided or provided != _ADMIN_TOKEN:
+            self._send_json(401, {"error": "unauthorized"})
+            return
+        self._send_json(200, {"ok": True})
 
     # ------------------------------------------------------------------
     # /api/admin/config — hot-reconfigurable runtime settings
@@ -1792,6 +2056,23 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         Legacy mode still checks Daily presence for the shared room.
         """
         # ------------------------------------------------------------------
+        # Demo access gate — voice always requires a valid token
+        # ------------------------------------------------------------------
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            start_body = json.loads(self.rfile.read(length)) if length else {}
+        except Exception:
+            start_body = {}
+
+        demo_token = (start_body.get("demo_token") or "").strip()
+        if not _validate_demo_token(demo_token) and demo_token not in _load_demo_codes():
+            self._send_json(403, {
+                "error": "demo_token_required",
+                "detail": "Voice calls require an access code. Request one for free.",
+            })
+            return
+
+        # ------------------------------------------------------------------
         # Busy gate
         # ------------------------------------------------------------------
         if _DAILY_DYNAMIC_ROOMS:
@@ -1908,14 +2189,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         )
 
         # Read body to extract per-session params (llm model, etc.).
-        body: dict = {}
-        try:
-            length = int(self.headers.get("Content-Length", 0))
-            if length > 0:
-                raw = self.rfile.read(length)
-                body = json.loads(raw.decode("utf-8"))
-        except Exception:  # noqa: BLE001
-            pass
+        body: dict = start_body
         llm_model = body.get("llm") or None
         stt_provider = body.get("stt") or None
 
@@ -2205,6 +2479,213 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
 
     # ------------------------------------------------------------------
+    # Inquiry form endpoint — POST /api/inquiry
+    # ------------------------------------------------------------------
+
+    _INQUIRY_MAX_BODY = 8192  # 8 KB max request body
+    _INQUIRY_VALID_PAINS = {"after_hours", "missed_bookings", "language_gap", "request_chaos", "repetitive", "other"}
+    _INQUIRY_VALID_STEPS = {"demo", "info_pack", "pricing", "pilot"}
+
+    # ------------------------------------------------------------------
+    # Demo access gate endpoints
+    # ------------------------------------------------------------------
+
+    def _handle_demo_request_code(self) -> None:
+        """POST /api/demo/request-code — request a demo access code via email."""
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length > 4096 or content_length <= 0:
+            self._send_json(400, {"error": "invalid_body"})
+            return
+
+        try:
+            body = json.loads(self.rfile.read(content_length))
+        except (json.JSONDecodeError, ValueError):
+            self._send_json(400, {"error": "invalid_json"})
+            return
+
+        name = (body.get("name") or "").strip()[:100]
+        email = (body.get("email") or "").strip()[:200]
+        company = (body.get("company") or "").strip()[:200]
+
+        if not name or len(name) < 2:
+            self._send_json(400, {"error": "name_required"})
+            return
+        if not email or "@" not in email or "." not in email.split("@")[-1]:
+            self._send_json(400, {"error": "invalid_email"})
+            return
+
+        # Rate limit per email
+        if not _demo_request_rate_ok(email):
+            self._send_json(429, {"error": "rate_limited", "detail": "Code already sent. Check your inbox."})
+            return
+
+        # Generate token and send
+        token = _generate_demo_token(email)
+
+        # Log the request
+        log_entry = {
+            "ts": datetime.now(UTC).isoformat(),
+            "name": name,
+            "email": email,
+            "company": company,
+            "ip": (self._client_ip()[1] or self._client_ip()[0]),
+        }
+        sys.stderr.write(f"[demo-gate] code requested: {json.dumps(log_entry)}\n")
+
+        # Send email in background thread
+        t = threading.Thread(
+            target=_send_demo_code_email, args=(name, email, token), daemon=True
+        )
+        t.start()
+
+        self._send_json(200, {"ok": True, "detail": "Code sent to your email."})
+
+    def _handle_demo_validate_code(self) -> None:
+        """POST /api/demo/validate-code — validate a demo access code."""
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length > 2048 or content_length <= 0:
+            self._send_json(400, {"error": "invalid_body"})
+            return
+
+        try:
+            body = json.loads(self.rfile.read(content_length))
+        except (json.JSONDecodeError, ValueError):
+            self._send_json(400, {"error": "invalid_json"})
+            return
+
+        token = (body.get("code") or "").strip()
+        # Check HMAC-signed token first
+        payload = _validate_demo_token(token)
+        if payload:
+            self._send_json(200, {"valid": True, "email": payload.get("email", ""), "expires": payload.get("exp", 0)})
+            return
+        # Check predefined codes file
+        if token and token in _load_demo_codes():
+            self._send_json(200, {"valid": True, "email": "tester", "expires": 0})
+            return
+        self._send_json(401, {"valid": False, "error": "invalid_or_expired"})
+
+    def _handle_demo_check_allowance(self) -> None:
+        """POST /api/demo/check-allowance — check remaining free messages for this IP."""
+        direct_ip, fwd_ip = self._client_ip()
+        client_ip = fwd_ip or direct_ip
+        used = _demo_anon_count(client_ip)
+        remaining = max(0, _DEMO_FREE_MESSAGES - used)
+        self._send_json(200, {"remaining": remaining, "limit": _DEMO_FREE_MESSAGES})
+
+    def _handle_inquiry(self) -> None:
+        """POST /api/inquiry — receive discovery form submissions.
+
+        Security: rate-limited, honeypot-checked, input-validated,
+        size-limited. Saves to logs/inquiries/ and sends email notification.
+        """
+        # 1. Size limit
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length > self._INQUIRY_MAX_BODY or content_length <= 0:
+            self._send_json(400, {"error": "invalid_body"})
+            return
+
+        # 2. Rate limit by IP
+        direct_ip, fwd_ip = self._client_ip()
+        client_ip = fwd_ip or direct_ip
+        if not _inquiry_rate_ok(client_ip):
+            self._send_json(429, {"error": "rate_limited", "detail": "Too many submissions. Please try again later."})
+            return
+
+        # 3. Parse JSON
+        try:
+            raw = self.rfile.read(content_length)
+            body = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            self._send_json(400, {"error": "invalid_json"})
+            return
+
+        if not isinstance(body, dict):
+            self._send_json(400, {"error": "invalid_json"})
+            return
+
+        # 4. Honeypot check — if company_website is filled, it's a bot
+        if body.get("company_website", "").strip():
+            # Silently accept to not tip off bots, but don't save
+            self._send_json(200, {"status": "ok"})
+            return
+
+        # 5. Validate required fields
+        property_name = str(body.get("property_name", "")).strip()[:200]
+        location = str(body.get("location", "")).strip()[:200]
+        name = str(body.get("name", "")).strip()[:100]
+        email_val = str(body.get("email", "")).strip()[:254]
+        next_step = str(body.get("next_step", "")).strip()
+
+        if not property_name or not location or not name or not email_val or not next_step:
+            self._send_json(422, {"error": "missing_required", "detail": "property_name, location, name, email, and next_step are required."})
+            return
+
+        # 6. Email format validation (basic)
+        import re as _re
+        if not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email_val):
+            self._send_json(422, {"error": "invalid_email"})
+            return
+
+        # 7. Validate enum fields
+        if next_step not in self._INQUIRY_VALID_STEPS:
+            self._send_json(422, {"error": "invalid_next_step"})
+            return
+
+        pain = str(body.get("pain", "")).strip()
+        if pain and pain not in self._INQUIRY_VALID_PAINS:
+            pain = ""
+
+        # 8. Sanitize optional fields (truncate to reasonable lengths)
+        size = str(body.get("size", "")).strip()[:50]
+        property_type = str(body.get("property_type", "")).strip()[:100]
+        pms = str(body.get("pms", "")).strip()[:100]
+        role = str(body.get("role", "")).strip()[:100]
+
+        # Lists — only accept known short values
+        languages_raw = body.get("languages", [])
+        languages = [str(l).strip()[:10] for l in languages_raw if isinstance(l, str)][:20]
+        channels_raw = body.get("channels", [])
+        channels = [str(c).strip()[:20] for c in channels_raw if isinstance(c, str)][:10]
+
+        # 9. Build clean payload
+        inquiry_id = uuid.uuid4().hex[:12]
+        now = datetime.now(UTC).isoformat()
+        payload = {
+            "id": inquiry_id,
+            "submitted_at": now,
+            "property_name": property_name,
+            "location": location,
+            "size": size or None,
+            "property_type": property_type or None,
+            "languages": languages,
+            "pain": pain or None,
+            "pms": pms or None,
+            "channels": channels,
+            "name": name,
+            "role": role or None,
+            "email": email_val,
+            "next_step": next_step,
+            "_ip": client_ip,
+        }
+
+        # 10. Save to disk
+        filename = f"{now[:10]}_{inquiry_id}.json"
+        filepath = _INQUIRY_DIR / filename
+        try:
+            filepath.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        except OSError as exc:
+            sys.stderr.write(f"[inquiry] file write failed: {exc}\n")
+            self._send_json(500, {"error": "server_error"})
+            return
+
+        # 11. Send email notification (async, don't block the response)
+        threading.Thread(target=_send_inquiry_email, args=(payload,), daemon=True).start()
+
+        # 12. Respond
+        self._send_json(200, {"status": "ok", "id": inquiry_id})
+
+    # ------------------------------------------------------------------
     # Trace endpoints — power /trace.html
     # ------------------------------------------------------------------
 
@@ -2440,6 +2921,171 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return
         self._send_json(200, {"session_id": session_id, "deleted": True})
 
+    # ── Audit log viewer endpoints ──────────────────────────────────────────
+
+    def _handle_audit_sessions(self):
+        """GET /api/audit/sessions?from=YYYY-MM-DD&to=YYYY-MM-DD — list session logs."""
+        from urllib.parse import parse_qs, urlparse
+
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        date_from = (params.get("from") or [None])[0]
+        date_to = (params.get("to") or [None])[0]
+
+        sessions_dir = Path(__file__).resolve().parent.parent / "logs" / "audit" / "sessions"
+        if not sessions_dir.exists():
+            self._send_json(200, [])
+            return
+
+        results = []
+        for f in sorted(sessions_dir.glob("*.jsonl"), reverse=True):
+            # Filename: YYYY-MM-DD_HH-MM-SS_<id8>.jsonl
+            name = f.stem  # e.g. 2026-05-25_12-06-33_test-aud
+            file_date = name[:10]  # YYYY-MM-DD
+
+            # Apply date filters
+            if date_from and file_date < date_from:
+                continue
+            if date_to and file_date > date_to:
+                continue
+
+            # Read first and last line for summary
+            lines = f.read_text(encoding="utf-8").strip().splitlines()
+            if not lines:
+                continue
+            first = json.loads(lines[0])
+            last = json.loads(lines[-1]) if len(lines) > 1 else first
+
+            results.append({
+                "filename": f.name,
+                "date": file_date,
+                "time": name[11:19].replace("-", ":"),
+                "session_id": first.get("session_id", ""),
+                "turns": len(lines),
+                "client_ip": first.get("client_ip", ""),
+                "first_query": (first.get("user_query", ""))[:80],
+                "last_ts": last.get("ts", ""),
+                "channel": first.get("channel", ""),
+                "model": first.get("model", ""),
+            })
+
+        self._send_json(200, results)
+
+    def _handle_audit_session_detail(self, filename: str):
+        """GET /api/audit/session/<filename> — return all turns of a session."""
+        # Security: prevent path traversal
+        if "/" in filename or "\\" in filename or ".." in filename:
+            self._send_json(400, {"error": "invalid filename"})
+            return
+
+        sessions_dir = Path(__file__).resolve().parent.parent / "logs" / "audit" / "sessions"
+        filepath = sessions_dir / filename
+        if not filepath.exists() or not filepath.suffix == ".jsonl":
+            self._send_json(404, {"error": "not found"})
+            return
+
+        turns = []
+        for line in filepath.read_text(encoding="utf-8").strip().splitlines():
+            if line.strip():
+                turns.append(json.loads(line))
+
+        self._send_json(200, turns)
+
+    # ── Vector store viewer endpoint ────────────────────────────────────────
+
+    def _handle_rag_chunks(self):
+        """GET /api/rag/chunks?hotel_id=&doc_id=&language=&page=&per_page= — browse chunks."""
+        from urllib.parse import parse_qs, urlparse
+
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        hotel_id = (params.get("hotel_id") or [None])[0]
+        doc_id = (params.get("doc_id") or [None])[0]
+        language = (params.get("language") or [None])[0]
+        page = int((params.get("page") or ["1"])[0])
+        per_page = min(int((params.get("per_page") or ["50"])[0]), 200)
+
+        import os
+        default_db = str(Path.home() / ".voxtera" / "voxtera.db")
+        db_path = Path(os.environ.get("VOXTERA_DB_PATH", default_db))
+        if not db_path.exists():
+            self._send_json(200, {"chunks": [], "total": 0, "hotels": [], "docs": [], "languages": []})
+            return
+
+        import sqlite3
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+
+        # Get distinct values for filters
+        hotels = [r[0] for r in conn.execute("SELECT DISTINCT hotel_id FROM chunks ORDER BY hotel_id").fetchall()]
+        docs = []
+        languages_list = []
+
+        # Build query with filters
+        where_parts = []
+        query_params = []
+        if hotel_id:
+            where_parts.append("hotel_id = ?")
+            query_params.append(hotel_id)
+        if doc_id:
+            where_parts.append("doc_id = ?")
+            query_params.append(doc_id)
+        if language:
+            where_parts.append("language = ?")
+            query_params.append(language)
+
+        where_clause = (" WHERE " + " AND ".join(where_parts)) if where_parts else ""
+
+        # Get total count
+        total = conn.execute(f"SELECT COUNT(*) FROM chunks{where_clause}", query_params).fetchone()[0]
+
+        # Get distinct docs and languages for current hotel filter
+        if hotel_id:
+            docs = [r[0] for r in conn.execute(
+                "SELECT DISTINCT doc_id FROM chunks WHERE hotel_id = ? ORDER BY doc_id",
+                (hotel_id,)
+            ).fetchall()]
+            languages_list = [r[0] for r in conn.execute(
+                "SELECT DISTINCT language FROM chunks WHERE hotel_id = ? ORDER BY language",
+                (hotel_id,)
+            ).fetchall()]
+        else:
+            docs = [r[0] for r in conn.execute("SELECT DISTINCT doc_id FROM chunks ORDER BY doc_id").fetchall()]
+            languages_list = [r[0] for r in conn.execute("SELECT DISTINCT language FROM chunks ORDER BY language").fetchall()]
+
+        # Paginated fetch (exclude embedding blob for performance)
+        offset = (page - 1) * per_page
+        rows = conn.execute(
+            f"SELECT id, hotel_id, doc_id, chunk_index, language, category, text, updated_at "
+            f"FROM chunks{where_clause} ORDER BY hotel_id, doc_id, chunk_index "
+            f"LIMIT ? OFFSET ?",
+            query_params + [per_page, offset]
+        ).fetchall()
+        conn.close()
+
+        chunks = []
+        for r in rows:
+            chunks.append({
+                "id": r[0],
+                "hotel_id": r[1],
+                "doc_id": r[2],
+                "chunk_index": r[3],
+                "language": r[4],
+                "category": r[5],
+                "text": r[6],
+                "updated_at": r[7],
+            })
+
+        self._send_json(200, {
+            "chunks": chunks,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "pages": (total + per_page - 1) // per_page,
+            "hotels": hotels,
+            "docs": docs,
+            "languages": languages_list,
+        })
+
     def _handle_languages(self):
         """GET /api/languages — full language config for the demo UI.
 
@@ -2539,12 +3185,26 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         language = body.get("language") or "en"
         tts_provider = body.get("tts_provider") or "openai"
         voice = body.get("voice") or "nova"
+        demo_token = (body.get("demo_token") or "").strip()
 
         request_id = str(uuid.uuid4())
         client_ip, forwarded_for = self._client_ip()
         user_agent = self.headers.get("User-Agent", "")
         rag_elapsed_ms: float | None = None
         llm_elapsed_ms: float | None = None
+
+        # ── Demo access gate ──
+        # If user has a valid token, allow. Otherwise enforce free message limit.
+        has_valid_token = _validate_demo_token(demo_token) is not None or (demo_token in _load_demo_codes())
+        if not has_valid_token:
+            ip_for_limit = forwarded_for or client_ip
+            if not _demo_anon_ok(ip_for_limit):
+                self._send_json(403, {
+                    "error": "demo_limit_reached",
+                    "detail": "Free messages used. Enter an access code for full demo.",
+                    "remaining": 0,
+                })
+                return
 
         # ── streaming response headers ──
         self.send_response(200)
@@ -2872,6 +3532,12 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
         import openai as _oai
 
+        # ── request metadata for audit logging ──
+        client_ip = self.client_address[0]
+        forwarded_for = self.headers.get("X-Forwarded-For")
+        user_agent = self.headers.get("User-Agent")
+        request_id = str(uuid.uuid4())
+
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length)) if length else {}
@@ -2952,6 +3618,25 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         if len(messages) > 42:
             _product_sessions[session_id] = [messages[0]] + messages[-40:]
 
+        _product_turn_counters[session_id] = _product_turn_counters.get(session_id, 0) + 1
+        _audit.write_turn(
+            session_id=session_id,
+            turn_number=_product_turn_counters[session_id],
+            client_ip=client_ip,
+            forwarded_for=forwarded_for,
+            user_agent=user_agent,
+            channel="product_chat_http",
+            hotel_id="voxtera",
+            user_query=text,
+            bot_reply=full_text,
+            model=model,
+            language="en",
+            tts_provider="none",
+            llm_ms=elapsed,
+            rag_ms=None,
+            status="answered",
+            request_id=request_id,
+        )
         push({"type": "done", "session_id": session_id, "text": full_text})
         finish()
 
@@ -3026,7 +3711,7 @@ if __name__ == "__main__":
             f"(spawn timeout: {_SPAWN_TIMEOUT_SECS}s)"
         )
         if _ADMIN_TOKEN and _DAILY_API_KEY and (_DAILY_ROOM_NAME or _DAILY_DYNAMIC_ROOMS):
-            print(f"Admin page on http://localhost:{port}/admin.html")
+            print(f"Admin page on http://localhost:{port}/admin/admin.html")
             if _DAILY_DYNAMIC_ROOMS:
                 print(f"  Dynamic rooms enabled (max_participants={_DAILY_ROOM_MAX_PARTICIPANTS})")
         else:
@@ -3039,7 +3724,7 @@ if __name__ == "__main__":
                 missing.append("DAILY_ROOM_NAME (or DAILY_DYNAMIC_ROOMS=1)")
             print(f"Admin page disabled — missing env: {', '.join(missing)}")
         if _ADMIN_TOKEN:
-            print(f"Trace page on http://localhost:{port}/trace.html")
+            print(f"Trace page on http://localhost:{port}/admin/trace.html")
         else:
             print("Trace page disabled — set VOXTERA_ADMIN_TOKEN to enable")
 

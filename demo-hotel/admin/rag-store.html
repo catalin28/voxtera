@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voxtera — Vector Store</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0f1117;
+  color: #e4e4e7;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  background: #1a1b23;
+  border-bottom: 1px solid #2a2b35;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.header h1 { font-size: 18px; font-weight: 600; color: #fff; }
+.header .badge {
+  background: #8b5cf6;
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+/* Filters bar */
+.filters {
+  padding: 12px 20px;
+  border-bottom: 1px solid #2a2b35;
+  background: #13141b;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.filters label {
+  font-size: 12px;
+  color: #9ca3af;
+}
+.filters select, .filters input {
+  background: #1f2028;
+  border: 1px solid #3a3b45;
+  color: #e4e4e7;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.filters select { min-width: 140px; }
+.filters button {
+  background: #8b5cf6;
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.filters button:hover { background: #7c3aed; }
+.filters .btn-clear { background: #374151; }
+.filters .btn-clear:hover { background: #4b5563; }
+
+/* Stats bar */
+.stats {
+  padding: 8px 20px;
+  font-size: 12px;
+  color: #6b7280;
+  border-bottom: 1px solid #2a2b35;
+  display: flex;
+  gap: 20px;
+}
+.stats .stat-value { color: #e4e4e7; font-weight: 500; }
+
+/* Content */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+/* Chunk cards */
+.chunk-card {
+  background: #1a1b23;
+  border: 1px solid #2a2b35;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  transition: border-color 0.15s;
+}
+.chunk-card:hover {
+  border-color: #8b5cf6;
+}
+.chunk-meta {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.chunk-meta .tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+.tag-hotel { background: #1e3a5f; color: #93c5fd; }
+.tag-doc { background: #1c2e1c; color: #86efac; }
+.tag-lang { background: #3b2e1a; color: #fbbf24; }
+.tag-cat { background: #2e1a3b; color: #c084fc; }
+.tag-idx { background: #374151; color: #9ca3af; }
+
+.chunk-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d1d5db;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: #0f1117;
+  border-radius: 6px;
+  border: 1px solid #1f2028;
+}
+
+.chunk-footer {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #4b5563;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+}
+.pagination button {
+  background: #1f2028;
+  border: 1px solid #3a3b45;
+  color: #e4e4e7;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.pagination button:hover { background: #2a2b35; }
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pagination .page-info { font-size: 13px; color: #9ca3af; }
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #6b7280;
+}
+.empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #6b7280;
+  font-size: 15px;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Vector Store</h1>
+  <span class="badge" id="total-badge">0 chunks</span>
+</div>
+
+<div class="filters">
+  <label>Hotel</label>
+  <select id="filter-hotel"><option value="">All hotels</option></select>
+  <label>Document</label>
+  <select id="filter-doc"><option value="">All documents</option></select>
+  <label>Language</label>
+  <select id="filter-lang"><option value="">All languages</option></select>
+  <button id="btn-filter">Filter</button>
+  <button id="btn-clear" class="btn-clear">Clear</button>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<div class="content" id="content">
+  <div class="loading">Loading vector store…</div>
+</div>
+
+<div class="pagination" id="pagination" style="display:none;">
+  <button id="btn-prev">← Prev</button>
+  <span class="page-info" id="page-info"></span>
+  <button id="btn-next">Next →</button>
+</div>
+
+<script>
+const contentEl = document.getElementById('content');
+const statsEl = document.getElementById('stats');
+const paginationEl = document.getElementById('pagination');
+const totalBadge = document.getElementById('total-badge');
+const filterHotel = document.getElementById('filter-hotel');
+const filterDoc = document.getElementById('filter-doc');
+const filterLang = document.getElementById('filter-lang');
+const pageInfo = document.getElementById('page-info');
+const btnPrev = document.getElementById('btn-prev');
+const btnNext = document.getElementById('btn-next');
+
+let currentPage = 1;
+const perPage = 50;
+
+async function loadChunks() {
+  const params = new URLSearchParams();
+  if (filterHotel.value) params.set('hotel_id', filterHotel.value);
+  if (filterDoc.value) params.set('doc_id', filterDoc.value);
+  if (filterLang.value) params.set('language', filterLang.value);
+  params.set('page', currentPage);
+  params.set('per_page', perPage);
+
+  contentEl.innerHTML = '<div class="loading">Loading…</div>';
+
+  try {
+    const res = await fetch('/api/rag/chunks?' + params.toString());
+    const data = await res.json();
+    render(data);
+  } catch (e) {
+    contentEl.innerHTML = '<div class="loading">Error loading vector store</div>';
+  }
+}
+
+function render(data) {
+  // Update badge
+  totalBadge.textContent = data.total + ' chunk' + (data.total !== 1 ? 's' : '');
+
+  // Update filter dropdowns (preserve selection)
+  updateSelect(filterHotel, data.hotels, filterHotel.value);
+  updateSelect(filterDoc, data.docs, filterDoc.value);
+  updateSelect(filterLang, data.languages, filterLang.value);
+
+  // Stats
+  statsEl.innerHTML = `
+    <span>Total: <span class="stat-value">${data.total}</span></span>
+    <span>Hotels: <span class="stat-value">${data.hotels.length}</span></span>
+    <span>Documents: <span class="stat-value">${data.docs.length}</span></span>
+    <span>Languages: <span class="stat-value">${data.languages.join(', ') || '—'}</span></span>
+    <span>Page: <span class="stat-value">${data.page} / ${data.pages || 1}</span></span>
+  `;
+
+  // Chunks
+  if (data.chunks.length === 0) {
+    contentEl.innerHTML = '<div class="empty">No chunks found. The vector store is empty or no results match your filters.</div>';
+    paginationEl.style.display = 'none';
+    return;
+  }
+
+  contentEl.innerHTML = '';
+  data.chunks.forEach(c => {
+    const card = document.createElement('div');
+    card.className = 'chunk-card';
+    card.innerHTML = `
+      <div class="chunk-meta">
+        <span class="tag tag-hotel">${esc(c.hotel_id)}</span>
+        <span class="tag tag-doc">${esc(c.doc_id)}</span>
+        <span class="tag tag-lang">${esc(c.language)}</span>
+        ${c.category ? `<span class="tag tag-cat">${esc(c.category)}</span>` : ''}
+        <span class="tag tag-idx">chunk #${c.chunk_index}</span>
+      </div>
+      <div class="chunk-text">${esc(c.text)}</div>
+      <div class="chunk-footer">ID: ${c.id} · Updated: ${c.updated_at || '—'}</div>
+    `;
+    contentEl.appendChild(card);
+  });
+
+  // Pagination
+  if (data.pages > 1) {
+    paginationEl.style.display = 'flex';
+    pageInfo.textContent = `Page ${data.page} of ${data.pages}`;
+    btnPrev.disabled = data.page <= 1;
+    btnNext.disabled = data.page >= data.pages;
+  } else {
+    paginationEl.style.display = 'none';
+  }
+}
+
+function updateSelect(select, options, currentVal) {
+  const allLabel = select.options[0].textContent;
+  select.innerHTML = `<option value="">${allLabel}</option>`;
+  options.forEach(opt => {
+    const o = document.createElement('option');
+    o.value = opt;
+    o.textContent = opt;
+    if (opt === currentVal) o.selected = true;
+    select.appendChild(o);
+  });
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+// Events
+document.getElementById('btn-filter').addEventListener('click', () => { currentPage = 1; loadChunks(); });
+document.getElementById('btn-clear').addEventListener('click', () => {
+  filterHotel.value = '';
+  filterDoc.value = '';
+  filterLang.value = '';
+  currentPage = 1;
+  loadChunks();
+});
+btnPrev.addEventListener('click', () => { currentPage--; loadChunks(); });
+btnNext.addEventListener('click', () => { currentPage++; loadChunks(); });
+
+// Auto-reload docs when hotel changes
+filterHotel.addEventListener('change', () => { currentPage = 1; loadChunks(); });
+
+// Initial load
+loadChunks();
+</script>
+</body>
+</html>

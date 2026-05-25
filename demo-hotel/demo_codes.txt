@@ -1,0 +1,7 @@
+# Predefined demo access codes — one per line
+# Lines starting with # are comments, blank lines are ignored
+# Share these with testers for instant access (no email required)
+
+TESTER-ALPHA-2026
+TESTER-BETA-2026
+TESTER-GAMMA-2026

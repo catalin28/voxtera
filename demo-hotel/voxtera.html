@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Voxtera is a real-time multilingual voice concierge for hospitality — answering guests in 99 languages and turning every request into a ticket your team can action." />
 <title>Voxtera — The Multilingual Concierge, Reimagined</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -92,13 +93,15 @@
   .nav-links a:hover{color:var(--rust);}
   .nav-cta{
     background:var(--ink);
-    color:var(--cream);
+    color:#fff;
     padding:0.7rem 1.4rem;
     border-radius:999px;
     transition:all .3s;
     border:1px solid var(--ink);
+    font:inherit;
+    cursor:pointer;
   }
-  .nav-cta:hover{background:var(--rust);border-color:var(--rust);color:var(--cream);}
+  .nav-cta:hover{background:var(--rust);border-color:var(--rust);color:#fff;}
 
   /* ============ HERO ============ */
   .hero{
@@ -1478,10 +1481,11 @@
   <div class="nav-links">
     <a href="#solution">Solution</a>
     <a href="voxtera-hotels.html">For hotels</a>
+    <a href="voxtera-demo.html">Try demo</a>
     <a href="#languages">Languages</a>
     <a href="#compare">Compare</a>
     <a href="#pricing">Pricing</a>
-    <a href="#contact" class="nav-cta">Book a demo →</a>
+    <button onclick="openCalPopup()" class="nav-cta">Book a demo →</button>
   </div>
 </nav>
 
@@ -1512,7 +1516,7 @@
         </span>
         <span id="listen-label">Listen to a 30-sec sample</span>
       </button>
-      <a href="#contact" class="btn btn-ghost">Book a demo <span class="arrow">→</span></a>
+      <button onclick="openCalPopup()" class="btn btn-ghost">Book a demo <span class="arrow">→</span></button>
     </div>
     <div class="hero-microcopy">
       <span class="mono">↳ German guest, real call · 27 seconds · unedited</span>
@@ -1561,7 +1565,7 @@
 </section>
 
 <!-- MARQUEE -->
-<div class="marquee">
+<div class="marquee" aria-hidden="true">
   <div class="marquee-track">
     <span>
       Bonjour <span class="sep">·</span>
@@ -1638,7 +1642,7 @@
       <div class="step reveal">
         <div class="step-num">i.</div>
         <div class="step-title">Hears any language</div>
-        <div class="step-desc">No selection screens. No phrasebooks. The guest just speaks — Whisper detects the language automatically from the first utterance.</div>
+        <div class="step-desc">No selection screens. No phrasebooks. The guest just speaks — Voxtera detects the language automatically from the first utterance.</div>
         <span class="step-tag">99 languages</span>
       </div>
       <div class="step reveal">
@@ -1650,7 +1654,7 @@
       <div class="step reveal">
         <div class="step-num">iii.</div>
         <div class="step-title">Replies in their voice</div>
-        <div class="step-desc">A native-sounding Chirp 3 HD voice responds in the guest's own language. Under one second, end-to-end. Interruptible like a real conversation.</div>
+        <div class="step-desc">A native-sounding voice responds in the guest's own language. Under one second, end-to-end. Interruptible like a real conversation.</div>
         <span class="step-tag">~740ms latency</span>
       </div>
     </div>
@@ -1902,7 +1906,7 @@
       </div>
       <div class="compare-row">
         <div class="compare-cell label">Data residency</div>
-        <div class="compare-cell us">EU-resident by default, on-prem on Enterprise</div>
+        <div class="compare-cell us">Regional — deployed closest to your property</div>
         <div class="compare-cell them">Varies by deployment</div>
       </div>
       <div class="compare-row">
@@ -1941,7 +1945,7 @@
           <li>PMS summary webhook</li>
           <li>Email support</li>
         </ul>
-        <a href="#contact" class="btn btn-ghost" style="justify-content:center;">Start trial →</a>
+        <button onclick="openCalPopup()" class="btn btn-ghost" style="justify-content:center;">Start trial →</button>
       </div>
 
       <div class="price-card feature">
@@ -1958,7 +1962,7 @@
           <li>Human-escalation routing</li>
           <li>Priority support</li>
         </ul>
-        <a href="#contact" class="btn btn-primary" style="background:var(--gold);border-color:var(--gold);color:var(--ink);justify-content:center;">Book a demo →</a>
+        <button onclick="openCalPopup()" class="btn btn-primary" style="background:var(--gold);border-color:var(--gold);color:var(--ink);justify-content:center;">Book a demo →</button>
       </div>
 
       <div class="price-card">
@@ -1974,7 +1978,7 @@
           <li>Custom CRM, PMS, IPTV integrations</li>
           <li>Named success manager + SLA</li>
         </ul>
-        <a href="#contact" class="btn btn-ghost" style="justify-content:center;">Talk to sales →</a>
+        <button onclick="openCalPopup()" class="btn btn-ghost" style="justify-content:center;">Talk to sales →</button>
       </div>
     </div>
   </div>
@@ -2004,7 +2008,7 @@
     </details>
     <details>
       <summary>Where is guest data stored?</summary>
-      <p>North America–resident by default — hosted in US and Canadian regions — with on-prem deployment available for Domaine-tier customers. Conversations are encrypted in transit and at rest; recordings can be disabled per-property.</p>
+      <p>Infrastructure is deployed in the region closest to your property — North America, Europe, or other regions as needed. We work with trusted subprocessors and select hosting regions per deployment. Full details on data routing and subprocessors are available on request. All conversations are encrypted in transit and at rest; recordings can be disabled per-property.</p>
     </details>
     <details>
       <summary>Can it handle a phone line, not just web?</summary>
@@ -2023,13 +2027,13 @@
     <div class="trust-head">
       <div class="section-label">Trust &amp; data</div>
       <h2 class="trust-title">Enterprise-grade, by default.</h2>
-      <p class="trust-sub">Built in the EU for properties that take guest privacy seriously. The same posture from our first $290/mo customer to our largest chain.</p>
+      <p class="trust-sub">Built for properties that take guest privacy seriously. The same posture from our first $290/mo customer to our largest chain.</p>
     </div>
     <div class="trust-grid">
       <div class="trust-card">
-        <div class="trust-icon">EU</div>
-        <div class="trust-name">EU data residency</div>
-        <div class="trust-note">Default. Frankfurt &amp; Paris regions.</div>
+        <div class="trust-icon">🌐</div>
+        <div class="trust-name">Regional deployment</div>
+        <div class="trust-note">Hosted closest to your property. Details on request.</div>
       </div>
       <div class="trust-card">
         <div class="trust-icon">
@@ -2050,7 +2054,7 @@
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         </div>
         <div class="trust-name">SOC 2 in progress</div>
-        <div class="trust-note">Type II audit target Q4 2026.</div>
+        <div class="trust-note">Currently working toward certification.</div>
       </div>
       <div class="trust-card">
         <div class="trust-icon">
@@ -2077,11 +2081,37 @@
     <h2>Let your guests speak<br/><span class="italic">their language.</span></h2>
     <p>A fifteen-minute demo. A live call in the language of your choice. Decide for yourself whether the future of the front desk sounds like Voxtera.</p>
     <div class="cta-buttons">
-      <a href="mailto:hello@voxtera.ai" class="btn btn-primary">Book a demo <span class="arrow">→</span></a>
+      <button onclick="openCalPopup()" class="btn btn-primary">Book a demo <span class="arrow">→</span></button>
       <a href="voxtera-hotels.html" class="btn btn-ghost">See how it works in a hotel</a>
     </div>
   </div>
 </section>
+
+<!-- Cal.com popup embed -->
+<script>
+  // REPLACE 'YOUR_USERNAME/voxtera-demo' with your Cal.com event link
+  const CAL_LINK = 'YOUR_USERNAME/voxtera-demo';
+
+  (function(C,A,L){
+    let p=function(a,ar){a.q.push(ar)};
+    let d=C.document;
+    C.Cal=C.Cal||function(){let cal=C.Cal;let ar=arguments;
+      if(!cal.loaded){cal.ns={};cal.q=cal.q||[];d.head.appendChild(d.createElement('script')).src=A;cal.loaded=true;}
+      if(ar[0]===L){const api=function(){p(api,arguments)};const namespace=ar[1];api.q=api.q||[];cal.ns[namespace]=api;return;}
+      p(cal,ar);};
+  })(window,'https://app.cal.com/embed/embed.js','init');
+
+  Cal('init', {origin:'https://app.cal.com'});
+
+  function openCalPopup() {
+    Cal('ui', {
+      styles: { branding: { brandColor: '#b8884a' } },
+      hideEventTypeDetails: false,
+      layout: 'month_view'
+    });
+    Cal('openModal', { calLink: CAL_LINK });
+  }
+</script>
 
 <!-- FOOTER -->
 <footer>
@@ -2107,14 +2137,14 @@
     <div>
       <h5>Contact</h5>
       <a href="mailto:hello@voxtera.ai">hello@voxtera.ai</a>
-      <a href="#">Book a demo</a>
+      <a href="#" onclick="openCalPopup();return false;">Book a demo</a>
       <a href="#">Trust Center</a>
       <a href="#">Press kit</a>
       <a href="#">Careers</a>
     </div>
   </div>
   <div class="footer-bottom">
-    <span>© 2026 Voxtera — Built in EU</span>
+    <span>© 2026 Voxtera — Built in Canada</span>
     <span>Privacy · Terms · GDPR · DPA</span>
   </div>
 </footer>
@@ -2359,7 +2389,7 @@
         if (typingEl.isConnected) { typingEl.remove(); if (!botEl) appendMsg('No response received. Please try again.', 'bot'); }
       } catch (_) {
         typingEl.remove();
-        appendMsg('Could not reach the server. Make sure it is running on localhost:8080.', 'bot');
+        appendMsg('Connection unavailable. Please try again later.', 'bot');
       }
     });
   })();

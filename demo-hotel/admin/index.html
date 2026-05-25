@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voxtera — Admin Portal</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0f1117;
+  color: #e4e4e7;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Login gate */
+.login-box {
+  background: #1a1b23;
+  border: 1px solid #2a2b35;
+  border-radius: 12px;
+  padding: 40px;
+  width: 380px;
+  text-align: center;
+}
+.login-box h1 {
+  font-size: 22px;
+  margin-bottom: 6px;
+  color: #fff;
+}
+.login-box .subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 24px;
+}
+.login-box input {
+  width: 100%;
+  background: #0f1117;
+  border: 1px solid #3a3b45;
+  color: #e4e4e7;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.login-box input:focus {
+  outline: none;
+  border-color: #8b5cf6;
+}
+.login-box button {
+  width: 100%;
+  background: #8b5cf6;
+  color: #fff;
+  border: none;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.login-box button:hover { background: #7c3aed; }
+.login-box .error {
+  color: #ef4444;
+  font-size: 13px;
+  margin-top: 10px;
+  display: none;
+}
+
+/* Dashboard */
+.dashboard {
+  display: none;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+}
+.dash-header {
+  background: #1a1b23;
+  border-bottom: 1px solid #2a2b35;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dash-header h1 { font-size: 20px; font-weight: 600; color: #fff; }
+.dash-header .logout {
+  background: #374151;
+  color: #e4e4e7;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.dash-header .logout:hover { background: #4b5563; }
+
+.dash-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+  max-width: 900px;
+  width: 100%;
+}
+
+.card {
+  background: #1a1b23;
+  border: 1px solid #2a2b35;
+  border-radius: 12px;
+  padding: 24px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.card:hover {
+  border-color: #8b5cf6;
+  transform: translateY(-2px);
+}
+.card .icon {
+  font-size: 28px;
+  margin-bottom: 12px;
+}
+.card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.card p {
+  font-size: 13px;
+  color: #9ca3af;
+  line-height: 1.5;
+}
+</style>
+</head>
+<body>
+
+<!-- Login gate -->
+<div class="login-box" id="login-box">
+  <h1>Admin Portal</h1>
+  <p class="subtitle">Enter your admin token to continue</p>
+  <input type="password" id="token-input" placeholder="VOXTERA_ADMIN_TOKEN" autocomplete="off" />
+  <button id="btn-login">Authenticate</button>
+  <p class="error" id="error-msg">Invalid token. Please try again.</p>
+</div>
+
+<!-- Dashboard (shown after auth) -->
+<div class="dashboard" id="dashboard">
+  <div class="dash-header">
+    <h1>Voxtera Admin</h1>
+    <button class="logout" id="btn-logout">Logout</button>
+  </div>
+  <div class="dash-content">
+    <div class="cards">
+      <a class="card" href="/admin/admin.html" id="link-sessions">
+        <div class="icon">📡</div>
+        <h3>Sessions Monitor</h3>
+        <p>Live view of active voice sessions, eject users, end sessions.</p>
+      </a>
+      <a class="card" href="/admin/logs.html">
+        <div class="icon">📋</div>
+        <h3>Chat Audit Logs</h3>
+        <p>Browse all chat conversations with timestamps, IPs, and metadata.</p>
+      </a>
+      <a class="card" href="/admin/rag-store.html">
+        <div class="icon">🗄️</div>
+        <h3>Vector Store</h3>
+        <p>View RAG chunks, filter by hotel/document/language, inspect embeddings.</p>
+      </a>
+      <a class="card" href="/admin/trace.html" id="link-trace">
+        <div class="icon">⚡</div>
+        <h3>Pipeline Traces</h3>
+        <p>Real-time pipeline performance: STT, LLM, TTS latency per turn.</p>
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+const loginBox = document.getElementById('login-box');
+const dashboard = document.getElementById('dashboard');
+const tokenInput = document.getElementById('token-input');
+const errorMsg = document.getElementById('error-msg');
+
+// Check for stored token on load
+const stored = sessionStorage.getItem('voxtera_admin_token');
+if (stored) {
+  verify(stored);
+}
+
+document.getElementById('btn-login').addEventListener('click', login);
+tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+document.getElementById('btn-logout').addEventListener('click', () => {
+  sessionStorage.removeItem('voxtera_admin_token');
+  dashboard.style.display = 'none';
+  loginBox.style.display = 'block';
+  document.body.style.alignItems = 'center';
+  document.body.style.justifyContent = 'center';
+  tokenInput.value = '';
+  errorMsg.style.display = 'none';
+});
+
+async function login() {
+  const token = tokenInput.value.trim();
+  if (!token) return;
+  errorMsg.style.display = 'none';
+  const ok = await verify(token);
+  if (!ok) {
+    errorMsg.style.display = 'block';
+  }
+}
+
+async function verify(token) {
+  try {
+    const res = await fetch('/api/admin/verify', {
+      headers: { 'X-Admin-Token': token }
+    });
+    if (res.ok) {
+      sessionStorage.setItem('voxtera_admin_token', token);
+      showDashboard();
+      return true;
+    }
+    return false;
+  } catch {
+    errorMsg.textContent = 'Cannot reach server.';
+    errorMsg.style.display = 'block';
+    return false;
+  }
+}
+
+function showDashboard() {
+  loginBox.style.display = 'none';
+  dashboard.style.display = 'flex';
+  document.body.style.alignItems = 'stretch';
+  document.body.style.justifyContent = 'stretch';
+}
+</script>
+</body>
+</html>
