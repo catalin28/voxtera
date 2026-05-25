@@ -8,6 +8,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700;9..144,900&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="i18n/i18n.css">
+<link rel="alternate" hreflang="en" href="?lang=en">
+<link rel="alternate" hreflang="fr" href="?lang=fr">
+<link rel="alternate" hreflang="es" href="?lang=es">
+<link rel="alternate" hreflang="it" href="?lang=it">
+<link rel="alternate" hreflang="ar" href="?lang=ar">
+<link rel="alternate" hreflang="tr" href="?lang=tr">
+<link rel="alternate" hreflang="x-default" href="?lang=en">
 <style>
   :root{
     --cream:#f4ede1;
@@ -1284,19 +1292,20 @@
     Voxtera<sup>™</sup>
   </div>
   <div class="nav-links">
-    <a href="voxtera.html">Home</a>
-    <a href="voxtera-hotels.html" class="active">For hotels</a>
-    <a href="voxtera-demo.html">Try demo</a>
-    <a href="voxtera.html#pricing">Pricing</a>
-    <a href="#form" class="nav-cta">Talk to us →</a>
+    <a href="voxtera.html" data-i18n="nav.home">Home</a>
+    <a href="voxtera-hotels.html" class="active" data-i18n="nav.hotels">For hotels</a>
+    <a href="voxtera-demo.html" data-i18n="nav.demo">Try demo</a>
+    <a href="voxtera.html#pricing" data-i18n="nav.pricing">Pricing</a>
+    <div id="lang-picker"></div>
+    <a href="#form" class="nav-cta" data-i18n="hotels.nav_cta">Talk to us →</a>
   </div>
 </nav>
 
 <!-- HERO -->
 <section class="hero">
-  <div class="hero-eyebrow">For hotels &amp; serviced residences</div>
-  <h1>From guest <span class="italic">request</span>,<br/>to your team's chat,<br/>in seconds.</h1>
-  <p class="hero-sub">
+  <div class="hero-eyebrow" data-i18n="hotels.hero_eyebrow">For hotels &amp; serviced residences</div>
+  <h1 data-i18n-html="hotels.hero_title">From guest <span class="italic">request</span>,<br/>to your team's chat,<br/>in seconds.</h1>
+  <p class="hero-sub" data-i18n-html="hotels.hero_sub">
     Voxtera answers your guests in any of 99 languages — and turns every request into a ticket that lands directly in
     <span class="italic">the tool your staff already uses</span>: Telegram, WhatsApp, SMS, Slack, or your PMS.
   </p>
@@ -1305,9 +1314,9 @@
 <!-- THE LOOP -->
 <section class="loop">
   <div class="loop-inner">
-    <div class="section-label">The loop</div>
-    <h2 class="section-title">Voice in. <span class="italic">Action</span> out.</h2>
-    <p class="section-intro">
+    <div class="section-label" data-i18n="hotels.loop_label">The loop</div>
+    <h2 class="section-title" data-i18n-html="hotels.loop_title">Voice in. <span class="italic">Action</span> out.</h2>
+    <p class="section-intro" data-i18n="hotels.loop_intro">
       Most voice assistants stop at answering the guest. Voxtera closes the loop —
       capturing every request, routing it to the right team, and confirming back to the guest when it's done.
     </p>
@@ -1315,37 +1324,37 @@
     <div class="loop-flow">
       <div class="loop-step reveal">
         <div class="loop-step-num">i.</div>
-        <div class="loop-step-title">Guest speaks</div>
-        <div class="loop-step-desc">In any of 99 languages, by phone or web. No menus, no language selection.</div>
-        <div class="loop-step-detail">Auto-detected</div>
+        <div class="loop-step-title" data-i18n="hotels.step1_title">Guest speaks</div>
+        <div class="loop-step-desc" data-i18n="hotels.step1_desc">In any of 99 languages, by phone or web. No menus, no language selection.</div>
+        <div class="loop-step-detail" data-i18n="hotels.step1_detail">Auto-detected</div>
         <div class="loop-arrow">→</div>
       </div>
       <div class="loop-step reveal">
         <div class="loop-step-num">ii.</div>
-        <div class="loop-step-title">Voxtera understands</div>
-        <div class="loop-step-desc">Identifies the request, the room, the urgency, and which team owns it.</div>
-        <div class="loop-step-detail">Grounded on your KB</div>
+        <div class="loop-step-title" data-i18n="hotels.step2_title">Voxtera understands</div>
+        <div class="loop-step-desc" data-i18n="hotels.step2_desc">Identifies the request, the room, the urgency, and which team owns it.</div>
+        <div class="loop-step-detail" data-i18n="hotels.step2_detail">Grounded on your KB</div>
         <div class="loop-arrow">→</div>
       </div>
       <div class="loop-step reveal">
         <div class="loop-step-num">iii.</div>
-        <div class="loop-step-title">A ticket is created</div>
-        <div class="loop-step-desc">Structured, translated to your team's language, with all the context needed.</div>
-        <div class="loop-step-detail">Audit-logged</div>
+        <div class="loop-step-title" data-i18n="hotels.step3_title">A ticket is created</div>
+        <div class="loop-step-desc" data-i18n="hotels.step3_desc">Structured, translated to your team's language, with all the context needed.</div>
+        <div class="loop-step-detail" data-i18n="hotels.step3_detail">Audit-logged</div>
         <div class="loop-arrow">→</div>
       </div>
       <div class="loop-step reveal">
         <div class="loop-step-num">iv.</div>
-        <div class="loop-step-title">Routed to your team</div>
-        <div class="loop-step-desc">Via Telegram, WhatsApp, SMS, Slack — wherever your staff already coordinates.</div>
-        <div class="loop-step-detail">Your rules</div>
+        <div class="loop-step-title" data-i18n="hotels.step4_title">Routed to your team</div>
+        <div class="loop-step-desc" data-i18n="hotels.step4_desc">Via Telegram, WhatsApp, SMS, Slack — wherever your staff already coordinates.</div>
+        <div class="loop-step-detail" data-i18n="hotels.step4_detail">Your rules</div>
         <div class="loop-arrow">→</div>
       </div>
       <div class="loop-step reveal">
         <div class="loop-step-num">v.</div>
-        <div class="loop-step-title">Closed &amp; confirmed</div>
-        <div class="loop-step-desc">Staff marks done. Guest gets an optional confirmation. Summary saved to PMS.</div>
-        <div class="loop-step-detail">End-to-end</div>
+        <div class="loop-step-title" data-i18n="hotels.step5_title">Closed &amp; confirmed</div>
+        <div class="loop-step-desc" data-i18n="hotels.step5_desc">Staff marks done. Guest gets an optional confirmation. Summary saved to PMS.</div>
+        <div class="loop-step-detail" data-i18n="hotels.step5_detail">End-to-end</div>
       </div>
     </div>
   </div>
@@ -1354,9 +1363,9 @@
 <!-- CAPABILITIES -->
 <section class="capabilities">
   <div class="cap-inner">
-    <div class="section-label">What Voxtera handles</div>
-    <h2 class="section-title">Six categories. <span class="italic">One bot.</span> Every language.</h2>
-    <p class="section-intro">
+    <div class="section-label" data-i18n="hotels.cap_label">What Voxtera handles</div>
+    <h2 class="section-title" data-i18n-html="hotels.cap_title">Six categories. <span class="italic">One bot.</span> Every language.</h2>
+    <p class="section-intro" data-i18n="hotels.cap_intro">
       Every request your guests make falls into one of these. Voxtera handles them end-to-end, in the guest's language, and turns each into a structured action for the right team.
     </p>
 
@@ -1366,8 +1375,8 @@
         <div class="cap-card-head">
           <span class="cap-mark">i</span>
           <div>
-            <div class="cap-title">Reception &amp; information</div>
-            <div class="cap-tag">Front-desk overflow</div>
+            <div class="cap-title" data-i18n="hotels.cap1_title">Reception &amp; information</div>
+            <div class="cap-tag" data-i18n="hotels.cap1_tag">Front-desk overflow</div>
           </div>
         </div>
         <ul class="cap-list">
@@ -1387,8 +1396,8 @@
         <div class="cap-card-head">
           <span class="cap-mark">ii</span>
           <div>
-            <div class="cap-title">Reservations &amp; bookings</div>
-            <div class="cap-tag">F&amp;B, spa, transport</div>
+            <div class="cap-title" data-i18n="hotels.cap2_title">Reservations &amp; bookings</div>
+            <div class="cap-tag" data-i18n="hotels.cap2_tag">F&amp;B, spa, transport</div>
           </div>
         </div>
         <ul class="cap-list">
@@ -1408,8 +1417,8 @@
         <div class="cap-card-head">
           <span class="cap-mark">iii</span>
           <div>
-            <div class="cap-title">Housekeeping requests</div>
-            <div class="cap-tag">Tickets to housekeeping team</div>
+            <div class="cap-title" data-i18n="hotels.cap3_title">Housekeeping requests</div>
+            <div class="cap-tag" data-i18n="hotels.cap3_tag">Tickets to housekeeping team</div>
           </div>
         </div>
         <ul class="cap-list">
@@ -1429,8 +1438,8 @@
         <div class="cap-card-head">
           <span class="cap-mark">iv</span>
           <div>
-            <div class="cap-title">Maintenance &amp; issues</div>
-            <div class="cap-tag">Urgency-aware routing</div>
+            <div class="cap-title" data-i18n="hotels.cap4_title">Maintenance &amp; issues</div>
+            <div class="cap-tag" data-i18n="hotels.cap4_tag">Urgency-aware routing</div>
           </div>
         </div>
         <ul class="cap-list">
@@ -1450,8 +1459,8 @@
         <div class="cap-card-head">
           <span class="cap-mark">v</span>
           <div>
-            <div class="cap-title">Concierge &amp; recommendations</div>
-            <div class="cap-tag">From your curated list</div>
+            <div class="cap-title" data-i18n="hotels.cap5_title">Concierge &amp; recommendations</div>
+            <div class="cap-tag" data-i18n="hotels.cap5_tag">From your curated list</div>
           </div>
         </div>
         <ul class="cap-list">
@@ -1471,8 +1480,8 @@
         <div class="cap-card-head">
           <span class="cap-mark">vi</span>
           <div>
-            <div class="cap-title">Safety &amp; escalation</div>
-            <div class="cap-tag">Human-first, always</div>
+            <div class="cap-title" data-i18n="hotels.cap6_title">Safety &amp; escalation</div>
+            <div class="cap-tag" data-i18n="hotels.cap6_tag">Human-first, always</div>
           </div>
         </div>
         <ul class="cap-list">
@@ -1495,9 +1504,9 @@
 <!-- CHANNELS -->
 <section class="channels">
   <div class="channels-inner">
-    <div class="section-label">Where tickets go</div>
-    <h2 class="section-title">Your team's tools. <span class="italic">Not ours.</span></h2>
-    <p class="section-intro">
+    <div class="section-label" data-i18n="hotels.channels_label">Where tickets go</div>
+    <h2 class="section-title" data-i18n-html="hotels.channels_title">Your team's tools. <span class="italic">Not ours.</span></h2>
+    <p class="section-intro" data-i18n="hotels.channels_intro">
       Voxtera doesn't ask your staff to learn a new app. It posts directly into whatever you already use to coordinate —
       so the cleaner gets a Telegram message in Portuguese, the night manager gets a Slack ping in English,
       and your PMS gets the structured ticket for audit.
@@ -1551,9 +1560,9 @@
 <!-- TIMELINE -->
 <section class="timeline">
   <div class="timeline-inner">
-    <div class="section-label">A single request, start to finish</div>
-    <h2 class="section-title">From <span class="italic">"more towels, please"</span> to delivered — in 8 minutes.</h2>
-    <p class="section-intro">
+    <div class="section-label" data-i18n="hotels.timeline_label">A single request, start to finish</div>
+    <h2 class="section-title" data-i18n-html="hotels.timeline_title">From <span class="italic">"more towels, please"</span> to delivered — in 8 minutes.</h2>
+    <p class="section-intro" data-i18n="hotels.timeline_intro">
       A typical Voxtera ticket flow, end-to-end. Eight minutes, zero language barriers, zero handoffs lost.
       The kind of call that used to take fifteen minutes — and a translator — now resolves while the guest is still unpacking.
     </p>
@@ -1649,8 +1658,8 @@
 <section class="existing-tools">
   <div class="et-inner">
     <div class="et-copy">
-      <div class="section-label">Your existing tools, not new ones</div>
-      <h2>No new app. <span class="italic">No login.</span> No training week.</h2>
+      <div class="section-label" data-i18n="hotels.et_label">Your existing tools, not new ones</div>
+      <h2 data-i18n-html="hotels.et_title">No new app. <span class="italic">No login.</span> No training week.</h2>
       <p>
         Hoteliers fear the same thing every time: <span class="italic">"yet another platform we have to log into."</span>
       </p>
@@ -1701,9 +1710,9 @@
 <!-- DOESN'T DO -->
 <section class="doesnt-do">
   <div class="dd-inner">
-    <div class="section-label">An honest list of limits</div>
-    <h2 class="section-title">What Voxtera <span class="italic">doesn't</span> do.</h2>
-    <p class="section-intro">
+    <div class="section-label" data-i18n="hotels.dd_label">An honest list of limits</div>
+    <h2 class="section-title" data-i18n-html="hotels.dd_title">What Voxtera <span class="italic">doesn't</span> do.</h2>
+    <p class="section-intro" data-i18n="hotels.dd_intro">
       Every vendor lists features. We list what we won't do — because operators have been burned by
       products that promised everything and delivered chaos. Voxtera has a deliberate, narrow scope.
     </p>
@@ -1766,27 +1775,27 @@
     </div>
   </div>
   <div class="social-proof" style="margin-top:4rem;text-align:center;padding:1.5rem;border-top:1px solid var(--line);">
-    <p style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.14em;color:var(--gold-deep);margin-bottom:0.4rem;">Early access</p>
-    <p style="font-family:'Instrument Serif',serif;font-style:italic;font-size:1.05rem;color:var(--ink-soft);">Now accepting pilot properties — boutique hotels, residences, and vacation rental groups.</p>
+    <p style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.14em;color:var(--gold-deep);margin-bottom:0.4rem;" data-i18n="hotels.early_access_label">Early access</p>
+    <p style="font-family:'Instrument Serif',serif;font-style:italic;font-size:1.05rem;color:var(--ink-soft);" data-i18n="hotels.early_access_text">Now accepting pilot properties — boutique hotels, residences, and vacation rental groups.</p>
   </div>
 </section>
 
 <!-- FORM -->
 <section class="form-section" id="form">
   <div class="form-inner">
-    <div class="section-label">Discovery</div>
-    <h2 class="section-title">Tell us about your property.</h2>
-    <p class="section-intro">
+    <div class="section-label" data-i18n="hotels.form_label">Discovery</div>
+    <h2 class="section-title" data-i18n="hotels.form_title">Tell us about your property.</h2>
+    <p class="section-intro" data-i18n="hotels.form_intro">
       Three short blocks. Ninety seconds. By the end, we'll both know whether a fifteen-minute conversation is worth scheduling — and what to lead with if it is.
     </p>
-    <p class="section-intro" style="margin-top:-1.5rem;font-family:'JetBrains Mono',monospace;font-size:0.74rem;letter-spacing:0.08em;color:var(--gold-deep);">
+    <p class="section-intro" style="margin-top:-1.5rem;font-family:'JetBrains Mono',monospace;font-size:0.74rem;letter-spacing:0.08em;color:var(--gold-deep);" data-i18n="hotels.form_pricing">
       30-day pilot is free · paid plans from $250/mo · live in under a week
     </p>
 
     <form class="form-card" id="discovery-form" novalidate>
       <!-- Block 1: Property -->
       <div class="form-block">
-        <div class="form-block-title"><span class="num">i.</span> About your property</div>
+        <div class="form-block-title"><span class="num">i.</span> <span data-i18n="hotels.form_block1">About your property</span></div>
         <div class="form-row">
           <div class="form-field">
             <label>Property name <span class="required">*</span></label>
@@ -1828,7 +1837,7 @@
 
       <!-- Block 2: Problem -->
       <div class="form-block">
-        <div class="form-block-title"><span class="num">ii.</span> About the problem</div>
+        <div class="form-block-title"><span class="num">ii.</span> <span data-i18n="hotels.form_block2">About the problem</span></div>
 
         <div class="form-row full">
           <div class="form-field">
@@ -1919,7 +1928,7 @@
 
       <!-- Block 3: You -->
       <div class="form-block">
-        <div class="form-block-title"><span class="num">iii.</span> About you</div>
+        <div class="form-block-title"><span class="num">iii.</span> <span data-i18n="hotels.form_block3">About you</span></div>
         <div class="form-row">
           <div class="form-field">
             <label>Your name <span class="required">*</span></label>
@@ -1986,11 +1995,11 @@
       <div class="form-error" id="form-error" role="alert"></div>
 
       <div class="form-submit">
-        <div class="form-privacy">
+        <div class="form-privacy" data-i18n="hotels.form_privacy">
           We respond within one business day. Your information is used only to reply to your inquiry — never shared, never sold, never added to a newsletter.
         </div>
         <button type="submit" class="submit-btn" id="submit-btn">
-          <span class="submit-label">Send inquiry</span>
+          <span class="submit-label" data-i18n="hotels.form_submit">Send inquiry</span>
           <span class="arrow">→</span>
         </button>
       </div>
@@ -2017,32 +2026,32 @@
   <div class="footer-grid">
     <div>
       <div class="footer-brand">Voxtera</div>
-      <p class="footer-tag">A multilingual voice concierge for hotels and residences that turns every guest request into action — in the tool your team already uses.</p>
+      <p class="footer-tag" data-i18n="footer.tagline">A multilingual voice concierge for hotels and residences that turns every guest request into action — in the tool your team already uses.</p>
     </div>
     <div>
-      <h5>Product</h5>
-      <a href="voxtera.html">Home</a>
-      <a href="voxtera-hotels.html">For hotels</a>
-      <a href="voxtera.html#pricing">Pricing</a>
-      <a href="#">Technology</a>
+      <h5 data-i18n="footer.col1_title">Product</h5>
+      <a href="voxtera.html" data-i18n="nav.home">Home</a>
+      <a href="voxtera-hotels.html" data-i18n="nav.hotels">For hotels</a>
+      <a href="voxtera.html#pricing" data-i18n="nav.pricing">Pricing</a>
+      <a href="#" data-i18n="footer.technology">Technology</a>
     </div>
     <div>
-      <h5>For operators</h5>
-      <a href="#">Independent hotels</a>
-      <a href="#">Branded residences</a>
-      <a href="#">Vacation rentals</a>
-      <a href="#">Resort groups</a>
+      <h5 data-i18n="footer.col2_title">For operators</h5>
+      <a href="#" data-i18n="footer.independent">Independent hotels</a>
+      <a href="#" data-i18n="footer.branded">Branded residences</a>
+      <a href="#" data-i18n="footer.vacation">Vacation rentals</a>
+      <a href="#" data-i18n="footer.resort">Resort groups</a>
     </div>
     <div>
-      <h5>Contact</h5>
+      <h5 data-i18n="footer.col3_title">Contact</h5>
       <a href="mailto:hello@voxtera.ai">hello@voxtera.ai</a>
-      <a href="#form">Discovery form</a>
-      <a href="#">Trust Center</a>
+      <a href="#form" data-i18n="hotels.form_label">Discovery form</a>
+      <a href="#" data-i18n="footer.trust">Trust Center</a>
     </div>
   </div>
   <div class="footer-bottom">
-    <span>© 2026 Voxtera — Built in Canada</span>
-    <span>Privacy · Terms · GDPR · DPA</span>
+    <span data-i18n="footer.copy">© 2026 Voxtera — Built in Canada</span>
+    <span data-i18n="footer.legal">Privacy · Terms · GDPR · DPA</span>
   </div>
 </footer>
 
@@ -2388,6 +2397,6 @@
     });
   })();
 </script>
-
+<script src="i18n/i18n.js"></script>
 </body>
 </html>

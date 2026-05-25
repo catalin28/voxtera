@@ -8,6 +8,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700;9..144,900&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="i18n/i18n.css">
+<link rel="alternate" hreflang="en" href="?lang=en">
+<link rel="alternate" hreflang="fr" href="?lang=fr">
+<link rel="alternate" hreflang="es" href="?lang=es">
+<link rel="alternate" hreflang="it" href="?lang=it">
+<link rel="alternate" hreflang="ar" href="?lang=ar">
+<link rel="alternate" hreflang="tr" href="?lang=tr">
+<link rel="alternate" hreflang="x-default" href="?lang=en">
 <style>
   :root{
     --cream:#f4ede1;
@@ -1479,29 +1487,30 @@
     Voxtera<sup>™</sup>
   </div>
   <div class="nav-links">
-    <a href="#solution">Solution</a>
-    <a href="voxtera-hotels.html">For hotels</a>
-    <a href="voxtera-demo.html">Try demo</a>
-    <a href="#languages">Languages</a>
-    <a href="#compare">Compare</a>
-    <a href="#pricing">Pricing</a>
-    <button onclick="openCalPopup()" class="nav-cta">Book a demo →</button>
+    <a href="#solution" data-i18n="nav.solution">Solution</a>
+    <a href="voxtera-hotels.html" data-i18n="nav.for_hotels">For hotels</a>
+    <a href="voxtera-demo.html" data-i18n="nav.try_demo">Try demo</a>
+    <a href="#languages" data-i18n="nav.languages">Languages</a>
+    <a href="#compare" data-i18n="nav.compare">Compare</a>
+    <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
+    <div class="i18n-picker" id="lang-picker"></div>
+    <button onclick="openCalPopup()" class="nav-cta" data-i18n="nav.book_demo">Book a demo →</button>
   </div>
 </nav>
 
 <!-- HERO -->
 <section class="hero">
-  <div class="hero-meta">Est. 2025 · Voice intelligence for hospitality</div>
-  <div class="hero-meta-right">Vol. 01 — A new front desk</div>
+  <div class="hero-meta" data-i18n="hero.meta">Est. 2025 · Voice intelligence for hospitality</div>
+  <div class="hero-meta-right" data-i18n="hero.meta_right">Vol. 01 — A new front desk</div>
 
   <div>
-    <div class="hero-tag">The multilingual concierge</div>
-    <h1>
+    <div class="hero-tag" data-i18n="hero.tag">The multilingual concierge</div>
+    <h1 data-i18n-html="hero.heading">
       Every guest,<br/>
       every language, <span class="ampersand">&</span><br/>
       <span class="italic">no one</span> waiting.
     </h1>
-    <p class="hero-sub">
+    <p class="hero-sub" data-i18n-html="hero.subtitle">
       Voxtera is a real-time voice concierge that hears your guest in
       <span class="italic">any of 99 languages</span>, answers in the same one,
       and turns every request into a ticket your team can action —
@@ -1509,41 +1518,41 @@
       Built for properties where the front desk shouldn't sleep, switch staff, or fumble for a translator.
     </p>
     <div class="hero-actions">
-      <a href="voxtera-demo.html" class="btn btn-primary">Try Voxtera <span class="arrow">→</span></a>
+      <a href="voxtera-demo.html" class="btn btn-primary" data-i18n="hero.cta_try">Try Voxtera <span class="arrow">→</span></a>
       <button class="btn btn-ghost" id="listen-btn" type="button">
         <span class="listen-icon" aria-hidden="true">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4 L4 12 L12 8 Z" fill="currentColor"/></svg>
         </span>
-        <span id="listen-label">Listen to a 30-sec sample</span>
+        <span id="listen-label" data-i18n="hero.cta_listen">Listen to a 30-sec sample</span>
       </button>
-      <button onclick="openCalPopup()" class="btn btn-ghost">Book a demo <span class="arrow">→</span></button>
+      <button onclick="openCalPopup()" class="btn btn-ghost" data-i18n="hero.cta_book">Book a demo <span class="arrow">→</span></button>
     </div>
     <div class="hero-microcopy">
-      <span class="mono">↳ German guest, real call · 27 seconds · unedited</span>
+      <span class="mono" data-i18n="hero.microcopy">↳ German guest, real call · 27 seconds · unedited</span>
     </div>
   </div>
 
   <div class="hero-visual">
     <!-- Floating little card -->
     <div class="device-card tiny">
-      <div class="tiny-label">Detected · 02:14</div>
+      <div class="tiny-label" data-i18n="hero_visual.detected">Detected · 02:14</div>
       <div class="tiny-value">日本語<br/>→ ja-JP</div>
     </div>
 
     <!-- Main "transcript" card -->
     <div class="device-card main">
       <div class="card-header">
-        <span>Room 412 · Live</span>
-        <span style="display:inline-flex;align-items:center;gap:0.5rem;"><span class="pulse-dot"></span>On call</span>
+        <span data-i18n="hero_visual.card_header_room">Room 412 · Live</span>
+        <span style="display:inline-flex;align-items:center;gap:0.5rem;"><span class="pulse-dot"></span><span data-i18n="hero_visual.card_header_status">On call</span></span>
       </div>
 
       <div class="conv-line">
-        <span class="who">Guest</span>
+        <span class="who" data-i18n="hero_visual.guest">Guest</span>
         <span class="text">¿Pueden recomendarme un buen sitio para cenar cerca, no muy caro?</span>
-        <span class="flag">es-ES · detected automatically</span>
+        <span class="flag" data-i18n="hero_visual.detected_auto">es-ES · detected automatically</span>
       </div>
       <div class="conv-line bot">
-        <span class="who">Voxtera</span>
+        <span class="who" data-i18n="hero_visual.voxtera">Voxtera</span>
         <span class="text">Claro. A cuatro minutos andando tiene Casa Lola — tapas auténticas, reserva no necesaria. ¿Le interesa?</span>
         <span class="flag">latency · 740ms</span>
       </div>
@@ -1557,9 +1566,9 @@
 
     <!-- Floating stat card -->
     <div class="device-card float">
-      <div class="float-stat-label">Avg. response</div>
+      <div class="float-stat-label" data-i18n="hero_visual.avg_response">Avg. response</div>
       <div class="float-stat-value">740<span class="italic">ms</span></div>
-      <div class="float-stat-foot">faster than a human pickup</div>
+      <div class="float-stat-foot" data-i18n="hero_visual.faster_than">faster than a human pickup</div>
     </div>
   </div>
 </section>
@@ -1608,25 +1617,25 @@
 <section class="problem">
   <div class="problem-inner">
     <div>
-      <div class="section-label">The front desk problem</div>
-      <h2>A guest at 2am should not be a <span class="italic">staffing crisis.</span></h2>
+      <div class="section-label" data-i18n="problem.label">The front desk problem</div>
+      <h2 data-i18n-html="problem.title">A guest at 2am should not be a <span class="italic">staffing crisis.</span></h2>
     </div>
     <div class="problem-stats">
       <div class="stat reveal">
-        <div class="stat-num">73<span class="italic">%</span></div>
-        <div class="stat-text">of international guests prefer to speak their native language when asking for help.</div>
+        <div class="stat-num" data-i18n-html="problem.stat1_num">73<span class="italic">%</span></div>
+        <div class="stat-text" data-i18n="problem.stat1_text">of international guests prefer to speak their native language when asking for help.</div>
       </div>
       <div class="stat reveal">
-        <div class="stat-num">4.2<span class="italic">×</span></div>
-        <div class="stat-text">higher review scores for properties offering 24/7 multilingual assistance.</div>
+        <div class="stat-num" data-i18n-html="problem.stat2_num">4.2<span class="italic">×</span></div>
+        <div class="stat-text" data-i18n="problem.stat2_text">higher review scores for properties offering 24/7 multilingual assistance.</div>
       </div>
       <div class="stat reveal">
-        <div class="stat-num">$48k</div>
-        <div class="stat-text">average annual cost of overnight reception coverage for a single mid-size property.</div>
+        <div class="stat-num" data-i18n="problem.stat3_num">$48k</div>
+        <div class="stat-text" data-i18n="problem.stat3_text">average annual cost of overnight reception coverage for a single mid-size property.</div>
       </div>
       <div class="stat reveal">
-        <div class="stat-num">11</div>
-        <div class="stat-text">average languages a single concierge can confidently handle. Voxtera handles ninety-nine.</div>
+        <div class="stat-num" data-i18n="problem.stat4_num">11</div>
+        <div class="stat-text" data-i18n="problem.stat4_text">average languages a single concierge can confidently handle. Voxtera handles ninety-nine.</div>
       </div>
     </div>
   </div>
@@ -1635,27 +1644,27 @@
 <!-- HOW IT WORKS -->
 <section class="section-pad" id="solution">
   <div style="max-width:1400px;margin:0 auto;">
-    <div class="section-label">How Voxtera works</div>
-    <h2 class="section-title">Three seconds from <span class="italic">hello</span> to helpful.</h2>
+    <div class="section-label" data-i18n="how.label">How Voxtera works</div>
+    <h2 class="section-title" data-i18n-html="how.title">Three seconds from <span class="italic">hello</span> to helpful.</h2>
 
     <div class="how-grid">
       <div class="step reveal">
         <div class="step-num">i.</div>
-        <div class="step-title">Hears any language</div>
-        <div class="step-desc">No selection screens. No phrasebooks. The guest just speaks — Voxtera detects the language automatically from the first utterance.</div>
-        <span class="step-tag">99 languages</span>
+        <div class="step-title" data-i18n="how.step1_title">Hears any language</div>
+        <div class="step-desc" data-i18n="how.step1_desc">No selection screens. No phrasebooks. The guest just speaks — Voxtera detects the language automatically from the first utterance.</div>
+        <span class="step-tag" data-i18n="how.step1_tag">99 languages</span>
       </div>
       <div class="step reveal">
         <div class="step-num">ii.</div>
-        <div class="step-title">Understands the property</div>
-        <div class="step-desc">A private knowledge layer holds your menus, hours, room amenities, local recommendations and house rules — so answers are <em>your</em> answers.</div>
-        <span class="step-tag">RAG-grounded</span>
+        <div class="step-title" data-i18n="how.step2_title">Understands the property</div>
+        <div class="step-desc" data-i18n="how.step2_desc">A private knowledge layer holds your menus, hours, room amenities, local recommendations and house rules — so answers are <em>your</em> answers.</div>
+        <span class="step-tag" data-i18n="how.step2_tag">RAG-grounded</span>
       </div>
       <div class="step reveal">
         <div class="step-num">iii.</div>
-        <div class="step-title">Replies in their voice</div>
-        <div class="step-desc">A native-sounding voice responds in the guest's own language. Under one second, end-to-end. Interruptible like a real conversation.</div>
-        <span class="step-tag">~740ms latency</span>
+        <div class="step-title" data-i18n="how.step3_title">Replies in their voice</div>
+        <div class="step-desc" data-i18n="how.step3_desc">A native-sounding voice responds in the guest's own language. Under one second, end-to-end. Interruptible like a real conversation.</div>
+        <span class="step-tag" data-i18n="how.step3_tag">~740ms latency</span>
       </div>
     </div>
   </div>
@@ -1665,69 +1674,65 @@
 <section class="features">
   <div class="feature-row">
     <div>
-      <div class="section-label">What it actually does</div>
-      <h2 class="section-title">A concierge that never <span class="italic">clocks out.</span></h2>
-      <p style="font-size:1.05rem;line-height:1.6;color:var(--ink-soft);max-width:30rem;">
-        Voxtera replaces the gap between front-desk shifts — and supplements it during the day.
-        It picks up the lobby phone, the in-room dial, the web chat, and the WhatsApp call,
-        with the same fluency every time.
-      </p>
+      <div class="section-label" data-i18n="features.label">What it actually does</div>
+      <h2 class="section-title" data-i18n-html="features.title">A concierge that never <span class="italic">clocks out.</span></h2>
+      <p style="font-size:1.05rem;line-height:1.6;color:var(--ink-soft);max-width:30rem;" data-i18n="features.subtitle">Voxtera replaces the gap between front-desk shifts — and supplements it during the day. It picks up the lobby phone, the in-room dial, the web chat, and the WhatsApp call, with the same fluency every time.</p>
     </div>
     <div class="feature-list">
       <div class="feature-item reveal">
         <div class="feature-num">01</div>
         <div>
-          <div class="feature-title">Hotel & residence concierge</div>
-          <div class="feature-desc">Room service, check-in queries, late checkout, spa bookings, wake-up calls — handled in the guest's language, logged for your team.</div>
+          <div class="feature-title" data-i18n="features.f01_title">Hotel & residence concierge</div>
+          <div class="feature-desc" data-i18n="features.f01_desc">Room service, check-in queries, late checkout, spa bookings, wake-up calls — handled in the guest's language, logged for your team.</div>
         </div>
       </div>
       <div class="feature-item reveal">
         <div class="feature-num">02</div>
         <div>
-          <div class="feature-title">Local recommendations, grounded</div>
-          <div class="feature-desc">Pulls from <em>your</em> curated list of restaurants, walks and attractions — not the open internet. Your preferred vendors stay preferred.</div>
+          <div class="feature-title" data-i18n="features.f02_title">Local recommendations, grounded</div>
+          <div class="feature-desc" data-i18n="features.f02_desc">Pulls from <em>your</em> curated list of restaurants, walks and attractions — not the open internet. Your preferred vendors stay preferred.</div>
         </div>
       </div>
       <div class="feature-item reveal">
         <div class="feature-num">03</div>
         <div>
-          <div class="feature-title">Web widget · phone · mobile SDK</div>
-          <div class="feature-desc">Embed Voxtera on your booking page, route your existing phone line through it, or drop it into your guest app. One platform, three ways to reach you.</div>
+          <div class="feature-title" data-i18n="features.f03_title">Web widget · phone · mobile SDK</div>
+          <div class="feature-desc" data-i18n="features.f03_desc">Embed Voxtera on your booking page, route your existing phone line through it, or drop it into your guest app. One platform, three ways to reach you.</div>
         </div>
       </div>
       <div class="feature-item reveal">
         <div class="feature-num">04</div>
         <div>
-          <div class="feature-title">Safety & escalation built in</div>
-          <div class="feature-desc">Medical, security or emotional escalations are flagged and routed to a human in real time — no guest is ever stuck with a bot when it matters.</div>
+          <div class="feature-title" data-i18n="features.f04_title">Safety & escalation built in</div>
+          <div class="feature-desc" data-i18n="features.f04_desc">Medical, security or emotional escalations are flagged and routed to a human in real time — no guest is ever stuck with a bot when it matters.</div>
         </div>
       </div>
       <div class="feature-item reveal">
         <div class="feature-num">05</div>
         <div>
-          <div class="feature-title">Tickets out, to the tools you already use</div>
-          <div class="feature-desc">Every guest request becomes a structured ticket — posted to your team's <em>Telegram</em>, <em>WhatsApp</em>, <em>Slack</em>, or <em>SMS</em> group, translated into their language. No new app for your staff to learn.</div>
+          <div class="feature-title" data-i18n="features.f05_title">Tickets out, to the tools you already use</div>
+          <div class="feature-desc" data-i18n="features.f05_desc">Every guest request becomes a structured ticket — posted to your team's <em>Telegram</em>, <em>WhatsApp</em>, <em>Slack</em>, or <em>SMS</em> group, translated into their language. No new app for your staff to learn.</div>
         </div>
       </div>
       <div class="feature-item reveal">
         <div class="feature-num">06</div>
         <div>
-          <div class="feature-title">Translated summaries — in your language</div>
-          <div class="feature-desc">A Japanese guest calls at 3am. By 3:05am your night manager has a clean English summary in their inbox: <em>"Guest in Room 412 requested a late checkout to 2pm. Confirmed."</em> Every call, every language, translated automatically.</div>
+          <div class="feature-title" data-i18n="features.f06_title">Translated summaries — in your language</div>
+          <div class="feature-desc" data-i18n="features.f06_desc">A Japanese guest calls at 3am. By 3:05am your night manager has a clean English summary in their inbox: <em>"Guest in Room 412 requested a late checkout to 2pm. Confirmed."</em> Every call, every language, translated automatically.</div>
         </div>
       </div>
       <div class="feature-item reveal">
         <div class="feature-num">07</div>
         <div>
-          <div class="feature-title">Conversation summaries to your PMS</div>
-          <div class="feature-desc">Every call ends with a structured summary pushed to your CRM or PMS — guest preferences captured, follow-ups scheduled, complaints surfaced.</div>
+          <div class="feature-title" data-i18n="features.f07_title">Conversation summaries to your PMS</div>
+          <div class="feature-desc" data-i18n="features.f07_desc">Every call ends with a structured summary pushed to your CRM or PMS — guest preferences captured, follow-ups scheduled, complaints surfaced.</div>
         </div>
       </div>
       <div class="feature-item reveal">
         <div class="feature-num">08</div>
         <div>
-          <div class="feature-title">Operator dashboard</div>
-          <div class="feature-desc">See active conversations, languages in use, common questions and escalation rates. Tune answers from a web admin without code.</div>
+          <div class="feature-title" data-i18n="features.f08_title">Operator dashboard</div>
+          <div class="feature-desc" data-i18n="features.f08_desc">See active conversations, languages in use, common questions and escalation rates. Tune answers from a web admin without code.</div>
         </div>
       </div>
     </div>
@@ -1742,15 +1747,15 @@
         <span class="audience-icon" aria-hidden="true">
           <svg viewBox="0 0 32 32" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="16" cy="11" r="5"/><path d="M6 26c2-5 6-7 10-7s8 2 10 7"/></svg>
         </span>
-        <div class="audience-tag mono">For the guest</div>
+        <div class="audience-tag mono" data-i18n="audiences.guest_tag">For the guest</div>
       </div>
-      <h3 class="audience-title">A welcome in <span class="italic">their</span> language.</h3>
+      <h3 class="audience-title" data-i18n-html="audiences.guest_title">A welcome in <span class="italic">their</span> language.</h3>
       <ul class="audience-list">
-        <li>Speak in the language they think in — Voxtera detects it on the first syllable</li>
-        <li>Get an answer in under a second, day or night</li>
-        <li>Interrupt freely. Change subject. Speak naturally — it keeps up</li>
-        <li>Receive a follow-up text or email in the same language if they prefer</li>
-        <li>Reach a real person instantly whenever the call needs one</li>
+        <li data-i18n="audiences.guest_item1">Speak in the language they think in — Voxtera detects it on the first syllable</li>
+        <li data-i18n="audiences.guest_item2">Get an answer in under a second, day or night</li>
+        <li data-i18n="audiences.guest_item3">Interrupt freely. Change subject. Speak naturally — it keeps up</li>
+        <li data-i18n="audiences.guest_item4">Receive a follow-up text or email in the same language if they prefer</li>
+        <li data-i18n="audiences.guest_item5">Reach a real person instantly whenever the call needs one</li>
       </ul>
     </div>
 
@@ -1765,15 +1770,15 @@
         <span class="audience-icon" aria-hidden="true">
           <svg viewBox="0 0 32 32" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 26 L5 12 L16 5 L27 12 L27 26 Z"/><path d="M13 26 L13 18 L19 18 L19 26"/></svg>
         </span>
-        <div class="audience-tag mono">For the hotelier</div>
+        <div class="audience-tag mono" data-i18n="audiences.hotelier_tag">For the hotelier</div>
       </div>
-      <h3 class="audience-title">A team that <span class="italic">never</span> sleeps.</h3>
+      <h3 class="audience-title" data-i18n-html="audiences.hotelier_title">A team that <span class="italic">never</span> sleeps.</h3>
       <ul class="audience-list">
-        <li>Translated summary of every call delivered to your inbox in your language</li>
-        <li>Guest preferences and complaints captured automatically into your PMS</li>
-        <li>Live dashboard: active calls, languages in use, escalation rate</li>
-        <li>Post-call guest ratings to spot service issues before reviews are written</li>
-        <li>Update menus, hours, recommendations from a web admin — no code</li>
+        <li data-i18n="audiences.hotelier_item1">Translated summary of every call delivered to your inbox in your language</li>
+        <li data-i18n="audiences.hotelier_item2">Guest preferences and complaints captured automatically into your PMS</li>
+        <li data-i18n="audiences.hotelier_item3">Live dashboard: active calls, languages in use, escalation rate</li>
+        <li data-i18n="audiences.hotelier_item4">Post-call guest ratings to spot service issues before reviews are written</li>
+        <li data-i18n="audiences.hotelier_item5">Update menus, hours, recommendations from a web admin — no code</li>
       </ul>
     </div>
   </div>
@@ -1783,12 +1788,12 @@
 <section class="language-callout" id="languages">
   <div class="lang-inner">
     <div>
-      <div class="section-label" style="color:var(--gold);">Coverage</div>
-      <div class="lang-callout-headline">
+      <div class="section-label" style="color:var(--gold);" data-i18n="languages_section.label">Coverage</div>
+      <div class="lang-callout-headline" data-i18n-html="languages_section.headline">
         Ninety-nine languages.<br/>
         <span class="italic">No setting required.</span>
       </div>
-      <p style="margin-top:2rem;color:rgba(244,237,225,0.78);font-size:1.08rem;line-height:1.6;max-width:30rem;">
+      <p style="margin-top:2rem;color:rgba(244,237,225,0.78);font-size:1.08rem;line-height:1.6;max-width:30rem;" data-i18n="languages_section.description">
         From Mandarin to Maltese, Tagalog to Tamil. The guest speaks; Voxtera answers.
         TTS is available in 75+ of those with native-grade voices — the remainder fall back gracefully.
       </p>
@@ -1824,8 +1829,8 @@
 <!-- DEMO DIALOGUE -->
 <section class="demo">
   <div class="demo-inner">
-    <div class="section-label">A typical morning</div>
-    <h2 class="section-title">A real conversation, <span class="italic">unedited.</span></h2>
+    <div class="section-label" data-i18n="demo_section.label">A typical morning</div>
+    <h2 class="section-title" data-i18n-html="demo_section.title">A real conversation, <span class="italic">unedited.</span></h2>
 
     <div class="dialogue">
       <div class="dialogue-row">
@@ -1863,9 +1868,9 @@
 <!-- COMPARISON -->
 <section class="compare" id="compare">
   <div class="compare-inner">
-    <div class="section-label">How we compare</div>
-    <h2 class="section-title">A different kind of <span class="italic">concierge.</span></h2>
-    <p class="compare-intro">
+    <div class="section-label" data-i18n="compare_section.label">How we compare</div>
+    <h2 class="section-title" data-i18n-html="compare_section.title">A different kind of <span class="italic">concierge.</span></h2>
+    <p class="compare-intro" data-i18n="compare_section.intro">
       Most hotel voice assistants still ask you to pick a language at setup. Most don't tell you what's under the hood, or how fast it really is. Here's what we publish openly.
     </p>
 
@@ -1873,50 +1878,50 @@
       <div class="compare-row compare-head">
         <div class="compare-cell label">&nbsp;</div>
         <div class="compare-cell us">
-          <span class="mono compare-eyebrow">Voxtera</span>
+          <span class="mono compare-eyebrow" data-i18n="compare_section.col_voxtera">Voxtera</span>
         </div>
         <div class="compare-cell them">
-          <span class="mono compare-eyebrow">Typical hotel AI</span>
+          <span class="mono compare-eyebrow" data-i18n="compare_section.col_typical">Typical hotel AI</span>
         </div>
       </div>
       <div class="compare-row">
-        <div class="compare-cell label">Languages</div>
-        <div class="compare-cell us"><strong>99</strong>, auto-detected from first utterance</div>
-        <div class="compare-cell them">"Multilingual" — per-property configuration required</div>
+        <div class="compare-cell label" data-i18n="compare_section.row1_label">Languages</div>
+        <div class="compare-cell us" data-i18n-html="compare_section.row1_us"><strong>99</strong>, auto-detected from first utterance</div>
+        <div class="compare-cell them" data-i18n="compare_section.row1_them">"Multilingual" — per-property configuration required</div>
       </div>
       <div class="compare-row">
-        <div class="compare-cell label">End-to-end latency</div>
-        <div class="compare-cell us"><strong>~740ms</strong> published, every language</div>
-        <div class="compare-cell them">Not disclosed</div>
+        <div class="compare-cell label" data-i18n="compare_section.row2_label">End-to-end latency</div>
+        <div class="compare-cell us" data-i18n-html="compare_section.row2_us"><strong>~740ms</strong> published, every language</div>
+        <div class="compare-cell them" data-i18n="compare_section.row2_them">Not disclosed</div>
       </div>
       <div class="compare-row">
-        <div class="compare-cell label">Channels</div>
-        <div class="compare-cell us">Phone <span class="mono-sep">·</span> web widget <span class="mono-sep">·</span> mobile SDK</div>
-        <div class="compare-cell them">Usually phone <em>or</em> web, rarely both</div>
+        <div class="compare-cell label" data-i18n="compare_section.row3_label">Channels</div>
+        <div class="compare-cell us" data-i18n="compare_section.row3_us">Phone · web widget · mobile SDK</div>
+        <div class="compare-cell them" data-i18n="compare_section.row3_them">Usually phone <em>or</em> web, rarely both</div>
       </div>
       <div class="compare-row">
-        <div class="compare-cell label">Try before buying</div>
-        <div class="compare-cell us"><a href="voxtera-demo.html" style="color:var(--rust);font-family:'Fraunces',serif;font-weight:500;">Try it →</a></div>
-        <div class="compare-cell them">"Request a demo"</div>
+        <div class="compare-cell label" data-i18n="compare_section.row4_label">Try before buying</div>
+        <div class="compare-cell us"><a href="voxtera-demo.html" style="color:var(--rust);font-family:'Fraunces',serif;font-weight:500;" data-i18n="compare_section.row4_us">Try it →</a></div>
+        <div class="compare-cell them" data-i18n="compare_section.row4_them">"Request a demo"</div>
       </div>
       <div class="compare-row">
-        <div class="compare-cell label">Pricing</div>
-        <div class="compare-cell us">Published, from <strong>$290/mo</strong></div>
-        <div class="compare-cell them">Contact sales</div>
+        <div class="compare-cell label" data-i18n="compare_section.row5_label">Pricing</div>
+        <div class="compare-cell us" data-i18n-html="compare_section.row5_us">Published, from <strong>$290/mo</strong></div>
+        <div class="compare-cell them" data-i18n="compare_section.row5_them">Contact sales</div>
       </div>
       <div class="compare-row">
-        <div class="compare-cell label">Data residency</div>
-        <div class="compare-cell us">Regional — deployed closest to your property</div>
-        <div class="compare-cell them">Varies by deployment</div>
+        <div class="compare-cell label" data-i18n="compare_section.row6_label">Data residency</div>
+        <div class="compare-cell us" data-i18n="compare_section.row6_us">Regional — deployed closest to your property</div>
+        <div class="compare-cell them" data-i18n="compare_section.row6_them">Varies by deployment</div>
       </div>
       <div class="compare-row">
-        <div class="compare-cell label">Tickets &amp; routing</div>
-        <div class="compare-cell us">Every request becomes a ticket — sent to Telegram, WhatsApp, Slack, or your PMS</div>
-        <div class="compare-cell them">A transcript in an inbox, at best</div>
+        <div class="compare-cell label" data-i18n="compare_section.row7_label">Tickets &amp; routing</div>
+        <div class="compare-cell us" data-i18n="compare_section.row7_us">Every request becomes a ticket — sent to Telegram, WhatsApp, Slack, or your PMS</div>
+        <div class="compare-cell them" data-i18n="compare_section.row7_them">A transcript in an inbox, at best</div>
       </div>
     </div>
 
-    <p class="compare-foot mono">
+    <p class="compare-foot mono" data-i18n="compare_section.foot">
       We're not naming names — these are honest patterns across the category in 2026.
     </p>
   </div>
@@ -1925,60 +1930,60 @@
 <!-- PRICING -->
 <section class="pricing" id="pricing">
   <div class="pricing-inner" style="text-align:center;">
-    <div class="section-label" style="justify-content:center;">Pricing</div>
-    <h2 class="section-title" style="margin-left:auto;margin-right:auto;">Simple, per <span class="italic">property.</span></h2>
-    <p style="font-size:1.05rem;line-height:1.6;color:var(--ink-soft);max-width:32rem;margin:0 auto;">
+    <div class="section-label" style="justify-content:center;" data-i18n="pricing_section.label">Pricing</div>
+    <h2 class="section-title" style="margin-left:auto;margin-right:auto;" data-i18n-html="pricing_section.title">Simple, per <span class="italic">property.</span></h2>
+    <p style="font-size:1.05rem;line-height:1.6;color:var(--ink-soft);max-width:32rem;margin:0 auto;" data-i18n="pricing_section.subtitle">
       No per-minute surprises. Pick the tier that matches your monthly call volume.
     </p>
 
     <div class="pricing-grid">
       <div class="price-card">
-        <div class="price-tag">Boutique</div>
-        <div class="price-name">Petit</div>
-        <div class="price-desc">For independent hotels and serviced residences up to 40 keys.</div>
+        <div class="price-tag" data-i18n="pricing_section.tier1_tag">Boutique</div>
+        <div class="price-name" data-i18n="pricing_section.tier1_name">Petit</div>
+        <div class="price-desc" data-i18n="pricing_section.tier1_desc">For independent hotels and serviced residences up to 40 keys.</div>
         <div class="price-num">$290<span class="small">/mo</span></div>
         <ul class="price-features">
-          <li>Up to 1,000 conversations / month</li>
-          <li>Web widget + phone line</li>
-          <li>99-language understanding, 75-language voice replies</li>
-          <li>Tickets to one channel (Telegram or email)</li>
-          <li>PMS summary webhook</li>
-          <li>Email support</li>
+          <li data-i18n="pricing_section.tier1_f1">Up to 1,000 conversations / month</li>
+          <li data-i18n="pricing_section.tier1_f2">Web widget + phone line</li>
+          <li data-i18n="pricing_section.tier1_f3">99-language understanding, 75-language voice replies</li>
+          <li data-i18n="pricing_section.tier1_f4">Tickets to one channel (Telegram or email)</li>
+          <li data-i18n="pricing_section.tier1_f5">PMS summary webhook</li>
+          <li data-i18n="pricing_section.tier1_f6">Email support</li>
         </ul>
-        <button onclick="openCalPopup()" class="btn btn-ghost" style="justify-content:center;">Start trial →</button>
+        <button onclick="openCalPopup()" class="btn btn-ghost" style="justify-content:center;" data-i18n="pricing_section.tier1_cta">Start trial →</button>
       </div>
 
       <div class="price-card feature">
-        <div class="price-tag">Most popular</div>
-        <div class="price-name">Maison</div>
-        <div class="price-desc">For full-service hotels and small chains, 40–250 keys.</div>
+        <div class="price-tag" data-i18n="pricing_section.tier2_tag">Most popular</div>
+        <div class="price-name" data-i18n="pricing_section.tier2_name">Maison</div>
+        <div class="price-desc" data-i18n="pricing_section.tier2_desc">For full-service hotels and small chains, 40–250 keys.</div>
         <div class="price-num">$790<span class="small">/mo</span></div>
         <ul class="price-features">
-          <li>Up to 5,000 conversations / month</li>
-          <li>Web · phone · mobile SDK</li>
-          <li>Tickets to all channels — Telegram, WhatsApp, Slack, SMS, PMS</li>
-          <li>Full property RAG, custom voice tone</li>
-          <li>Live admin dashboard</li>
-          <li>Human-escalation routing</li>
-          <li>Priority support</li>
+          <li data-i18n="pricing_section.tier2_f1">Up to 5,000 conversations / month</li>
+          <li data-i18n="pricing_section.tier2_f2">Web · phone · mobile SDK</li>
+          <li data-i18n="pricing_section.tier2_f3">Tickets to all channels — Telegram, WhatsApp, Slack, SMS, PMS</li>
+          <li data-i18n="pricing_section.tier2_f4">Full property RAG, custom voice tone</li>
+          <li data-i18n="pricing_section.tier2_f5">Live admin dashboard</li>
+          <li data-i18n="pricing_section.tier2_f6">Human-escalation routing</li>
+          <li data-i18n="pricing_section.tier2_f7">Priority support</li>
         </ul>
-        <button onclick="openCalPopup()" class="btn btn-primary" style="background:var(--gold);border-color:var(--gold);color:var(--ink);justify-content:center;">Book a demo →</button>
+        <button onclick="openCalPopup()" class="btn btn-primary" style="background:var(--gold);border-color:var(--gold);color:var(--ink);justify-content:center;" data-i18n="pricing_section.tier2_cta">Book a demo →</button>
       </div>
 
       <div class="price-card">
-        <div class="price-tag">Enterprise</div>
-        <div class="price-name">Domaine</div>
-        <div class="price-desc">For chains, resort groups, and branded residences.</div>
-        <div class="price-num">Custom</div>
+        <div class="price-tag" data-i18n="pricing_section.tier3_tag">Enterprise</div>
+        <div class="price-name" data-i18n="pricing_section.tier3_name">Domaine</div>
+        <div class="price-desc" data-i18n="pricing_section.tier3_desc">For chains, resort groups, and branded residences.</div>
+        <div class="price-num" data-i18n="pricing_section.tier3_price">Custom</div>
         <ul class="price-features">
-          <li>Unlimited conversations</li>
-          <li>Multi-property orchestration</li>
-          <li>Dedicated voice cloning per brand</li>
-          <li>On-prem / EU-resident deployment</li>
-          <li>Custom CRM, PMS, IPTV integrations</li>
-          <li>Named success manager + SLA</li>
+          <li data-i18n="pricing_section.tier3_f1">Unlimited conversations</li>
+          <li data-i18n="pricing_section.tier3_f2">Multi-property orchestration</li>
+          <li data-i18n="pricing_section.tier3_f3">Dedicated voice cloning per brand</li>
+          <li data-i18n="pricing_section.tier3_f4">On-prem / EU-resident deployment</li>
+          <li data-i18n="pricing_section.tier3_f5">Custom CRM, PMS, IPTV integrations</li>
+          <li data-i18n="pricing_section.tier3_f6">Named success manager + SLA</li>
         </ul>
-        <button onclick="openCalPopup()" class="btn btn-ghost" style="justify-content:center;">Talk to sales →</button>
+        <button onclick="openCalPopup()" class="btn btn-ghost" style="justify-content:center;" data-i18n="pricing_section.tier3_cta">Talk to sales →</button>
       </div>
     </div>
   </div>
@@ -1987,36 +1992,36 @@
 <!-- FAQ -->
 <section class="faq">
   <div class="faq-inner">
-    <div class="section-label">Questions, briefly answered</div>
-    <h2 class="section-title">Things people <span class="italic">always</span> ask.</h2>
+    <div class="section-label" data-i18n="faq.label">Questions, briefly answered</div>
+    <h2 class="section-title" data-i18n-html="faq.title">Things people <span class="italic">always</span> ask.</h2>
 
     <details open>
-      <summary>How fast is the response, really?</summary>
-      <p>End-to-end — from the moment the guest stops speaking to the first syllable of Voxtera's reply — averages 600 to 850 milliseconds. That's faster than most human pickups on a hotel phone, and well within the threshold where conversation feels natural.</p>
+      <summary data-i18n="faq.q1">How fast is the response, really?</summary>
+      <p data-i18n="faq.a1">End-to-end — from the moment the guest stops speaking to the first syllable of Voxtera's reply — averages 600 to 850 milliseconds. That's faster than most human pickups on a hotel phone, and well within the threshold where conversation feels natural.</p>
     </details>
     <details>
-      <summary>What if the guest interrupts?</summary>
-      <p>Voxtera stops immediately, listens, and continues the new thread — like a real conversation, not a robocall menu.</p>
+      <summary data-i18n="faq.q2">What if the guest interrupts?</summary>
+      <p data-i18n="faq.a2">Voxtera stops immediately, listens, and continues the new thread — like a real conversation, not a robocall menu.</p>
     </details>
     <details>
-      <summary>How does it know about <em>my</em> property?</summary>
-      <p>During onboarding we ingest your menus, room amenities, hours, house rules, local recommendations and FAQs into a private knowledge layer. Updates take seconds — change your spa hours and Voxtera knows on the next call.</p>
+      <summary data-i18n-html="faq.q3">How does it know about <em>my</em> property?</summary>
+      <p data-i18n="faq.a3">During onboarding we ingest your menus, room amenities, hours, house rules, local recommendations and FAQs into a private knowledge layer. Updates take seconds — change your spa hours and Voxtera knows on the next call.</p>
     </details>
     <details>
-      <summary>What about escalating to a real person?</summary>
-      <p>Anything safety-related, medical, or emotionally distressed is flagged in real time and routed to a staff member via the channel you specify — Slack, SMS, internal phone. Voxtera stays with the guest until the handover completes.</p>
+      <summary data-i18n="faq.q4">What about escalating to a real person?</summary>
+      <p data-i18n="faq.a4">Anything safety-related, medical, or emotionally distressed is flagged in real time and routed to a staff member via the channel you specify — Slack, SMS, internal phone. Voxtera stays with the guest until the handover completes.</p>
     </details>
     <details>
-      <summary>Where is guest data stored?</summary>
-      <p>Infrastructure is deployed in the region closest to your property — North America, Europe, or other regions as needed. We work with trusted subprocessors and select hosting regions per deployment. Full details on data routing and subprocessors are available on request. All conversations are encrypted in transit and at rest; recordings can be disabled per-property.</p>
+      <summary data-i18n="faq.q5">Where is guest data stored?</summary>
+      <p data-i18n="faq.a5">Infrastructure is deployed in the region closest to your property — North America, Europe, or other regions as needed. We work with trusted subprocessors and select hosting regions per deployment. Full details on data routing and subprocessors are available on request. All conversations are encrypted in transit and at rest; recordings can be disabled per-property.</p>
     </details>
     <details>
-      <summary>Can it handle a phone line, not just web?</summary>
-      <p>Yes. We'll work with you to connect Voxtera to your existing phone system — so the same brain, the same voices, and the same languages reach every guest who calls in.</p>
+      <summary data-i18n="faq.q6">Can it handle a phone line, not just web?</summary>
+      <p data-i18n="faq.a6">Yes. We'll work with you to connect Voxtera to your existing phone system — so the same brain, the same voices, and the same languages reach every guest who calls in.</p>
     </details>
     <details>
-      <summary>Can it connect to the systems we already use?</summary>
-      <p>Yes. Voxtera can connect to your management system and open customer tickets automatically — or route every guest request straight to your team's Telegram, WhatsApp, or Slack. Your staff stay in the tools they already know.</p>
+      <summary data-i18n="faq.q7">Can it connect to the systems we already use?</summary>
+      <p data-i18n="faq.a7">Yes. Voxtera can connect to your management system and open customer tickets automatically — or route every guest request straight to your team's Telegram, WhatsApp, or Slack. Your staff stay in the tools they already know.</p>
     </details>
   </div>
 </section>
@@ -2025,50 +2030,50 @@
 <section class="trust">
   <div class="trust-inner">
     <div class="trust-head">
-      <div class="section-label">Trust &amp; data</div>
-      <h2 class="trust-title">Enterprise-grade, by default.</h2>
-      <p class="trust-sub">Built for properties that take guest privacy seriously. The same posture from our first $290/mo customer to our largest chain.</p>
+      <div class="section-label" data-i18n="trust.label">Trust &amp; data</div>
+      <h2 class="trust-title" data-i18n="trust.title">Enterprise-grade, by default.</h2>
+      <p class="trust-sub" data-i18n="trust.subtitle">Built for properties that take guest privacy seriously. The same posture from our first $290/mo customer to our largest chain.</p>
     </div>
     <div class="trust-grid">
       <div class="trust-card">
         <div class="trust-icon">🌐</div>
-        <div class="trust-name">Regional deployment</div>
-        <div class="trust-note">Hosted closest to your property. Details on request.</div>
+        <div class="trust-name" data-i18n="trust.card1_name">Regional deployment</div>
+        <div class="trust-note" data-i18n="trust.card1_note">Hosted closest to your property. Details on request.</div>
       </div>
       <div class="trust-card">
         <div class="trust-icon">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
         </div>
-        <div class="trust-name">Encrypted, end-to-end</div>
-        <div class="trust-note">In transit (TLS 1.3) and at rest (AES-256).</div>
+        <div class="trust-name" data-i18n="trust.card2_name">Encrypted, end-to-end</div>
+        <div class="trust-note" data-i18n="trust.card2_note">In transit (TLS 1.3) and at rest (AES-256).</div>
       </div>
       <div class="trust-card">
         <div class="trust-icon">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L21 7 V12 C21 17 17 20 12 21 C7 20 3 17 3 12 V7 Z"/><path d="M9 12 l2 2 l4-4"/></svg>
         </div>
-        <div class="trust-name">GDPR &amp; DPA ready</div>
-        <div class="trust-note">Sign our DPA at any tier. RoPA available.</div>
+        <div class="trust-name" data-i18n="trust.card3_name">GDPR &amp; DPA ready</div>
+        <div class="trust-note" data-i18n="trust.card3_note">Sign our DPA at any tier. RoPA available.</div>
       </div>
       <div class="trust-card">
         <div class="trust-icon">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         </div>
-        <div class="trust-name">SOC 2 in progress</div>
-        <div class="trust-note">Currently working toward certification.</div>
+        <div class="trust-name" data-i18n="trust.card4_name">SOC 2 in progress</div>
+        <div class="trust-note" data-i18n="trust.card4_note">Currently working toward certification.</div>
       </div>
       <div class="trust-card">
         <div class="trust-icon">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5 5 l14 14"/></svg>
         </div>
-        <div class="trust-name">Recording opt-out</div>
-        <div class="trust-note">Disable storage of audio per property.</div>
+        <div class="trust-name" data-i18n="trust.card5_name">Recording opt-out</div>
+        <div class="trust-note" data-i18n="trust.card5_note">Disable storage of audio per property.</div>
       </div>
       <div class="trust-card">
         <div class="trust-icon">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 19 L20 19 M4 19 L4 9 L12 4 L20 9 L20 19 M9 19 L9 13 L15 13 L15 19"/></svg>
         </div>
-        <div class="trust-name">On-prem available</div>
-        <div class="trust-note">Run inside your own VPC on Enterprise.</div>
+        <div class="trust-name" data-i18n="trust.card6_name">On-prem available</div>
+        <div class="trust-note" data-i18n="trust.card6_note">Run inside your own VPC on Enterprise.</div>
       </div>
     </div>
   </div>
@@ -2077,12 +2082,12 @@
 <!-- FINAL CTA -->
 <section class="final-cta" id="contact">
   <div class="final-cta-inner">
-    <div class="section-label" style="justify-content:center;color:var(--gold);">— Ready when you are —</div>
-    <h2>Let your guests speak<br/><span class="italic">their language.</span></h2>
-    <p>A fifteen-minute demo. A live call in the language of your choice. Decide for yourself whether the future of the front desk sounds like Voxtera.</p>
+    <div class="section-label" style="justify-content:center;color:var(--gold);" data-i18n="cta.label">— Ready when you are —</div>
+    <h2 data-i18n-html="cta.title">Let your guests speak<br/><span class="italic">their language.</span></h2>
+    <p data-i18n="cta.subtitle">A fifteen-minute demo. A live call in the language of your choice. Decide for yourself whether the future of the front desk sounds like Voxtera.</p>
     <div class="cta-buttons">
-      <button onclick="openCalPopup()" class="btn btn-primary">Book a demo <span class="arrow">→</span></button>
-      <a href="voxtera-hotels.html" class="btn btn-ghost">See how it works in a hotel</a>
+      <button onclick="openCalPopup()" class="btn btn-primary" data-i18n="cta.book_demo">Book a demo <span class="arrow">→</span></button>
+      <a href="voxtera-hotels.html" class="btn btn-ghost" data-i18n="cta.see_hotels">See how it works in a hotel</a>
     </div>
   </div>
 </section>
@@ -2118,34 +2123,34 @@
   <div class="footer-grid">
     <div>
       <div class="footer-brand">Voxtera</div>
-      <p class="footer-tag">A multilingual voice concierge for hospitality — turning every guest request into action your team can take, in the tools you already use.</p>
+      <p class="footer-tag" data-i18n="footer.tagline">A multilingual voice concierge for hospitality — turning every guest request into action your team can take, in the tools you already use.</p>
     </div>
     <div>
-      <h5>Product</h5>
-      <a href="#solution">How it works</a>
-      <a href="#languages">Languages</a>
-      <a href="#compare">Compare</a>
-      <a href="#pricing">Pricing</a>
+      <h5 data-i18n="footer.col2_title">Product</h5>
+      <a href="#solution" data-i18n="footer.how_it_works">How it works</a>
+      <a href="#languages" data-i18n="footer.languages">Languages</a>
+      <a href="#compare" data-i18n="footer.compare">Compare</a>
+      <a href="#pricing" data-i18n="footer.pricing">Pricing</a>
     </div>
     <div>
-      <h5>For operators</h5>
-      <a href="voxtera-hotels.html">Hotels</a>
-      <a href="#">Branded residences <span style="opacity:0.5;font-size:0.85em;">· soon</span></a>
-      <a href="#">Vacation rentals <span style="opacity:0.5;font-size:0.85em;">· soon</span></a>
-      <a href="#">Cruise &amp; travel <span style="opacity:0.5;font-size:0.85em;">· soon</span></a>
+      <h5 data-i18n="footer.col3_title">For operators</h5>
+      <a href="voxtera-hotels.html" data-i18n="footer.hotels">Hotels</a>
+      <a href="#" data-i18n-html="footer.branded_residences">Branded residences <span style="opacity:0.5;font-size:0.85em;">· soon</span></a>
+      <a href="#" data-i18n-html="footer.vacation_rentals">Vacation rentals <span style="opacity:0.5;font-size:0.85em;">· soon</span></a>
+      <a href="#" data-i18n-html="footer.cruise_travel">Cruise &amp; travel <span style="opacity:0.5;font-size:0.85em;">· soon</span></a>
     </div>
     <div>
-      <h5>Contact</h5>
+      <h5 data-i18n="footer.col4_title">Contact</h5>
       <a href="mailto:hello@voxtera.ai">hello@voxtera.ai</a>
-      <a href="#" onclick="openCalPopup();return false;">Book a demo</a>
-      <a href="#">Trust Center</a>
-      <a href="#">Press kit</a>
-      <a href="#">Careers</a>
+      <a href="#" onclick="openCalPopup();return false;" data-i18n="footer.book_demo">Book a demo</a>
+      <a href="#" data-i18n="footer.trust_center">Trust Center</a>
+      <a href="#" data-i18n="footer.press_kit">Press kit</a>
+      <a href="#" data-i18n="footer.careers">Careers</a>
     </div>
   </div>
   <div class="footer-bottom">
-    <span>© 2026 Voxtera — Built in Canada</span>
-    <span>Privacy · Terms · GDPR · DPA</span>
+    <span data-i18n="footer.copyright">© 2026 Voxtera — Built in Canada</span>
+    <span data-i18n="footer.legal">Privacy · Terms · GDPR · DPA</span>
   </div>
 </footer>
 
@@ -2233,10 +2238,10 @@
 <div class="voxtera-widget" id="voxtera-widget">
   <div class="vx-launcher" id="vx-launcher" role="button" tabindex="0" aria-label="Open Voxtera concierge">
     <div class="vx-orb" aria-hidden="true"></div>
-    <span class="vx-launcher-label">Need help?</span>
+    <span class="vx-launcher-label" data-i18n="widget.launcher_label">Need help?</span>
     <span class="vx-launcher-cta">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-      Start a call
+      <span data-i18n="widget.start_call">Start a call</span>
     </span>
   </div>
   <div class="vx-panel" id="vx-panel" role="dialog" aria-label="Voxtera assistant" aria-hidden="true">
@@ -2245,7 +2250,7 @@
         <div class="vx-brand-mark" aria-hidden="true"></div>
         <div>
           <div class="vx-brand-text">Voxtera</div>
-          <div class="vx-brand-status">Online · 99 languages</div>
+          <div class="vx-brand-status" data-i18n="widget.status">Online · 99 languages</div>
         </div>
       </div>
       <button class="vx-close" id="vx-close" type="button" aria-label="Close">
@@ -2261,14 +2266,14 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
           </button>
         </div>
-        <div class="vx-helper" id="vx-helper">
+        <div class="vx-helper" id="vx-helper" data-i18n-html="widget.helper">
           Tap the phone to talk&nbsp;— or type a message below.<br/>Voxtera speaks your language.
         </div>
       </div>
       <div class="vx-messages" id="vx-messages"></div>
     </div>
     <div class="vx-chat-input">
-      <textarea class="vx-input-field" id="vx-input" rows="1" placeholder="Send a message…" aria-label="Type your message"></textarea>
+      <textarea class="vx-input-field" id="vx-input" rows="1" placeholder="Send a message…" aria-label="Type your message" data-i18n-placeholder="widget.input_placeholder"></textarea>
       <button class="vx-send-btn" id="vx-send" type="button" aria-label="Send message" disabled>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12 L21 4 L13 22 L11 13 Z"/></svg>
       </button>
@@ -2395,5 +2400,6 @@
   })();
 </script>
 
+<script src="i18n/i18n.js"></script>
 </body>
 </html>

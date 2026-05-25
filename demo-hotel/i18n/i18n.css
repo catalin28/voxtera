@@ -1,0 +1,180 @@
+/* ============================================================
+   Voxtera i18n — Language picker + RTL overrides
+   ============================================================ */
+
+/* ---- LANGUAGE PICKER ---- */
+.i18n-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  z-index: 101;
+}
+
+.i18n-picker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: transparent;
+  border: 1px solid var(--line, rgba(26,24,20,0.14));
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft, #2c2822);
+  transition: border-color 0.25s, background 0.25s;
+}
+.i18n-picker-btn:hover {
+  border-color: var(--ink, #1a1814);
+  background: rgba(26,24,20,0.04);
+}
+
+.i18n-picker-flag {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.i18n-picker-code {
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.i18n-picker-menu {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  background: #ffffff;
+  border: 1px solid var(--line, rgba(26,24,20,0.14));
+  border-radius: 12px;
+  padding: 0.4rem;
+  box-shadow: 0 12px 32px -8px rgba(26,24,20,0.18);
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  min-width: 160px;
+}
+.i18n-picker-menu[aria-hidden="false"] {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.i18n-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: 'Fraunces', serif;
+  font-size: 0.95rem;
+  color: var(--ink, #1a1814);
+  transition: background 0.15s;
+  text-align: left;
+}
+.i18n-picker-option:hover {
+  background: var(--cream, #f4ede1);
+}
+.i18n-picker-option.active {
+  background: rgba(184,136,74,0.12);
+  font-weight: 500;
+}
+
+.i18n-picker-option-flag {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.i18n-picker-option-name {
+  flex: 1;
+}
+
+/* ---- RTL OVERRIDES ---- */
+html[dir="rtl"] body {
+  text-align: right;
+}
+
+html[dir="rtl"] .nav-links {
+  flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .hero {
+  direction: rtl;
+}
+
+html[dir="rtl"] .section-label::before {
+  margin-left: 1rem;
+  margin-right: 0;
+}
+
+html[dir="rtl"] .feature-item {
+  direction: rtl;
+}
+
+html[dir="rtl"] .feature-item:hover {
+  padding-left: 0;
+  padding-right: 1rem;
+}
+
+html[dir="rtl"] .price-features li::before {
+  content: "←";
+}
+
+html[dir="rtl"] .btn .arrow {
+  transform: scaleX(-1);
+}
+html[dir="rtl"] .btn:hover .arrow {
+  transform: scaleX(-1) translateX(4px);
+}
+
+html[dir="rtl"] .hero-meta::before {
+  margin-left: 1rem;
+  margin-right: 0;
+}
+
+html[dir="rtl"] .footer-grid {
+  direction: rtl;
+}
+
+html[dir="rtl"] .compare-row {
+  direction: rtl;
+}
+
+html[dir="rtl"] .audience-list li::before {
+  content: "—";
+}
+
+html[dir="rtl"] .dialogue-row {
+  direction: rtl;
+}
+
+html[dir="rtl"] .i18n-picker-menu {
+  right: auto;
+  left: 0;
+}
+
+html[dir="rtl"] .i18n-picker-option {
+  text-align: right;
+  flex-direction: row-reverse;
+}
+
+/* Widget RTL */
+html[dir="rtl"] .voxtera-widget {
+  right: auto;
+  left: 1.75rem;
+}
+
+html[dir="rtl"] .vx-panel {
+  right: auto;
+  left: 0;
+  transform-origin: bottom left;
+}
+
+html[dir="rtl"] .vx-chat-input {
+  direction: rtl;
+}
