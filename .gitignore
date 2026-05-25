@@ -56,3 +56,5 @@ Thumbs.db
 tmp/
 .secrets/
 demo-hotel/traces/
+output/
+tools/voice-test-lab/clips/
