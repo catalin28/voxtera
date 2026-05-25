@@ -534,9 +534,9 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     try:
         from pipecat.frames.frames import StartFrame
         from pipecat.services.gladia.config import (
-            CustomVocabularyConfig,
+            CustomVocabularyConfig,  # noqa: F401 — needed when vocab re-enabled
             LanguageConfig,
-            RealtimeProcessingConfig,
+            RealtimeProcessingConfig,  # noqa: F401 — needed when vocab re-enabled
         )
         from pipecat.services.gladia.stt import GladiaSTTService
         from pipecat.services.stt_service import WebsocketSTTService
@@ -855,14 +855,16 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     # domain words ("breakfast", "amenities", the hotel's venue names) stop
     # being mis-transcribed. Travels once in the session-init payload, not
     # per utterance. Skipped silently when the vocabulary file is absent.
-    _t_vocab = time.perf_counter()
-    vocabulary = _load_stt_vocabulary(settings.hotel_id)
-    if vocabulary:
-        settings_kwargs["realtime_processing"] = RealtimeProcessingConfig(
-            custom_vocabulary=True,
-            custom_vocabulary_config=CustomVocabularyConfig(vocabulary=vocabulary),
-        )
-    logger.info("[stt] gladia vocab took {:.0f}ms", (time.perf_counter() - _t_vocab) * 1000)
+    # TEMPORARILY DISABLED to test if vocabulary is causing "the menu" → "kids menu"
+    # _t_vocab = time.perf_counter()
+    # vocabulary = _load_stt_vocabulary(settings.hotel_id)
+    # if vocabulary:
+    #     settings_kwargs["realtime_processing"] = RealtimeProcessingConfig(
+    #         custom_vocabulary=True,
+    #         custom_vocabulary_config=CustomVocabularyConfig(vocabulary=vocabulary),
+    #     )
+    # logger.info("[stt] gladia vocab took {:.0f}ms", (time.perf_counter() - _t_vocab) * 1000)
+    logger.info("[stt] custom vocabulary DISABLED for testing")
 
     _t_ctor = time.perf_counter()
     stt = _LazyConnectGladiaSTTService(

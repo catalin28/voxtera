@@ -99,6 +99,12 @@ _WHISPER_HALLUCINATION_EXACT: frozenset[str] = frozenset(
         "abonati va si lasati un like",
         "mulțumesc pentru vizionare",
         "multumesc pentru vizionare",
+        "să vă mulțumim pentru vizionare",
+        "sa va multumim pentru vizionare",
+        "vă mulțumim pentru vizionare",
+        "va multumim pentru vizionare",
+        "mulțumim pentru vizionare",
+        "multumim pentru vizionare",
         # French
         "abonnez vous",
         "abonnez vous à ma chaîne",
@@ -227,6 +233,7 @@ _VIDEO_VIEW_TOKENS: frozenset[str] = frozenset(
         # Romanian
         "vedeti",
         "vedeți",
+        "vizionare",
         "vizionati",
         "vizionați",
         "urmariti",
@@ -332,6 +339,36 @@ def _is_known_whisper_hallucination(normalized: str) -> bool:
     if not tokens:
         return False
     short = len(tokens) <= 20
+    # "thank you for watching" pattern in any language — a hotel guest would
+    # never say this. Requires BOTH a thanks token AND a viewing token.
+    thanks_tokens = {
+        "mulțumim",
+        "multumim",
+        "mulțumesc",
+        "multumesc",
+        "mulțumiri",
+        "thanks",
+        "thank",
+        "gracias",
+        "merci",
+        "danke",
+        "grazie",
+        "obrigado",
+        "спасибо",
+        "teşekkürler",
+        "tesekkurler",
+    }
+    for_watching_tokens = {
+        "vizionare",
+        "watching",
+        "regardé",
+        "zuschauen",
+        "guardato",
+        "assistir",
+        "просмотр",
+    }
+    if short and (tokens & thanks_tokens) and (tokens & for_watching_tokens):
+        return True
     # YouTube-outro "subscribe + like" pattern.
     if short and (tokens & _SUBSCRIBE_TOKENS) and (tokens & _LIKE_TOKENS):
         return True

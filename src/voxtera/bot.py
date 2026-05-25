@@ -34,6 +34,7 @@ Implementation lives in sibling modules; this file only wires them up:
 from __future__ import annotations
 
 import asyncio
+import signal
 import sys
 from datetime import datetime
 
@@ -226,6 +227,17 @@ async def run_bot(settings: Settings) -> None:
             logger.warning("[trace-server] could not bind: {} — live tuning disabled", exc)
             tune_server = None
 
+    # Install a SIGTERM handler so the launcher's terminate() triggers a
+    # graceful shutdown through the finally block (flush audio + finalize)
+    # rather than an abrupt process death that loses the recording.
+    loop = asyncio.get_running_loop()
+
+    def _handle_sigterm() -> None:
+        logger.info("[shutdown] SIGTERM received — requesting graceful stop")
+        asyncio.ensure_future(task.queue_frame(EndFrame()))
+
+    loop.add_signal_handler(signal.SIGTERM, _handle_sigterm)
+
     try:
         await runner.run(task)
     except Exception:
@@ -249,11 +261,20 @@ async def run_bot(settings: Settings) -> None:
             await trace_forwarder.stop()
         except Exception:  # noqa: BLE001
             logger.exception("[trace] forwarder stop failed")
-        await task.queue_frame(EndFrame())
-        # Stamp the end time and write the final record.json. The call audio
-        # WAV was already written during pipeline cleanup (the recorder's
-        # on_audio_data handler is awaited there), so the finished record
-        # carries the audio pointer too.
+        # Try to drain the pipeline gracefully via EndFrame so the audio
+        # recorder flushes through the normal path.
+        try:
+            await task.queue_frame(EndFrame())
+        except Exception:  # noqa: BLE001
+            logger.debug("[shutdown] EndFrame could not be queued")
+        # Force-flush the audio buffer if it hasn't been written yet.
+        # stop_recording() is idempotent: if EndFrame already triggered the
+        # flush through the pipeline, this is a harmless no-op.
+        try:
+            await call_record.flush_audio()
+        except Exception:  # noqa: BLE001
+            logger.warning("[shutdown] flush_audio failed")
+        # Always stamp the end time and write the final record.json.
         call_record.finalize()
 
 

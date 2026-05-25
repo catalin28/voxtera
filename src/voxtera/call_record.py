@@ -468,6 +468,26 @@ def is_enabled() -> bool:
     return _record.enabled
 
 
+# Module-level reference to the active audio recorder (set by CallAudioRecorder
+# on init). Used by :func:`flush_audio` to force-write the WAV on shutdown when
+# EndFrame cannot flow through the pipeline (SIGTERM, crash, etc.).
+_audio_recorder: CallAudioRecorder | None = None
+
+
+async def flush_audio() -> None:
+    """Force the audio recorder to write its buffer to disk.
+
+    Call this from the bot's shutdown path when the pipeline may have already
+    been cancelled and EndFrame will never reach the recorder naturally.
+    Safe to call when recording is disabled or the recorder was never started.
+    """
+    if _audio_recorder is not None and _audio_recorder._auto_started:
+        try:
+            await _audio_recorder.stop_recording()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[call-record] flush_audio failed: {}", exc)
+
+
 class CallAudioRecorder(AudioBufferProcessor):
     """Records the whole call to a stereo WAV.
 
@@ -486,6 +506,7 @@ class CallAudioRecorder(AudioBufferProcessor):
     """
 
     def __init__(self) -> None:
+        global _audio_recorder
         super().__init__(
             sample_rate=RECORDING_SAMPLE_RATE,
             num_channels=RECORDING_CHANNELS,
@@ -493,6 +514,7 @@ class CallAudioRecorder(AudioBufferProcessor):
         )
         self._auto_started = False
         self.add_event_handler("on_audio_data", self._on_audio_data)
+        _audio_recorder = self
 
     async def process_frame(self, frame, direction: FrameDirection) -> None:
         """Start recording on the first ``StartFrame``; delegate the rest."""
