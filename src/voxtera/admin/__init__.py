@@ -12,6 +12,8 @@ The admin package is intentionally small. It owns:
 from voxtera.admin.daily_client import (
     DailyAPIError,
     DailyParticipant,
+    create_room,
+    delete_room,
     eject_participants,
     list_room_participants,
 )
@@ -19,6 +21,8 @@ from voxtera.admin.daily_client import (
 __all__ = [
     "DailyAPIError",
     "DailyParticipant",
+    "create_room",
+    "delete_room",
     "eject_participants",
     "list_room_participants",
 ]

@@ -78,6 +78,19 @@
   /* Danger zone */
   .danger-zone { margin-top: 24px; padding: 18px; background: var(--bg-2); border: 1px solid var(--red-bg); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   .danger-zone .text { color: var(--text-dim); font-size: 14px; line-height: 1.5; }
+
+  /* Config panel */
+  .config-panel { margin-top: 20px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+  .config-panel h3 { margin: 0 0 14px; font-size: 15px; color: var(--gold); }
+  .config-grid { display: flex; flex-direction: column; gap: 16px; }
+  .config-field { padding: 14px 16px; background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px; }
+  .config-field label { display: block; font-size: 13px; color: var(--text); font-weight: 500; margin-bottom: 4px; }
+  .config-field .desc { font-size: 12px; color: var(--text-dim); line-height: 1.4; margin-bottom: 8px; }
+  .config-field input, .config-field select { width: 200px; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px; }
+  .config-field input:focus, .config-field select:focus { outline: none; border-color: var(--gold); }
+  .config-actions { margin-top: 14px; display: flex; gap: 8px; align-items: center; }
+  .config-status { font-size: 13px; color: var(--green); margin-left: 8px; opacity: 0; transition: opacity 0.3s; }
+  .config-status.show { opacity: 1; }
   .danger-zone .text strong { color: #ffb0b0; }
 
   /* Status line */
@@ -168,6 +181,41 @@
         <strong>End session</strong> — eject every participant in the room, including the bot. Use this if a session is stuck. Note: while the bot runs always-on, it will rejoin the room automatically within a few seconds.
       </div>
       <button class="btn-danger" id="btn-end" disabled>End session</button>
+    </div>
+
+    <!-- Runtime configuration panel -->
+    <div class="config-panel" id="config-panel">
+      <h3>Runtime Configuration</h3>
+      <div class="config-grid">
+        <div class="config-field">
+          <label>Dynamic Rooms</label>
+          <div class="desc">When enabled, each new session creates its own ephemeral Daily room. When disabled, all sessions share a single pre-configured room.</div>
+          <select id="cfg-dynamic-rooms">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+        <div class="config-field">
+          <label>Max Participants per Room</label>
+          <div class="desc">How many people can join a single room. Set to 2 for bot + guest only. Increase to 3+ if you want to listen in on a live conversation for quality testing.</div>
+          <input id="cfg-max-participants" type="number" min="1" max="100" value="2" />
+        </div>
+        <div class="config-field">
+          <label>Max Concurrent Sessions</label>
+          <div class="desc">Maximum number of parallel active sessions the server will accept. New calls beyond this limit are rejected with a "busy" error.</div>
+          <input id="cfg-max-sessions" type="number" min="1" max="500" value="50" />
+        </div>
+        <div class="config-field">
+          <label>Session Timeout (seconds)</label>
+          <div class="desc">After this many seconds the bot will be force-killed and participants ejected. A voice warning is played 15 seconds before the timeout. Increase for longer test sessions.</div>
+          <input id="cfg-timeout" type="number" min="30" max="3600" value="180" />
+        </div>
+      </div>
+      <div class="config-actions">
+        <button class="btn-primary" id="btn-save-config">Save</button>
+        <button class="btn-secondary" id="btn-reload-config">Reload</button>
+        <span class="config-status" id="config-status">Saved ✓</span>
+      </div>
     </div>
 
     <div id="status-line">
@@ -290,6 +338,7 @@
     }
     localStorage.setItem(STORAGE_TOKEN, token);
     showApp();
+    loadConfig();
     startPolling();
   });
   $("#token-input").addEventListener("keydown", (e) => {
@@ -465,6 +514,45 @@
   });
 
   // -----------------------------------------------------------------
+  // Runtime config panel
+  // -----------------------------------------------------------------
+  async function loadConfig() {
+    try {
+      const { resp, data } = await api("GET", "/api/admin/config");
+      if (!resp.ok) return;
+      $("#cfg-dynamic-rooms").value = String(data.dynamic_rooms);
+      $("#cfg-max-participants").value = data.max_participants;
+      $("#cfg-max-sessions").value = data.max_concurrent_sessions;
+      $("#cfg-timeout").value = data.session_timeout_secs;
+    } catch (_) { /* ignore */ }
+  }
+
+  async function saveConfig() {
+    const body = {
+      dynamic_rooms: $("#cfg-dynamic-rooms").value === "true",
+      max_participants: parseInt($("#cfg-max-participants").value, 10),
+      max_concurrent_sessions: parseInt($("#cfg-max-sessions").value, 10),
+      session_timeout_secs: parseInt($("#cfg-timeout").value, 10),
+    };
+    try {
+      const { resp, data } = await api("POST", "/api/admin/config", body);
+      if (!resp.ok) {
+        showError(data?.error || `Config save failed (${resp.status})`);
+        return;
+      }
+      const status = $("#config-status");
+      status.textContent = "Saved ✓";
+      status.classList.add("show");
+      setTimeout(() => status.classList.remove("show"), 2500);
+    } catch (err) {
+      showError(`Config save failed: ${err}`);
+    }
+  }
+
+  $("#btn-save-config").addEventListener("click", saveConfig);
+  $("#btn-reload-config").addEventListener("click", loadConfig);
+
+  // -----------------------------------------------------------------
   // Boot
   // -----------------------------------------------------------------
   (async () => {
@@ -476,6 +564,7 @@
     }
     if (token) {
       showApp();
+      loadConfig();
       startPolling();
     } else {
       showTokenGate();

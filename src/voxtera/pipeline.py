@@ -482,16 +482,20 @@ def build_pipeline(
             asyncio.create_task(_warmup_tts_providers(settings))
             asyncio.create_task(_warmup_anthropic_llm(settings, LLM_MODEL))
             if _rag_retriever is not None:
-                # Two-phase RAG warm-up:
+                # Three-phase RAG warm-up (all in background, doesn't block bot):
+                # (0) Load the embedding ONNX model (was previously on the
+                #     critical path — 3-8s cold, ~200ms cached). Moved here
+                #     so the bot posts "ready" before the model is loaded.
                 # (1) chunk_cache: loads + normalises the embedding matrix
                 #     so the first real query skips the SQLite read.
                 # (2) result_cache: pre-runs DEFAULT_WARMUP_QUERIES so the
                 #     bot answers common questions in ~0ms RAG time instead
                 #     of paying 1.5s for the first CPU embedding pass.
-                # Both run as background tasks — they don't block the bot
-                # joining the room, but warmup_queries depends on chunk_cache
-                # being populated, so chain them.
+                # Both (1) and (2) depend on the model being loaded, so chain.
                 async def _do_rag_warmup() -> None:
+                    from voxtera.rag.embeddings import embed_sync
+
+                    await asyncio.to_thread(embed_sync, ["warmup"])
                     await _rag_retriever.warmup(hotel_id=settings.hotel_id)
                     await _rag_retriever.warmup_queries(hotel_id=settings.hotel_id)
 
@@ -950,14 +954,15 @@ def build_pipeline(
 
     # RAG: optionally inject hotel knowledge before the LLM sees the context.
     if settings.rag_enabled:
-        # Warm up the embedding model now so the first query doesn't
-        # cold-start inside the 500ms retrieval timeout.
-        from voxtera.rag.embeddings import embed_sync
+        # The embedding model load (3-8s cold) is deferred to _on_joined so
+        # it doesn't block the "ready" event. The Retriever/Store/Injector are
+        # cheap to create (object init + SQLite schema) and are wired in now.
+        # The first real RAG query will still work even if the model hasn't
+        # finished loading — it will just be slower on that one turn (the
+        # retriever lazily loads chunks from SQLite if the cache is empty).
         from voxtera.rag.injector import RAGContextInjector
         from voxtera.rag.retriever import Retriever
         from voxtera.rag.store import ChunksStore
-
-        embed_sync(["warmup"])
 
         default_db = str(Path.home() / ".voxtera" / "voxtera.db")
         db_path = Path(os.environ.get("VOXTERA_DB_PATH", default_db))

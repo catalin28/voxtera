@@ -97,7 +97,7 @@
       "mid-stay cleaning", "laundry service", "dry cleaning",
       "pressing service", "shoe shine", "wake-up call", "luggage storage",
       "left luggage", "baggage", "bellboy", "bellhop", "porter", "valet",
-      "valet parking", "shuttle service", "airport shuttle",
+      "valet parking", "parkin","shuttle service", "airport shuttle",
       "airport transfer", "private transfer", "chauffeur", "car service",
       "taxi service", "car rental", "car hire", "bicycle rental",
       "babysitting", "babysitter", "childcare", "pet-friendly",
@@ -160,7 +160,19 @@
     ],
     "demo": [
       "Le Mirador", "Mirador", "Spa Lumière", "Bar Lumière",
-      "Lumière", "Library Lounge", "Nespresso", "Diptyque"
+      "Lumière", "Library Lounge", "Nespresso", "Diptyque",
+      "La Petite Terrasse", "Menu Découverte",
+      "Coq au vin", "coq au vin",
+      "Bouillabaisse Marseillaise", "bouillabaisse",
+      "Magret de canard", "magret de canard",
+      "Risotto aux truffes noires", "truffes noires",
+      "Tarte fine aux pommes", "tarte fine",
+      "croissants au beurre", "pains au chocolat",
+      "brioche perdue", "omelette au comté",
+      "croque monsieur", "steak frites",
+      "pommes Sarladaises", "Calvados",
+      "rouille", "crème fraîche", "sommelier",
+      "à la carte", "degustation"
     ]
   }
 }

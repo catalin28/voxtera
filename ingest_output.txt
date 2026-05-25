@@ -1,0 +1,11 @@
+2026-05-23 09:21:33.718 | INFO     | voxtera.rag.embeddings:_get_model:41 - Loading local embedding model: intfloat/multilingual-e5-small
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Found 42 chunks in voxtera-rag-knowledge-base.md
+Embedding 42 chunks (model: multilingual-e5-small)…
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 15382.16it/s]
+2026-05-23 09:26:13.125 | INFO     | voxtera.rag.embeddings:_get_model:45 - Loaded embedding model in 279406 ms
+2026-05-23 09:26:13.665 | DEBUG    | voxtera.rag.embeddings:embed_sync:69 - Embedded 42 text(s) locally in 540 ms
+Done. 42 chunks stored in /Users/dandinu/.voxtera/voxtera-product.db
+
+Set VOXTERA_PRODUCT_DB_PATH in .env if you used a custom path:
+  VOXTERA_PRODUCT_DB_PATH=/Users/dandinu/.voxtera/voxtera-product.db

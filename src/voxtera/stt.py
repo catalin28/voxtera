@@ -336,7 +336,11 @@ def _build_deepgram_stt(settings: Settings) -> FrameProcessor | None:
     """Build the Deepgram STT service if its credentials are present."""
     if not settings.deepgram_api_key:
         return None
-    from pipecat.services.deepgram.stt import DeepgramSTTService
+    try:
+        from pipecat.services.deepgram.stt import DeepgramSTTService
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[stt] deepgram: skipping — import failed: {}", exc)
+        return None
 
     class _InstrumentedDeepgramSTTService(DeepgramSTTService):
         """DeepgramSTTService with labelled, severity-aware error logging.
@@ -370,7 +374,7 @@ def _build_deepgram_stt(settings: Settings) -> FrameProcessor | None:
                 try:
                     async with self._client.listen.v1.connect(**connect_kwargs) as conn:
                         self._connection = conn
-                        from deepgram import EventType
+                        from deepgram.core.events import EventType
 
                         conn.on(EventType.MESSAGE, self._on_message)
                         conn.on(EventType.ERROR, self._on_error)
@@ -768,6 +772,19 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
 
     languages = list(settings.gladia_languages)
     code_switching = settings.gladia_code_switching
+
+    # If no explicit language list is configured, default to bounded
+    # auto-detect using all languages from languages.json. This avoids
+    # Gladia's 99-language open mode which can produce translations
+    # instead of transcriptions for non-English speech.
+    if not languages:
+        from voxtera.lang_config import language_codes as _all_lang_codes
+        from voxtera.lang_config import stt_code_for as _stt_code
+
+        languages = [c for c in (_stt_code(lc, "gladia") for lc in _all_lang_codes()) if c]
+        if len(languages) >= 2:
+            code_switching = True
+
     if code_switching and len(languages) < 2:
         # Silently degrade rather than ship a config that produces no
         # transcripts. Gladia accepts but doesn't honor code_switching=True

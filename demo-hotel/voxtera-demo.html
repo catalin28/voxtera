@@ -1475,7 +1475,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          language: currentLang === 'auto' ? 'en' : currentLang,
+          language: currentLang === 'auto' ? 'multi' : currentLang,
           llm: 'claude-haiku-4-5',
           stt: 'gladia',
           ttsProvider: 'elevenlabs',
@@ -1527,7 +1527,7 @@
       if (!evt.participant.local) {
         diagLog('info', '🤖 Bot joined Daily room — sending config');
         _dailyCallObj.sendAppMessage({ type: 'voxtera-stt',          provider: 'gladia' }, '*');
-        _dailyCallObj.sendAppMessage({ type: 'voxtera-language',     language: currentLang === 'auto' ? 'en' : currentLang }, '*');
+        _dailyCallObj.sendAppMessage({ type: 'voxtera-language',     language: currentLang === 'auto' ? 'multi' : currentLang }, '*');
         _dailyCallObj.sendAppMessage({ type: 'voxtera-timezone',     tz: (Intl.DateTimeFormat().resolvedOptions().timeZone || '') }, '*');
         _dailyCallObj.sendAppMessage({ type: 'voxtera-model',        model: 'claude-haiku-4-5' }, '*');
         _dailyCallObj.sendAppMessage({ type: 'voxtera-tts-provider', provider: 'elevenlabs' }, '*');
@@ -1965,6 +1965,10 @@
       langMenu.classList.remove('open');
       if (micRecognition)  micRecognition.lang  = lang === 'auto' ? '' : lang;
       if (callRecognition) callRecognition.lang = lang === 'auto' ? '' : lang;
+      // Live-switch STT language on the bot if a call is active
+      if (_dailyCallObj) {
+        _dailyCallObj.sendAppMessage({ type: 'voxtera-language', language: lang === 'auto' ? 'multi' : lang }, '*');
+      }
       // update chips and placeholder
       updateChips(lang);
       input.placeholder = PLACEHOLDERS[lang] || PLACEHOLDERS.en;

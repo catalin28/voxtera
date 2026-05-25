@@ -58,6 +58,8 @@ from voxtera.actions.logging_sink import LoggingSink  # noqa: E402
 from voxtera.actions.ticket import Category, Ticket  # noqa: E402
 from voxtera.admin import (  # noqa: E402
     DailyAPIError,
+    create_room,
+    delete_room,
     eject_participants,
     list_room_participants,
 )
@@ -97,6 +99,14 @@ _DAILY_API_KEY: str | None = os.environ.get("DAILY_API_KEY") or None
 _DAILY_ROOM_NAME: str | None = os.environ.get("DAILY_ROOM_NAME") or None
 _DAILY_DOMAIN: str | None = os.environ.get("DAILY_DOMAIN") or None
 _BOT_NAME: str = os.environ.get("BOT_NAME") or "Voxtera"
+_DAILY_DYNAMIC_ROOMS: bool = os.environ.get("DAILY_DYNAMIC_ROOMS", "true").lower() not in (
+    "0",
+    "false",
+    "no",
+)
+_DAILY_ROOM_MAX_PARTICIPANTS: int = int(os.environ.get("DAILY_ROOM_MAX_PARTICIPANTS", "2"))
+_MAX_CONCURRENT_SESSIONS: int = int(os.environ.get("DAILY_MAX_CONCURRENT_SESSIONS", "50"))
+_SESSION_TIMEOUT_SECS: int = int(os.environ.get("VOXTERA_SESSION_TIMEOUT_SECS", "180"))
 
 # Tiny per-process cache so two browsers polling at 3 s don't double the load
 # on Daily REST. ``_PRESENCE_CACHE_TTL_SECS`` is short enough to stay live
@@ -395,22 +405,18 @@ class SessionStore:
 
 _SESSION_STORE = SessionStore(_TRACE_DIR)
 
-# Tracks the bot tune-server port for the live session. Single-slot for v1
-# (matches BotSessionRegistry's single-session constraint). Set by
-# /api/start-session at spawn time and read by /api/admin/tune.
-_BOT_TUNE_PORT: int | None = None
-_BOT_TUNE_LOCK = threading.Lock()
 
-
-def _set_bot_tune_port(port: int | None) -> None:
-    global _BOT_TUNE_PORT
-    with _BOT_TUNE_LOCK:
-        _BOT_TUNE_PORT = port
-
-
-def _get_bot_tune_port() -> int | None:
-    with _BOT_TUNE_LOCK:
-        return _BOT_TUNE_PORT
+def _get_bot_tune_port(session_id: str | None = None) -> int | None:
+    """Return the tune port for a session, or the first active session if None."""
+    with REGISTRY._lock:
+        if session_id:
+            return REGISTRY._sessions.get(session_id, {}).get("tune_port")
+        # Backward compat: admin tune endpoint doesn't always know session_id.
+        for sess in REGISTRY._sessions.values():
+            port = sess.get("tune_port")
+            if port is not None:
+                return port
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -453,27 +459,23 @@ class BotSessionBusyError(Exception):
 
 
 class BotSessionRegistry:
-    """Thread-safe single-slot registry for the in-flight bot session.
+    """Thread-safe multi-slot registry for in-flight bot sessions.
 
-    The launcher accepts at most one concurrent session. Each session is keyed
-    by a UUID and owns a ``queue.Queue`` for events flowing back from the bot
-    subprocess. The start-session HTTP handler thread blocks on ``q.get()``
-    until the bot-event handler thread does ``q.put()``; this is the queue
-    described in ``docs/ON_DEMAND_BOT_SPAWN.md`` (option 1: HTTP + queue.Queue).
+    Supports up to ``_MAX_CONCURRENT_SESSIONS`` concurrent sessions. Each
+    session is keyed by a UUID and owns a ``queue.Queue`` for events flowing
+    back from the bot subprocess.
     """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._active_id: str | None = None
         self._sessions: dict[str, dict] = {}
 
     def start(self, session_id: str) -> "_queue.Queue":
-        """Reserve the slot and return a fresh queue for this session."""
+        """Reserve a slot and return a fresh queue for this session."""
         q: _queue.Queue = _queue.Queue()
         with self._lock:
-            if self._active_id is not None:
-                raise BotSessionBusyError(self._active_id)
-            self._active_id = session_id
+            if len(self._sessions) >= _MAX_CONCURRENT_SESSIONS:
+                raise BotSessionBusyError(f"{len(self._sessions)} sessions active")
             self._sessions[session_id] = {"queue": q, "process": None}
         return q
 
@@ -498,6 +500,18 @@ class BotSessionRegistry:
             if sess is not None:
                 sess["watchdog_warn"] = timer
 
+    def attach_room_name(self, session_id: str, room_name: str) -> None:
+        """Store the Daily room name owned by this session for later cleanup."""
+        with self._lock:
+            sess = self._sessions.get(session_id)
+            if sess is not None:
+                sess["room_name"] = room_name
+
+    def get_room_name(self, session_id: str) -> str | None:
+        """Return the Daily room name for a session, or None if unknown."""
+        with self._lock:
+            return self._sessions.get(session_id, {}).get("room_name")
+
     def deliver(self, session_id: str, event: dict) -> None:
         """Push an event from the bot onto its session's queue.
 
@@ -516,8 +530,6 @@ class BotSessionRegistry:
         """Free the slot. Always called from the reaper thread on Popen.wait()."""
         with self._lock:
             sess = self._sessions.pop(session_id, None)
-            if self._active_id == session_id:
-                self._active_id = None
         # Cancel the watchdog timers so they don't fire after a clean hang-up.
         if sess is not None:
             for key in ("watchdog", "watchdog_warn"):
@@ -530,6 +542,12 @@ class BotSessionRegistry:
         if sess is not None:
             with contextlib.suppress(Exception):
                 sess["queue"].put({"type": "_reaped"})
+        # Best-effort: delete the Daily room if it was dynamically created.
+        if _DAILY_DYNAMIC_ROOMS and sess is not None:
+            room_name = sess.get("room_name")
+            if room_name and _DAILY_API_KEY:
+                with contextlib.suppress(Exception):
+                    delete_room(api_key=_DAILY_API_KEY, room_name=room_name)
         # Close the session's NDJSON handle and write the meta sidecar so the
         # dashboard's session picker shows the right summary fields. Safe to
         # call for sessions that never produced trace events (no-op).
@@ -538,18 +556,30 @@ class BotSessionRegistry:
 
     def is_busy(self) -> bool:
         with self._lock:
-            return self._active_id is not None
+            return len(self._sessions) >= _MAX_CONCURRENT_SESSIONS
+
+    def active_sessions(self) -> list[str]:
+        """Return all active session IDs."""
+        with self._lock:
+            return list(self._sessions.keys())
 
     def active_session(self) -> str | None:
+        """Return the first active session ID (backward compat)."""
         with self._lock:
-            return self._active_id
+            if self._sessions:
+                return next(iter(self._sessions))
+            return None
 
 
 REGISTRY = BotSessionRegistry()
 
 
 def _spawn_bot(
-    session_id: str, callback_url: str, tune_port: int, llm_model: str | None = None
+    session_id: str,
+    callback_url: str,
+    tune_port: int,
+    llm_model: str | None = None,
+    room_name: str | None = None,
 ) -> subprocess.Popen:
     """Spawn ``python -m voxtera.bot`` as a subprocess for this session.
 
@@ -564,6 +594,8 @@ def _spawn_bot(
     env["VOXTERA_BOT_PORT"] = str(tune_port)
     if llm_model:
         env["LLM_MODEL_OVERRIDE"] = llm_model
+    if room_name:
+        env["DAILY_ROOM_NAME"] = room_name
 
     proc = subprocess.Popen(
         [sys.executable, "-m", "voxtera.bot"],
@@ -585,7 +617,6 @@ def _start_reaper_thread(session_id: str, proc: subprocess.Popen) -> None:
         rc = proc.wait()
         print(f"[launcher] bot session {session_id} exited (rc={rc})")
         REGISTRY.reap(session_id)
-        _set_bot_tune_port(None)
 
     t = threading.Thread(
         target=_reap,
@@ -1142,6 +1173,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_languages()
         if self.path == "/api/admin/health":
             return self._handle_admin_health()
+        if self.path == "/api/admin/config":
+            return self._handle_admin_config_get()
         if self.path == "/api/admin/sessions":
             return self._handle_admin_sessions()
         if self.path == "/api/trace/snapshot":
@@ -1198,6 +1231,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_eject()
         if self.path == "/api/admin/end-session":
             return self._handle_admin_end_session()
+        if self.path == "/api/admin/config":
+            return self._handle_admin_config_post()
         if self.path == "/api/admin/tune":
             return self._handle_admin_tune()
         # Phase 3 — on-demand bot launcher
@@ -1305,12 +1340,14 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 },
             )
             return False, {}
-        if not _DAILY_API_KEY or not _DAILY_ROOM_NAME:
+        if not _DAILY_API_KEY or (not _DAILY_ROOM_NAME and not _DAILY_DYNAMIC_ROOMS):
             self._send_json(
                 503,
                 {
                     "error": "daily_unconfigured",
-                    "detail": "DAILY_API_KEY and DAILY_ROOM_NAME must be set on the server.",
+                    "detail": (
+                        "DAILY_API_KEY and DAILY_ROOM_NAME" " (or DAILY_DYNAMIC_ROOMS) must be set."
+                    ),
                 },
             )
             return False, {}
@@ -1349,16 +1386,119 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             {
                 "ok": True,
                 "admin_enabled": bool(_ADMIN_TOKEN),
-                "daily_configured": bool(_DAILY_API_KEY and _DAILY_ROOM_NAME),
-                "daily_room": _DAILY_ROOM_NAME or "",
+                "daily_configured": bool(
+                    _DAILY_API_KEY and (_DAILY_ROOM_NAME or _DAILY_DYNAMIC_ROOMS)
+                ),
+                "daily_room": _DAILY_ROOM_NAME or "(dynamic)",
                 "daily_domain": _DAILY_DOMAIN or "",
                 "bot_name": _BOT_NAME,
+                "dynamic_rooms": _DAILY_DYNAMIC_ROOMS,
+                "max_participants": _DAILY_ROOM_MAX_PARTICIPANTS,
+                "active_sessions": len(REGISTRY.active_sessions()),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # /api/admin/config — hot-reconfigurable runtime settings
+    # ------------------------------------------------------------------
+
+    def _handle_admin_config_get(self) -> None:
+        """GET /api/admin/config — return current runtime config values."""
+        global \
+            _DAILY_DYNAMIC_ROOMS, \
+            _DAILY_ROOM_MAX_PARTICIPANTS, \
+            _MAX_CONCURRENT_SESSIONS, \
+            _SESSION_TIMEOUT_SECS
+        ok, _ = self._admin_auth()
+        if not ok:
+            return
+        self._send_json(
+            200,
+            {
+                "dynamic_rooms": _DAILY_DYNAMIC_ROOMS,
+                "max_participants": _DAILY_ROOM_MAX_PARTICIPANTS,
+                "max_concurrent_sessions": _MAX_CONCURRENT_SESSIONS,
+                "session_timeout_secs": _SESSION_TIMEOUT_SECS,
+            },
+        )
+
+    def _handle_admin_config_post(self) -> None:
+        """POST /api/admin/config — update runtime config values.
+
+        Body (all fields optional):
+          {"dynamic_rooms": true, "max_participants": 3, "max_concurrent_sessions": 20}
+        Only provided fields are updated; omitted fields keep their current value.
+        """
+        global \
+            _DAILY_DYNAMIC_ROOMS, \
+            _DAILY_ROOM_MAX_PARTICIPANTS, \
+            _MAX_CONCURRENT_SESSIONS, \
+            _SESSION_TIMEOUT_SECS
+        ok, _ = self._admin_auth()
+        if not ok:
+            return
+        body = self._read_json_body()
+
+        changed = {}
+        if "dynamic_rooms" in body:
+            val = body["dynamic_rooms"]
+            if isinstance(val, bool):
+                _DAILY_DYNAMIC_ROOMS = val
+                changed["dynamic_rooms"] = val
+            else:
+                self._send_json(400, {"error": "dynamic_rooms must be a boolean"})
+                return
+
+        if "max_participants" in body:
+            val = body["max_participants"]
+            if isinstance(val, int) and 1 <= val <= 100:
+                _DAILY_ROOM_MAX_PARTICIPANTS = val
+                changed["max_participants"] = val
+            else:
+                self._send_json(400, {"error": "max_participants must be an int 1-100"})
+                return
+
+        if "max_concurrent_sessions" in body:
+            val = body["max_concurrent_sessions"]
+            if isinstance(val, int) and 1 <= val <= 500:
+                _MAX_CONCURRENT_SESSIONS = val
+                changed["max_concurrent_sessions"] = val
+            else:
+                self._send_json(400, {"error": "max_concurrent_sessions must be an int 1-500"})
+                return
+
+        if "session_timeout_secs" in body:
+            val = body["session_timeout_secs"]
+            if isinstance(val, int) and 30 <= val <= 3600:
+                _SESSION_TIMEOUT_SECS = val
+                changed["session_timeout_secs"] = val
+            else:
+                self._send_json(400, {"error": "session_timeout_secs must be an int 30-3600"})
+                return
+
+        print(f"[admin/config] updated: {changed}")
+        self._send_json(
+            200,
+            {
+                "applied": changed,
+                "current": {
+                    "dynamic_rooms": _DAILY_DYNAMIC_ROOMS,
+                    "max_participants": _DAILY_ROOM_MAX_PARTICIPANTS,
+                    "max_concurrent_sessions": _MAX_CONCURRENT_SESSIONS,
+                    "session_timeout_secs": _SESSION_TIMEOUT_SECS,
+                },
             },
         )
 
     # ------------------------------------------------------------------
     # /api/admin/sessions — live snapshot from Daily REST
     # ------------------------------------------------------------------
+
+    def _fetch_participants_for_room(self, room_name: str) -> list:
+        """Return participants for the given room."""
+        if not _DAILY_API_KEY or not room_name:
+            return []
+        return list_room_participants(api_key=_DAILY_API_KEY, room_name=room_name)
 
     def _fetch_participants_cached(self) -> list:
         """Return participants for the configured room, with a tiny TTL cache.
@@ -1373,10 +1513,14 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         if cached is not None and (now - last) < _PRESENCE_CACHE_TTL_SECS:
             return list(cached)  # type: ignore[arg-type]
 
-        assert _DAILY_API_KEY and _DAILY_ROOM_NAME  # checked by _admin_auth
+        if not _DAILY_API_KEY:
+            return []
+        room = _DAILY_ROOM_NAME or ""
+        if not room:
+            return []
         participants = list_room_participants(
             api_key=_DAILY_API_KEY,
-            room_name=_DAILY_ROOM_NAME,
+            room_name=room,
         )
         _presence_cache["fetched_at"] = now
         _presence_cache["value"] = participants
@@ -1386,51 +1530,101 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         ok, _ = self._admin_auth()
         if not ok:
             return
-        try:
-            participants = self._fetch_participants_cached()
-        except DailyAPIError as exc:
+
+        if _DAILY_DYNAMIC_ROOMS:
+            # Dynamic mode: return per-session room participant snapshots.
+            sessions_data = []
+            for sid in REGISTRY.active_sessions():
+                rn = REGISTRY.get_room_name(sid) or ""
+                if not rn:
+                    continue
+                try:
+                    parts = self._fetch_participants_for_room(rn)
+                    sessions_data.append(
+                        {
+                            "session_id": sid,
+                            "room_name": rn,
+                            "participant_count": len(parts),
+                            "participants": [
+                                {
+                                    "id": p.id,
+                                    "user_name": p.user_name,
+                                    "joined_at": p.joined_at,
+                                    "duration_secs": p.duration_secs,
+                                    "is_bot": self._is_bot(p.user_name),
+                                }
+                                for p in parts
+                            ],
+                        }
+                    )
+                except DailyAPIError as exc:
+                    sessions_data.append(
+                        {
+                            "session_id": sid,
+                            "room_name": rn,
+                            "error": str(exc),
+                        }
+                    )
             self._send_json(
-                502,
+                200,
                 {
-                    "error": "daily_api_error",
-                    "detail": str(exc),
-                    "status": exc.status,
+                    "dynamic_rooms": True,
+                    "domain": _DAILY_DOMAIN or "",
+                    "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),
+                    "sessions": sessions_data,
+                    "session_count": len(sessions_data),
                 },
             )
-            return
+        else:
+            # Legacy single-room mode.
+            try:
+                participants = self._fetch_participants_cached()
+            except DailyAPIError as exc:
+                self._send_json(
+                    502,
+                    {
+                        "error": "daily_api_error",
+                        "detail": str(exc),
+                        "status": exc.status,
+                    },
+                )
+                return
 
-        rendered = [
-            {
-                "id": p.id,
-                "user_name": p.user_name,
-                "joined_at": p.joined_at,
-                "duration_secs": p.duration_secs,
-                "is_bot": self._is_bot(p.user_name),
-            }
-            for p in participants
-        ]
-        non_bot = [p for p in rendered if not p["is_bot"]]
-        self._send_json(
-            200,
-            {
-                "room": _DAILY_ROOM_NAME or "",
-                "domain": _DAILY_DOMAIN or "",
-                "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),
-                "participants": rendered,
-                "session_count": 1 if non_bot else 0,
-            },
-        )
+            rendered = [
+                {
+                    "id": p.id,
+                    "user_name": p.user_name,
+                    "joined_at": p.joined_at,
+                    "duration_secs": p.duration_secs,
+                    "is_bot": self._is_bot(p.user_name),
+                }
+                for p in participants
+            ]
+            non_bot = [p for p in rendered if not p["is_bot"]]
+            self._send_json(
+                200,
+                {
+                    "room": _DAILY_ROOM_NAME or "",
+                    "domain": _DAILY_DOMAIN or "",
+                    "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),
+                    "participants": rendered,
+                    "session_count": 1 if non_bot else 0,
+                },
+            )
 
     # ------------------------------------------------------------------
     # /api/admin/eject — kick one or more participants
     # ------------------------------------------------------------------
 
-    def _do_eject(self, ids: list[str]) -> None:
-        assert _DAILY_API_KEY and _DAILY_ROOM_NAME  # checked by _admin_auth
+    def _do_eject(self, ids: list[str], room_name: str | None = None) -> None:
+        eject_room = room_name or _DAILY_ROOM_NAME
+        if not _DAILY_API_KEY or not eject_room:
+            self._send_json(503, {"error": "daily_not_configured"})
+            return
         try:
             ejected = eject_participants(
                 api_key=_DAILY_API_KEY,
-                room_name=_DAILY_ROOM_NAME,
+                room_name=eject_room,
                 participant_ids=ids,
             )
         except DailyAPIError as exc:
@@ -1445,16 +1639,13 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # Invalidate the presence cache so the next /sessions poll reflects
-        # the eject immediately instead of showing the just-kicked participant
-        # for up to 500 ms.
+        # the eject immediately.
         _presence_cache["fetched_at"] = 0.0
         _presence_cache["value"] = None
 
-        # Audit trail. Loguru already routes to logs/, this gives us a
-        # grep-able line per eject with the operator's IP.
         operator_ip = self.address_string()
         for pid in ejected:
-            sys.stderr.write(f"[admin] eject room={_DAILY_ROOM_NAME} ip={operator_ip} id={pid}\n")
+            sys.stderr.write(f"[admin] eject room={eject_room} ip={operator_ip} id={pid}\n")
 
         self._send_json(
             200,
@@ -1476,7 +1667,9 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 {"error": "invalid_body", "detail": "ids must be a non-empty list of strings"},
             )
             return
-        self._do_eject(ids)
+        # In dynamic mode, body can optionally specify the room to eject from.
+        room_name = body.get("room_name") or None
+        self._do_eject(ids, room_name=room_name)
 
     # ------------------------------------------------------------------
     # /api/admin/end-session — eject everyone
@@ -1486,26 +1679,48 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         ok, _ = self._admin_auth()
         if not ok:
             return
-        # Re-fetch fresh (bypass the 500 ms cache) so we don't miss someone
-        # who joined within the cache window.
-        _presence_cache["fetched_at"] = 0.0
-        try:
-            participants = self._fetch_participants_cached()
-        except DailyAPIError as exc:
-            self._send_json(
-                502,
-                {
-                    "error": "daily_api_error",
-                    "detail": str(exc),
-                    "status": exc.status,
-                },
-            )
-            return
-        ids = [p.id for p in participants if p.id]
-        if not ids:
-            self._send_json(200, {"ejected_ids": [], "requested_ids": []})
-            return
-        self._do_eject(ids)
+
+        if _DAILY_DYNAMIC_ROOMS:
+            # Dynamic mode: end all active sessions.
+            ejected_all: list[str] = []
+            for sid in REGISTRY.active_sessions():
+                rn = REGISTRY.get_room_name(sid) or ""
+                if not rn or not _DAILY_API_KEY:
+                    continue
+                try:
+                    parts = self._fetch_participants_for_room(rn)
+                    ids = [p.id for p in parts if p.id]
+                    if ids:
+                        ejected = eject_participants(
+                            api_key=_DAILY_API_KEY,
+                            room_name=rn,
+                            participant_ids=ids,
+                        )
+                        ejected_all.extend(ejected)
+                except DailyAPIError:
+                    pass
+                REGISTRY.reap(sid)
+            self._send_json(200, {"ejected_ids": ejected_all, "requested_ids": ejected_all})
+        else:
+            # Legacy single-room mode.
+            _presence_cache["fetched_at"] = 0.0
+            try:
+                participants = self._fetch_participants_cached()
+            except DailyAPIError as exc:
+                self._send_json(
+                    502,
+                    {
+                        "error": "daily_api_error",
+                        "detail": str(exc),
+                        "status": exc.status,
+                    },
+                )
+                return
+            ids = [p.id for p in participants if p.id]
+            if not ids:
+                self._send_json(200, {"ejected_ids": [], "requested_ids": []})
+                return
+            self._do_eject(ids)
 
     # ------------------------------------------------------------------
     # Phase 3 — On-demand bot launcher endpoints
@@ -1524,118 +1739,109 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
           4. Return ``{room_url, session_id}`` so the browser can join.
 
         The busy check used to read ``REGISTRY.is_busy()``, an in-memory slot
-        freed only when the bot subprocess exits. That slot leaks whenever
-        the bot hangs on shutdown, which made Start reject every subsequent
-        click until the launcher was restarted — even though the Daily room
-        was empty. Asking Daily directly removes that whole failure mode.
+        freed only when the bot subprocess exits. In dynamic-rooms mode, the
+        shared-room presence check is replaced with a session-count gate.
+        Legacy mode still checks Daily presence for the shared room.
         """
         # ------------------------------------------------------------------
-        # Busy gate — Daily presence is the source of truth.
-        # ``live`` semantics:
-        #   list  → Daily answered; empty means the room is free.
-        #   None  → Daily REST was unreachable; fall back to local registry
-        #           so we don't spawn unlimited bots during a Daily outage.
+        # Busy gate
         # ------------------------------------------------------------------
-        live: list | None
-        try:
-            if _DAILY_API_KEY and _DAILY_ROOM_NAME:
-                live = list_room_participants(
-                    api_key=_DAILY_API_KEY,
-                    room_name=_DAILY_ROOM_NAME,
-                )
-            else:
-                # No Daily creds configured — skip the remote check and
-                # rely on the in-memory registry below.
-                print("[launcher] DAILY_API_KEY/ROOM not set — skipping presence check")
-                live = None
-        except DailyAPIError as exc:
-            print(f"[launcher] daily presence check failed: {exc}")
-            live = None
-
-        # Split the participants into humans and orphan bots. The bot's own
-        # display name (``BOT_NAME``, default "Voxtera") joining the room
-        # does NOT count as "the demo is in use" — that's just our process
-        # from a previous run that never left cleanly. Only a real guest
-        # constitutes an active session.
-        if live:
-            humans = [p for p in live if p.user_name != _BOT_NAME]
-            orphan_bots = [p for p in live if p.user_name == _BOT_NAME]
-
-            if humans:
-                label = ",".join(p.user_name or p.id for p in humans) or "unknown"
-                print(
-                    f"[launcher] /api/start-session rejected — Daily room has "
-                    f"{len(humans)} human participant(s): {label}"
-                )
+        if _DAILY_DYNAMIC_ROOMS:
+            # Dynamic mode: gate on session count only.
+            if REGISTRY.is_busy():
                 self._send_json(
                     409,
                     {
-                        "error": "busy",
-                        "active_session": label,
-                        "participant_count": len(humans),
-                        "source": "daily",
+                        "error": "max_sessions_reached",
+                        "active_sessions": len(REGISTRY.active_sessions()),
                     },
                 )
                 return
-
-            # Only the bot is there. Eject it so the freshly spawned bot
-            # doesn't share the room with its own ghost — Daily would bill
-            # for both, and the old process is no longer wired to anything.
-            if orphan_bots:
-                ids = [p.id for p in orphan_bots if p.id]
-                print(
-                    f"[launcher] ejecting {len(ids)} orphan bot(s) before spawn: "
-                    f"{','.join(ids) or '(no ids)'}"
-                )
-                try:
-                    eject_participants(
-                        api_key=_DAILY_API_KEY,  # type: ignore[arg-type]
-                        room_name=_DAILY_ROOM_NAME,  # type: ignore[arg-type]
-                        participant_ids=ids,
+        else:
+            # Legacy single-room mode: Daily presence is the source of truth.
+            live: list | None
+            try:
+                if _DAILY_API_KEY and _DAILY_ROOM_NAME:
+                    live = list_room_participants(
+                        api_key=_DAILY_API_KEY,
+                        room_name=_DAILY_ROOM_NAME,
                     )
-                except DailyAPIError as exc:
-                    # Eject failed — refuse to spawn rather than risk
-                    # double-bot in the room. Operator can clear it from
-                    # the admin page.
-                    print(f"[launcher] orphan-bot eject failed: {exc}")
+                else:
+                    print("[launcher] DAILY_API_KEY/ROOM not set — skipping presence check")
+                    live = None
+            except DailyAPIError as exc:
+                print(f"[launcher] daily presence check failed: {exc}")
+                live = None
+
+            if live:
+                humans = [p for p in live if p.user_name != _BOT_NAME]
+                orphan_bots = [p for p in live if p.user_name == _BOT_NAME]
+
+                if humans:
+                    label = ",".join(p.user_name or p.id for p in humans) or "unknown"
+                    print(
+                        f"[launcher] /api/start-session rejected — Daily room has "
+                        f"{len(humans)} human participant(s): {label}"
+                    )
                     self._send_json(
-                        502,
+                        409,
                         {
-                            "error": "orphan_eject_failed",
-                            "detail": str(exc),
-                            "active_session": "Voxtera",
+                            "error": "busy",
+                            "active_session": label,
+                            "participant_count": len(humans),
                             "source": "daily",
                         },
                     )
                     return
 
-        # Daily says nobody real is in the room. If the in-memory registry
-        # still holds a slot, it's stale (bot subprocess hung on shutdown);
-        # reap it so the spawn below can grab a fresh slot.
-        if (
-            live == [] or (live and not [p for p in live if p.user_name != _BOT_NAME])
-        ) and REGISTRY.is_busy():
-            stale = REGISTRY.active_session()
-            print(
-                f"[launcher] daily presence empty but slot {stale} still held — "
-                f"reaping stale slot"
-            )
-            if stale:
-                REGISTRY.reap(stale)
+                if orphan_bots:
+                    ids = [p.id for p in orphan_bots if p.id]
+                    print(
+                        f"[launcher] ejecting {len(ids)} orphan bot(s) before spawn: "
+                        f"{','.join(ids) or '(no ids)'}"
+                    )
+                    try:
+                        eject_participants(
+                            api_key=_DAILY_API_KEY,  # type: ignore[arg-type]
+                            room_name=_DAILY_ROOM_NAME,  # type: ignore[arg-type]
+                            participant_ids=ids,
+                        )
+                    except DailyAPIError as exc:
+                        print(f"[launcher] orphan-bot eject failed: {exc}")
+                        self._send_json(
+                            502,
+                            {
+                                "error": "orphan_eject_failed",
+                                "detail": str(exc),
+                                "active_session": "Voxtera",
+                                "source": "daily",
+                            },
+                        )
+                        return
 
-        # Daily was unreachable — fall back to the legacy in-memory gate so a
-        # Daily blip doesn't allow concurrent spawns.
-        if live is None and REGISTRY.is_busy():
-            active = REGISTRY.active_session()
-            print(
-                f"[launcher] daily unreachable — falling back to local registry, "
-                f"session {active} active"
-            )
-            self._send_json(
-                409,
-                {"error": "busy", "active_session": active, "source": "local"},
-            )
-            return
+            # Daily says nobody real is in the room but registry thinks busy → stale.
+            if (
+                live == [] or (live and not [p for p in live if p.user_name != _BOT_NAME])
+            ) and REGISTRY.is_busy():
+                stale = REGISTRY.active_session()
+                print(
+                    f"[launcher] daily presence empty but slot {stale} still held — "
+                    f"reaping stale slot"
+                )
+                if stale:
+                    REGISTRY.reap(stale)
+
+            if live is None and REGISTRY.is_busy():
+                active = REGISTRY.active_session()
+                print(
+                    f"[launcher] daily unreachable — falling back to local registry, "
+                    f"session {active} active"
+                )
+                self._send_json(
+                    409,
+                    {"error": "busy", "active_session": active, "source": "local"},
+                )
+                return
 
         session_id = uuid.uuid4().hex
         callback_url = f"{LAUNCHER_BASE_URL}/api/bot-event"
@@ -1664,18 +1870,55 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             pass
         llm_model = body.get("llm") or None
 
-        # Pick a tune port for this bot. v1 reuses the default base port for
-        # every session because we only ever have one live session at a time.
-        # When multi-session lands, allocate a unique port per session.
-        tune_port = _DEFAULT_BOT_PORT
+        # --- Dynamic room creation ---
+        if _DAILY_DYNAMIC_ROOMS and _DAILY_API_KEY:
+            room_name = f"vox-{session_id[:12]}"
+            try:
+                create_room(
+                    api_key=_DAILY_API_KEY,
+                    room_name=room_name,
+                    expiry_secs=600,
+                    max_participants=_DAILY_ROOM_MAX_PARTICIPANTS,
+                )
+                print(
+                    f"[launcher] created Daily room {room_name} "
+                    f"(max_participants={_DAILY_ROOM_MAX_PARTICIPANTS})"
+                )
+            except DailyAPIError as exc:
+                print(f"[launcher] failed to create Daily room: {exc}")
+                REGISTRY.reap(session_id)
+                self._send_json(502, {"error": f"Daily room creation failed: {exc}"})
+                return
+        else:
+            room_name = _DAILY_ROOM_NAME or ""
+
+        REGISTRY.attach_room_name(session_id, room_name)
+
+        # Pick a tune port for this bot. Allocate a unique port per session
+        # so multiple concurrent bots don't collide.
+        with REGISTRY._lock:
+            used_ports = {
+                s.get("tune_port") for s in REGISTRY._sessions.values() if s.get("tune_port")
+            }
+            tune_port = next(
+                p for p in range(_DEFAULT_BOT_PORT, _DEFAULT_BOT_PORT + 200) if p not in used_ports
+            )
+            sess = REGISTRY._sessions.get(session_id)
+            if sess is not None:
+                sess["tune_port"] = tune_port
         try:
-            proc = _spawn_bot(session_id, callback_url, tune_port, llm_model=llm_model)
+            proc = _spawn_bot(
+                session_id,
+                callback_url,
+                tune_port,
+                llm_model=llm_model,
+                room_name=room_name,
+            )
         except Exception as exc:
             print(f"[launcher] spawn failed: {exc}")
             REGISTRY.reap(session_id)
             self._send_json(500, {"error": f"spawn failed: {exc}"})
             return
-        _set_bot_tune_port(tune_port)
 
         REGISTRY.attach_process(session_id, proc)
         _start_reaper_thread(session_id, proc)
@@ -1686,8 +1929,10 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # Two-stage watchdog:
         #   T+165s (2:45) — bot speaks a warning via /speak on TuneServer
         #   T+180s (3:00) — force-kill the bot and eject from Daily
-        _MAX_SESSION_SECS = 180  # hard kill  # noqa: N806
-        _WARN_SESSION_SECS = 165  # voice warning 15 s before kill  # noqa: N806
+        _MAX_SESSION_SECS = _SESSION_TIMEOUT_SECS  # noqa: N806
+        _WARN_SESSION_SECS = max(  # noqa: N806
+            _MAX_SESSION_SECS - 15, 5
+        )  # voice warning 15 s before kill
         _WARN_TEXT = (  # noqa: N806
             "I'm sorry, your session will end in 15 seconds due to the time limit. "
             "Please call again if you need further assistance. Goodbye!"
@@ -1697,15 +1942,15 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             """Speak a warning via the bot's TuneServer /speak endpoint."""
             import contextlib as _ctx
 
-            tune_port = _get_bot_tune_port()
-            if tune_port is None:
+            _tp = _get_bot_tune_port(sid)
+            if _tp is None:
                 return
             try:
                 import urllib.request as _ur
 
                 payload = json.dumps({"text": _WARN_TEXT}).encode()
                 req = _ur.Request(
-                    f"http://127.0.0.1:{tune_port}/speak",
+                    f"http://127.0.0.1:{_tp}/speak",
                     data=payload,
                     headers={"Content-Type": "application/json"},
                     method="POST",
@@ -1725,17 +1970,17 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             if _proc is not None and _proc.poll() is None:
                 with _ctx.suppress(Exception):
                     _proc.terminate()
-            if _DAILY_API_KEY and _DAILY_ROOM_NAME:
+            # Use room_name from the closure (captured at session creation time)
+            if _DAILY_API_KEY and room_name:
                 with _ctx.suppress(Exception):
-                    _presence_cache["fetched_at"] = 0.0
                     participants = list_room_participants(
-                        api_key=_DAILY_API_KEY, room_name=_DAILY_ROOM_NAME
+                        api_key=_DAILY_API_KEY, room_name=room_name
                     )
                     ids = [p.id for p in participants if p.id]
                     if ids:
                         eject_participants(
                             api_key=_DAILY_API_KEY,
-                            room_name=_DAILY_ROOM_NAME,
+                            room_name=room_name,
                             participant_ids=ids,
                         )
             REGISTRY.reap(sid)
@@ -1783,17 +2028,17 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # Bot is in the room. Build the room URL and hand back to the browser.
-        if not _DAILY_DOMAIN or not _DAILY_ROOM_NAME:
-            print("[launcher] DAILY_DOMAIN / DAILY_ROOM_NAME missing — killing bot")
+        if not _DAILY_DOMAIN or not room_name:
+            print("[launcher] DAILY_DOMAIN / room_name missing — killing bot")
             with contextlib.suppress(Exception):
                 proc.kill()
             self._send_json(
                 500,
-                {"error": "DAILY_DOMAIN or DAILY_ROOM_NAME not set on launcher"},
+                {"error": "DAILY_DOMAIN or room_name not available on launcher"},
             )
             return
 
-        room_url = f"https://{_DAILY_DOMAIN}/{_DAILY_ROOM_NAME}"
+        room_url = f"https://{_DAILY_DOMAIN}/{room_name}"
         print(f"[launcher] session {session_id} ready — returning room_url to browser")
         self._send_json(
             200,
@@ -1820,12 +2065,16 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
         # Kill the bot subprocess for this session.
         proc = None
+        session_room_name: str | None = None
         with REGISTRY._lock:
             if session_id and session_id in REGISTRY._sessions:
                 proc = REGISTRY._sessions[session_id].get("process")
-            elif not session_id and REGISTRY._active_id:
-                session_id = REGISTRY._active_id
-                proc = REGISTRY._sessions.get(session_id, {}).get("process")
+                session_room_name = REGISTRY._sessions[session_id].get("room_name")
+            elif not session_id and REGISTRY._sessions:
+                # Backward compat: pick the first active session.
+                session_id = next(iter(REGISTRY._sessions))
+                proc = REGISTRY._sessions[session_id].get("process")
+                session_room_name = REGISTRY._sessions[session_id].get("room_name")
 
         if proc is not None and proc.poll() is None:
             try:
@@ -1833,21 +2082,30 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 print(f"[end-session] sent SIGTERM to bot (session={session_id[:8]})")
             except Exception as e:
                 print(f"[end-session] terminate error: {e}")
+
         # Eject all participants via Daily REST (belt-and-suspenders).
-        if _DAILY_API_KEY and _DAILY_ROOM_NAME:
+        eject_room = session_room_name or _DAILY_ROOM_NAME
+        if _DAILY_API_KEY and eject_room:
             try:
-                _presence_cache["fetched_at"] = 0.0
-                participants = self._fetch_participants_cached()
+                participants = list_room_participants(api_key=_DAILY_API_KEY, room_name=eject_room)
                 ids = [p.id for p in participants if p.id]
                 if ids:
                     eject_participants(
                         api_key=_DAILY_API_KEY,
-                        room_name=_DAILY_ROOM_NAME,
+                        room_name=eject_room,
                         participant_ids=ids,
                     )
-                    print(f"[end-session] ejected {len(ids)} participant(s) from room")
+                    print(f"[end-session] ejected {len(ids)} participant(s) from room {eject_room}")
             except Exception as e:
                 print(f"[end-session] Daily eject error: {e}")
+
+        # Delete the dynamic room if applicable.
+        if _DAILY_DYNAMIC_ROOMS and _DAILY_API_KEY and session_room_name:
+            try:
+                delete_room(api_key=_DAILY_API_KEY, room_name=session_room_name)
+                print(f"[end-session] deleted Daily room {session_room_name}")
+            except DailyAPIError as exc:
+                print(f"[end-session] Daily room delete error: {exc}")
 
         # Free the launcher slot so the next Start click isn't rejected as busy.
         if session_id:
@@ -2647,16 +2905,18 @@ if __name__ == "__main__":
             f"{LAUNCHER_BASE_URL}/api/bot-event "
             f"(spawn timeout: {_SPAWN_TIMEOUT_SECS}s)"
         )
-        if _ADMIN_TOKEN and _DAILY_API_KEY and _DAILY_ROOM_NAME:
+        if _ADMIN_TOKEN and _DAILY_API_KEY and (_DAILY_ROOM_NAME or _DAILY_DYNAMIC_ROOMS):
             print(f"Admin page on http://localhost:{port}/admin.html")
+            if _DAILY_DYNAMIC_ROOMS:
+                print(f"  Dynamic rooms enabled (max_participants={_DAILY_ROOM_MAX_PARTICIPANTS})")
         else:
             missing = []
             if not _ADMIN_TOKEN:
                 missing.append("VOXTERA_ADMIN_TOKEN")
             if not _DAILY_API_KEY:
                 missing.append("DAILY_API_KEY")
-            if not _DAILY_ROOM_NAME:
-                missing.append("DAILY_ROOM_NAME")
+            if not _DAILY_ROOM_NAME and not _DAILY_DYNAMIC_ROOMS:
+                missing.append("DAILY_ROOM_NAME (or DAILY_DYNAMIC_ROOMS=1)")
             print(f"Admin page disabled — missing env: {', '.join(missing)}")
         if _ADMIN_TOKEN:
             print(f"Trace page on http://localhost:{port}/trace.html")

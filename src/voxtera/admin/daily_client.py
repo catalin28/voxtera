@@ -215,3 +215,75 @@ def eject_participants(
         logger.warning("[daily] /eject returned unexpected ejectedIds: {!r}", ejected)
         return []
     return [str(pid) for pid in ejected]
+
+
+def create_room(
+    *,
+    api_key: str,
+    room_name: str,
+    expiry_secs: int = 600,
+    max_participants: int = 2,
+) -> dict[str, Any]:
+    """Create an ephemeral Daily room for one session.
+
+    ``expiry_secs`` sets a hard Daily-side time-to-live so orphan rooms are
+    cleaned up even if the launcher crashes before calling :func:`delete_room`.
+    ``max_participants`` controls who can join:
+
+    - 2 = bot + guest (default, private call)
+    - 3+ = bot + guest + supervisor(s) for quality-monitoring use-cases
+    """
+    import time
+
+    if not api_key:
+        raise DailyAPIError("DAILY_API_KEY is not set")
+    if not room_name:
+        raise DailyAPIError("room_name is required")
+
+    body: dict[str, Any] = {
+        "name": room_name,
+        "properties": {
+            "exp": int(time.time()) + expiry_secs,
+            "enable_prejoin_ui": False,
+            "max_participants": max_participants,
+        },
+    }
+    result = _request_json(
+        f"{_DAILY_REST_BASE}/rooms",
+        api_key=api_key,
+        method="POST",
+        body=body,
+    )
+    logger.info("[daily] created room {} (max_participants={})", room_name, max_participants)
+    return result
+
+
+def delete_room(*, api_key: str, room_name: str) -> bool:
+    """Delete a Daily room.
+
+    Returns True whether the room existed or not (idempotent — 404 is not an
+    error; the room is gone either way).
+
+    Daily's ``DELETE /v1/rooms/{name}`` returns ``200`` with a JSON body
+    ``{"deleted": true, "name": "..."}``.  If Daily ever changes this to
+    ``204 No Content``, :func:`_request_json` will raise ``JSONDecodeError``
+    — in that case add an ``allow_empty`` flag or use raw ``urlopen`` here.
+    """
+    if not api_key:
+        raise DailyAPIError("DAILY_API_KEY is not set")
+    if not room_name:
+        raise DailyAPIError("room_name is required")
+
+    try:
+        _request_json(
+            f"{_DAILY_REST_BASE}/rooms/{room_name}",
+            api_key=api_key,
+            method="DELETE",
+        )
+    except DailyAPIError as exc:
+        if exc.status == 404:
+            logger.debug("[daily] delete_room {}: already gone (404)", room_name)
+            return True
+        raise
+    logger.info("[daily] deleted room {}", room_name)
+    return True

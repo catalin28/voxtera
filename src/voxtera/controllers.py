@@ -52,6 +52,8 @@ try:
 except Exception:  # daily-python not available on Windows
     DailyInputTransportMessageFrame = None  # type: ignore[assignment,misc]
 
+from voxtera.lang_config import language_codes as _all_language_codes
+from voxtera.lang_config import stt_code_for as _stt_code_for
 from voxtera.prompts.fillers import FILLERS
 from voxtera.prompts.greetings import DEFAULT_LANGUAGE, daypart_for_timezone
 from voxtera.routing import STTRouter, TTSRouter
@@ -339,7 +341,22 @@ class LanguageSwitcher(FrameProcessor):
                                     "won't take effect on the live socket"
                                 )
                             else:
-                                await reconfigure([lang], code_switching=False)
+                                if lang == "multi":
+                                    # Bounded auto-detect: pass all configured
+                                    # Gladia language codes with code-switching.
+                                    # This avoids 99-language open mode which
+                                    # can produce translations instead of
+                                    # transcriptions.
+                                    all_codes = [
+                                        _stt_code_for(c, "gladia") for c in _all_language_codes()
+                                    ]
+                                    bounded = [c for c in all_codes if c]
+                                    await reconfigure(
+                                        bounded if len(bounded) >= 2 else [],
+                                        code_switching=len(bounded) >= 2,
+                                    )
+                                else:
+                                    await reconfigure([lang], code_switching=False)
                             await self.push_frame(frame, direction)
                             return
                         else:
