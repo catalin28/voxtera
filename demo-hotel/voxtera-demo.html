@@ -2487,8 +2487,11 @@
         const blob = await resp.blob();
         const url  = URL.createObjectURL(blob);
         audioEl.src = url;
-        await audioEl.play().catch(() => {});
-        await new Promise(resolve => { audioEl.onended = resolve; audioEl.onerror = resolve; });
+        let played = false;
+        try { await audioEl.play(); played = true; } catch (_) { /* autoplay blocked (Safari) */ }
+        if (played) {
+          await new Promise(resolve => { audioEl.onended = resolve; audioEl.onerror = resolve; });
+        }
         URL.revokeObjectURL(url);
       }
     } catch (e) {
@@ -2497,7 +2500,31 @@
     setOrbState('');
     setStatus('Tap the orb, or send a message below to begin.', 'Ready');
   }
-  setTimeout(playWelcome, 900);
+  // Safari blocks autoplay without a user gesture. Detect if we can play
+  // immediately; if not, wait for the first user interaction to unlock audio.
+  (function scheduleGreeting() {
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    if (!isSafari) {
+      setTimeout(playWelcome, 900);
+      return;
+    }
+    // Try unlocking audio immediately (works on localhost)
+    const probe = new Audio();
+    probe.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+    const p = probe.play();
+    if (p) {
+      p.then(() => { probe.pause(); setTimeout(playWelcome, 600); })
+       .catch(() => {
+         // Autoplay blocked — wait for first user gesture to unlock, then play greeting
+         const events = ['click', 'touchstart', 'keydown'];
+         function unlock() {
+           events.forEach(e => document.removeEventListener(e, unlock, true));
+           setTimeout(playWelcome, 200);
+         }
+         events.forEach(e => document.addEventListener(e, unlock, { once: true, capture: true }));
+       });
+    }
+  })();
 
   // initialise chips for default language
   updateChips('auto');

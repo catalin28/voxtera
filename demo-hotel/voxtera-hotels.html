@@ -1106,10 +1106,10 @@
   .vx-launcher{
     display:flex;
     align-items:center;
-    gap:0.9rem;
+    gap:0.7rem;
     background:#ffffff;
     border-radius:999px;
-    padding:0.55rem 0.6rem 0.55rem 1rem;
+    padding:0.55rem 1.2rem 0.55rem 0.55rem;
     box-shadow:
       0 1px 2px rgba(26,24,20,0.06),
       0 20px 40px -18px rgba(26,24,20,0.22),
@@ -1140,17 +1140,8 @@
   @keyframes vx-spin{to{transform:rotate(360deg);}}
   .vx-launcher-label{
     font-family:'Fraunces',serif;font-weight:500;font-size:1.05rem;
-    color:var(--ink);letter-spacing:-0.01em;padding-right:0.4rem;white-space:nowrap;
+    color:var(--ink);letter-spacing:-0.01em;white-space:nowrap;
   }
-  .vx-launcher-cta{
-    display:inline-flex;align-items:center;gap:0.55rem;
-    background:var(--ink);color:#ffffff;border-radius:999px;
-    padding:0.7rem 1.2rem 0.7rem 1rem;
-    font-family:'Fraunces',serif;font-weight:500;font-size:0.98rem;
-    letter-spacing:-0.005em;transition:background .25s;
-  }
-  .vx-launcher:hover .vx-launcher-cta{background:var(--rust);}
-  .vx-launcher-cta svg{width:16px;height:16px;stroke:#ffffff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
   .vx-panel{
     position:absolute;bottom:0;right:0;
     width:380px;max-width:calc(100vw - 2rem);max-height:calc(100vh - 3rem);
@@ -1207,32 +1198,9 @@
     transition:padding .35s ease;
   }
   .vx-orb-area.compact{padding:1rem 1.5rem 0.5rem;}
-  .vx-orb-wrap{position:relative;display:flex;align-items:flex-end;justify-content:center;}
-  .vx-call-btn{
-    position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);
-    width:56px;height:56px;border-radius:50%;
-    background:var(--ink);border:4px solid #ffffff;cursor:pointer;
-    display:inline-flex;align-items:center;justify-content:center;color:#ffffff;
-    box-shadow:0 4px 12px rgba(26,24,20,0.25),0 12px 30px -8px rgba(26,24,20,0.3);
-    transition:background .25s,transform .25s,box-shadow .25s;z-index:2;
-  }
-  .vx-call-btn:hover{
-    background:var(--rust);transform:translateX(-50%) scale(1.06);
-    box-shadow:0 4px 12px rgba(164,57,28,0.3),0 16px 36px -8px rgba(164,57,28,0.4);
-  }
-  .vx-call-btn svg{width:22px;height:22px;fill:currentColor;}
-  .vx-call-btn .vx-pulse-ring{
-    position:absolute;inset:-4px;border-radius:50%;
-    border:2px solid var(--ink);opacity:0;
-    animation:vx-ring 2.5s ease-out infinite;pointer-events:none;
-  }
-  @keyframes vx-ring{
-    0%{transform:scale(0.95);opacity:0.7;}
-    80%{transform:scale(1.4);opacity:0;}
-    100%{transform:scale(1.4);opacity:0;}
-  }
+  .vx-orb-wrap{position:relative;display:flex;align-items:center;justify-content:center;}
   .vx-helper{
-    margin-top:2.5rem;text-align:center;
+    margin-top:1.25rem;text-align:center;
     font-family:'Instrument Serif',serif;font-style:italic;
     font-size:0.95rem;color:var(--ink-soft);line-height:1.5;max-width:18rem;
   }
@@ -1293,10 +1261,10 @@
   </div>
   <div class="nav-links">
     <a href="voxtera.html" data-i18n="nav.home">Home</a>
-    <a href="voxtera-hotels.html" class="active" data-i18n="nav.hotels">For hotels</a>
-    <a href="voxtera-demo.html" data-i18n="nav.demo">Try demo</a>
+    <a href="voxtera-hotels.html" class="active" data-i18n="nav.for_hotels">For hotels</a>
+    <a href="voxtera-demo.html" data-i18n="nav.try_demo">Try demo</a>
     <a href="voxtera.html#pricing" data-i18n="nav.pricing">Pricing</a>
-    <div id="lang-picker"></div>
+    <div class="i18n-picker" id="lang-picker"></div>
     <a href="#form" class="nav-cta" data-i18n="hotels.nav_cta">Talk to us →</a>
   </div>
 </nav>
@@ -1380,11 +1348,11 @@
           </div>
         </div>
         <ul class="cap-list">
-          <li>Wifi password, opening hours, breakfast times, parking</li>
-          <li>Pool, gym, spa availability and access rules</li>
-          <li>Directions, taxi options, airport transfers</li>
-          <li>Wake-up call requests, late-checkout inquiries</li>
-          <li>Pre-booking questions ("do you have a sea view?", "is parking included?")</li>
+          <li data-i18n="hotels.cap1_b1">Wifi password, opening hours, breakfast times, parking</li>
+          <li data-i18n="hotels.cap1_b2">Pool, gym, spa availability and access rules</li>
+          <li data-i18n="hotels.cap1_b3">Directions, taxi options, airport transfers</li>
+          <li data-i18n="hotels.cap1_b4">Wake-up call requests, late-checkout inquiries</li>
+          <li data-i18n="hotels.cap1_b5">Pre-booking questions ("do you have a sea view?", "is parking included?")</li>
         </ul>
         <div class="cap-quote">
           "Quelle est l'heure du petit-déjeuner demain ?"
@@ -1401,11 +1369,11 @@
           </div>
         </div>
         <ul class="cap-list">
-          <li>Restaurant bookings (in-house F&amp;B), table preferences, dietary notes</li>
-          <li>Spa treatments, gym slots, yoga classes</li>
-          <li>Airport transfers, taxi pickups, scheduled chauffeur</li>
-          <li>Room booking inquiries — routed to your reservations team</li>
-          <li>Stay modifications: extensions, room changes, additional guests</li>
+          <li data-i18n="hotels.cap2_b1">Restaurant bookings (in-house F&amp;B), table preferences, dietary notes</li>
+          <li data-i18n="hotels.cap2_b2">Spa treatments, gym slots, yoga classes</li>
+          <li data-i18n="hotels.cap2_b3">Airport transfers, taxi pickups, scheduled chauffeur</li>
+          <li data-i18n="hotels.cap2_b4">Room booking inquiries — routed to your reservations team</li>
+          <li data-i18n="hotels.cap2_b5">Stay modifications: extensions, room changes, additional guests</li>
         </ul>
         <div class="cap-quote">
           "Quería reservar una mesa para dos a las ocho, por favor."
@@ -1422,11 +1390,11 @@
           </div>
         </div>
         <ul class="cap-list">
-          <li>Extra towels, pillows, blankets, toiletries</li>
-          <li>Turndown service, room cleaning preferences</li>
-          <li>Laundry pickup, dry-cleaning, ironing</li>
-          <li>Lost-and-found inquiries</li>
-          <li>Each request becomes a ticket with room number, language, priority</li>
+          <li data-i18n="hotels.cap3_b1">Extra towels, pillows, blankets, toiletries</li>
+          <li data-i18n="hotels.cap3_b2">Turndown service, room cleaning preferences</li>
+          <li data-i18n="hotels.cap3_b3">Laundry pickup, dry-cleaning, ironing</li>
+          <li data-i18n="hotels.cap3_b4">Lost-and-found inquiries</li>
+          <li data-i18n="hotels.cap3_b5">Each request becomes a ticket with room number, language, priority</li>
         </ul>
         <div class="cap-quote">
           "412号室です。タオルをもう少しお願いできますか？"
@@ -1443,11 +1411,11 @@
           </div>
         </div>
         <ul class="cap-list">
-          <li>Broken AC, hot water issues, TV not working, key card failures</li>
-          <li>Detects urgency from the guest's tone and wording</li>
-          <li>Routes urgent issues to maintenance + duty manager simultaneously</li>
-          <li>Confirms estimated response time back to the guest</li>
-          <li>Tracks resolution; escalates if not acknowledged within your SLA</li>
+          <li data-i18n="hotels.cap4_b1">Broken AC, hot water issues, TV not working, key card failures</li>
+          <li data-i18n="hotels.cap4_b2">Detects urgency from the guest's tone and wording</li>
+          <li data-i18n="hotels.cap4_b3">Routes urgent issues to maintenance + duty manager simultaneously</li>
+          <li data-i18n="hotels.cap4_b4">Confirms estimated response time back to the guest</li>
+          <li data-i18n="hotels.cap4_b5">Tracks resolution; escalates if not acknowledged within your SLA</li>
         </ul>
         <div class="cap-quote">
           "Die Klimaanlage funktioniert nicht und es ist sehr warm."
@@ -1464,11 +1432,11 @@
           </div>
         </div>
         <ul class="cap-list">
-          <li>Restaurant recommendations — only from your preferred-vendor list</li>
-          <li>Walks, attractions, museums, viewpoints, beaches</li>
-          <li>Pharmacy, hospital, ATM, taxi locations and hours</li>
-          <li>Cultural tips, customs, and local etiquette in the guest's language</li>
-          <li>Books recommendations on the guest's behalf when possible</li>
+          <li data-i18n="hotels.cap5_b1">Restaurant recommendations — only from your preferred-vendor list</li>
+          <li data-i18n="hotels.cap5_b2">Walks, attractions, museums, viewpoints, beaches</li>
+          <li data-i18n="hotels.cap5_b3">Pharmacy, hospital, ATM, taxi locations and hours</li>
+          <li data-i18n="hotels.cap5_b4">Cultural tips, customs, and local etiquette in the guest's language</li>
+          <li data-i18n="hotels.cap5_b5">Books recommendations on the guest's behalf when possible</li>
         </ul>
         <div class="cap-quote">
           "Can you recommend somewhere nice for dinner — not too far, not too expensive?"
@@ -1485,11 +1453,11 @@
           </div>
         </div>
         <ul class="cap-list">
-          <li>Recognizes medical, security, emotional distress signals immediately</li>
-          <li>Routes to a human via your preferred channel — phone, SMS, Slack</li>
-          <li>Stays with the guest in the guest's language until handover is confirmed</li>
-          <li>Never tries to handle a crisis alone</li>
-          <li>Every escalation is logged, time-stamped, and reviewable</li>
+          <li data-i18n="hotels.cap6_b1">Recognizes medical, security, emotional distress signals immediately</li>
+          <li data-i18n="hotels.cap6_b2">Routes to a human via your preferred channel — phone, SMS, Slack</li>
+          <li data-i18n="hotels.cap6_b3">Stays with the guest in the guest's language until handover is confirmed</li>
+          <li data-i18n="hotels.cap6_b4">Never tries to handle a crisis alone</li>
+          <li data-i18n="hotels.cap6_b5">Every escalation is logged, time-stamped, and reviewable</li>
         </ul>
         <div class="cap-quote">
           "I don't feel well — can someone come up to my room?"
@@ -1518,40 +1486,40 @@
           <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M22 4.5L2 12l5.5 2L18 7 9 15v4l3.5-3 5 4z"/></svg>
         </div>
         <div class="channel-name">Telegram</div>
-        <div class="channel-tag">Most-requested</div>
-        <div class="channel-desc">Most-requested by independent hotels worldwide. Free, fast, group-friendly.</div>
+        <div class="channel-tag" data-i18n="hotels.ch_tg_tag">Most-requested</div>
+        <div class="channel-desc" data-i18n="hotels.ch_tg_desc">Most-requested by independent hotels worldwide. Free, fast, group-friendly.</div>
       </div>
       <div class="channel-card reveal">
         <div class="channel-icon">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M20.5 3.5A11 11 0 0 0 3 17l-1 5 5.2-1.4A11 11 0 1 0 20.5 3.5zM12 21.4a9.4 9.4 0 0 1-4.8-1.3l-.3-.2-3.1.8.8-3-.2-.3A9.4 9.4 0 1 1 12 21.4z"/></svg>
         </div>
         <div class="channel-name">WhatsApp Business</div>
-        <div class="channel-tag">Existing staff groups</div>
-        <div class="channel-desc">For staff coordination groups you already use. Verified business sender.</div>
+        <div class="channel-tag" data-i18n="hotels.ch_wa_tag">Existing staff groups</div>
+        <div class="channel-desc" data-i18n="hotels.ch_wa_desc">For staff coordination groups you already use. Verified business sender.</div>
       </div>
       <div class="channel-card reveal">
         <div class="channel-icon">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-4l-4 4-4-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm2 5v2h10V9H7zm0 4v2h7v-2H7z"/></svg>
         </div>
         <div class="channel-name">SMS</div>
-        <div class="channel-tag">Universal fallback</div>
-        <div class="channel-desc">For staff without smartphones or in dead-zone properties. Works on any phone.</div>
+        <div class="channel-tag" data-i18n="hotels.ch_sms_tag">Universal fallback</div>
+        <div class="channel-desc" data-i18n="hotels.ch_sms_desc">For staff without smartphones or in dead-zone properties. Works on any phone.</div>
       </div>
       <div class="channel-card reveal">
         <div class="channel-icon">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="3"/></svg>
         </div>
         <div class="channel-name">Slack / Teams</div>
-        <div class="channel-tag">Tech-forward ops</div>
-        <div class="channel-desc">For tech-forward operations teams that already coordinate in shared channels.</div>
+        <div class="channel-tag" data-i18n="hotels.ch_slack_tag">Tech-forward ops</div>
+        <div class="channel-desc" data-i18n="hotels.ch_slack_desc">For tech-forward operations teams that already coordinate in shared channels.</div>
       </div>
       <div class="channel-card reveal">
         <div class="channel-icon">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
         </div>
         <div class="channel-name">Your PMS</div>
-        <div class="channel-tag">Cloudbeds · Mews · Apaleo · Opera</div>
-        <div class="channel-desc">Tickets sync directly to your property management system. Other systems via webhook.</div>
+        <div class="channel-tag">Cloudbeds · Mews · Apaleo</div>
+        <div class="channel-desc" data-i18n="hotels.ch_pms_desc">Tickets sync directly to your property management system. Other systems via webhook.</div>
       </div>
     </div>
   </div>
@@ -1660,15 +1628,15 @@
     <div class="et-copy">
       <div class="section-label" data-i18n="hotels.et_label">Your existing tools, not new ones</div>
       <h2 data-i18n-html="hotels.et_title">No new app. <span class="italic">No login.</span> No training week.</h2>
-      <p>
+      <p data-i18n-html="hotels.et_p1_html">
         Hoteliers fear the same thing every time: <span class="italic">"yet another platform we have to log into."</span>
       </p>
-      <p>
+      <p data-i18n="hotels.et_p2">
         Voxtera deliberately doesn't build that. It lives inside the tools your team already uses — Telegram,
         WhatsApp, Slack, SMS — and inside your PMS for the audit trail. Your night manager opens the same
         chat they always have. The cleaner gets a message on the same phone. Nothing to install. Nothing to learn.
       </p>
-      <p>
+      <p data-i18n="hotels.et_p3">
         The only new thing on your team's plate? Saying yes to a few more guests, in a few more languages.
       </p>
     </div>
@@ -1723,8 +1691,8 @@
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5 5l14 14"/></svg>
         </span>
         <div class="dd-text">
-          <strong>It doesn't take credit card numbers.</strong>
-          <span class="why">PCI-compliant payment handoffs route to a human or your existing payment link. Voxtera never asks for or stores card data.</span>
+          <strong data-i18n="hotels.dd1_h">It doesn't take credit card numbers.</strong>
+          <span class="why" data-i18n="hotels.dd1_d">PCI-compliant payment handoffs route to a human or your existing payment link. Voxtera never asks for or stores card data.</span>
         </div>
       </div>
       <div class="dd-item">
@@ -1732,8 +1700,8 @@
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5 5l14 14"/></svg>
         </span>
         <div class="dd-text">
-          <strong>It doesn't handle medical or security emergencies alone.</strong>
-          <span class="why">It detects them on the first sentence and escalates immediately — staying with the guest until a human is on the line.</span>
+          <strong data-i18n="hotels.dd2_h">It doesn't handle medical or security emergencies alone.</strong>
+          <span class="why" data-i18n="hotels.dd2_d">It detects them on the first sentence and escalates immediately — staying with the guest until a human is on the line.</span>
         </div>
       </div>
       <div class="dd-item">
@@ -1741,8 +1709,8 @@
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5 5l14 14"/></svg>
         </span>
         <div class="dd-text">
-          <strong>It doesn't replace your concierge.</strong>
-          <span class="why">It handles the queue — the wifi password, the breakfast time, the towel request — so your concierge has time for the work that actually needs a human.</span>
+          <strong data-i18n="hotels.dd3_h">It doesn't replace your concierge.</strong>
+          <span class="why" data-i18n="hotels.dd3_d">It handles the queue — the wifi password, the breakfast time, the towel request — so your concierge has time for the work that actually needs a human.</span>
         </div>
       </div>
       <div class="dd-item">
@@ -1750,8 +1718,8 @@
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5 5l14 14"/></svg>
         </span>
         <div class="dd-text">
-          <strong>It doesn't replace your team's communication tools.</strong>
-          <span class="why">It lives inside Telegram, WhatsApp, Slack, or SMS — wherever your staff already work. We don't build another inbox.</span>
+          <strong data-i18n="hotels.dd4_h">It doesn't replace your team's communication tools.</strong>
+          <span class="why" data-i18n="hotels.dd4_d">It lives inside Telegram, WhatsApp, Slack, or SMS — wherever your staff already work. We don't build another inbox.</span>
         </div>
       </div>
       <div class="dd-item">
@@ -1759,8 +1727,8 @@
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5 5l14 14"/></svg>
         </span>
         <div class="dd-text">
-          <strong>It doesn't make outbound sales calls.</strong>
-          <span class="why">Voxtera is inbound only. No cold calls, no upsell campaigns to your guest list. Ever.</span>
+          <strong data-i18n="hotels.dd5_h">It doesn't make outbound sales calls.</strong>
+          <span class="why" data-i18n="hotels.dd5_d">Voxtera is inbound only. No cold calls, no upsell campaigns to your guest list. Ever.</span>
         </div>
       </div>
       <div class="dd-item">
@@ -1768,8 +1736,8 @@
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5 5l14 14"/></svg>
         </span>
         <div class="dd-text">
-          <strong>It doesn't keep guests on the line when they want a human.</strong>
-          <span class="why">No "are you sure?" loops, no escalation gauntlets. Ask for a person, get a person.</span>
+          <strong data-i18n="hotels.dd6_h">It doesn't keep guests on the line when they want a human.</strong>
+          <span class="why" data-i18n="hotels.dd6_d">No "are you sure?" loops, no escalation gauntlets. Ask for a person, get a person.</span>
         </div>
       </div>
     </div>
@@ -1798,38 +1766,38 @@
         <div class="form-block-title"><span class="num">i.</span> <span data-i18n="hotels.form_block1">About your property</span></div>
         <div class="form-row">
           <div class="form-field">
-            <label>Property name <span class="required">*</span></label>
+            <label><span data-i18n="hotels.f_property_name">Property name</span> <span class="required">*</span></label>
             <input type="text" name="property_name" required placeholder="The Riad Paloma" />
           </div>
           <div class="form-field">
-            <label>City, country <span class="required">*</span></label>
+            <label><span data-i18n="hotels.f_location">City, country</span> <span class="required">*</span></label>
             <input type="text" name="location" required placeholder="Marrakech, Morocco" />
           </div>
         </div>
         <div class="form-row">
           <div class="form-field">
-            <label>Number of keys</label>
+            <label data-i18n="hotels.f_keys">Number of keys</label>
             <select name="size">
-              <option value="">Select…</option>
-              <option>Under 20</option>
+              <option value="" data-i18n="hotels.f_select">Select…</option>
+              <option data-i18n="hotels.f_keys_a">Under 20</option>
               <option>20 – 40</option>
               <option>40 – 100</option>
               <option>100 – 250</option>
-              <option>250 +</option>
+              <option data-i18n="hotels.f_keys_e">250 +</option>
             </select>
           </div>
           <div class="form-field">
-            <label>Property type</label>
+            <label data-i18n="hotels.f_proptype">Property type</label>
             <select name="type">
-              <option value="">Select…</option>
-              <option>Independent hotel</option>
-              <option>Boutique chain</option>
-              <option>Branded residence</option>
-              <option>Vacation rental group</option>
-              <option>Resort</option>
-              <option>Hostel</option>
-              <option>Serviced apartments</option>
-              <option>Other</option>
+              <option value="" data-i18n="hotels.f_select">Select…</option>
+              <option data-i18n="hotels.f_ptype_indep">Independent hotel</option>
+              <option data-i18n="hotels.f_ptype_chain">Boutique chain</option>
+              <option data-i18n="hotels.f_ptype_branded">Branded residence</option>
+              <option data-i18n="hotels.f_ptype_vac">Vacation rental group</option>
+              <option data-i18n="hotels.f_ptype_resort">Resort</option>
+              <option data-i18n="hotels.f_ptype_hostel">Hostel</option>
+              <option data-i18n="hotels.f_ptype_serv">Serviced apartments</option>
+              <option data-i18n="hotels.f_ptype_other">Other</option>
             </select>
           </div>
         </div>
@@ -1841,56 +1809,56 @@
 
         <div class="form-row full">
           <div class="form-field">
-            <label>Which languages do your guests speak? (pick all that apply)</label>
+            <label data-i18n="hotels.f_langs_q">Which languages do your guests speak? (pick all that apply)</label>
             <div class="checkbox-group" data-multiselect>
-              <label class="checkbox-chip"><input type="checkbox" name="lang" value="en"/>English</label>
-              <label class="checkbox-chip"><input type="checkbox" name="lang" value="es"/>Spanish</label>
-              <label class="checkbox-chip"><input type="checkbox" name="lang" value="fr"/>French</label>
-              <label class="checkbox-chip"><input type="checkbox" name="lang" value="de"/>German</label>
-              <label class="checkbox-chip"><input type="checkbox" name="lang" value="it"/>Italian</label>
-              <label class="checkbox-chip"><input type="checkbox" name="lang" value="pt"/>Portuguese</label>
-              <label class="checkbox-chip"><input type="checkbox" name="lang" value="ja"/>Japanese</label>
-              <label class="checkbox-chip"><input type="checkbox" name="lang" value="zh"/>Chinese</label>
-              <label class="checkbox-chip"><input type="checkbox" name="lang" value="ar"/>Arabic</label>
-              <label class="checkbox-chip"><input type="checkbox" name="lang" value="ru"/>Russian</label>
-              <label class="checkbox-chip"><input type="checkbox" name="lang" value="other"/>Other</label>
+              <label class="checkbox-chip"><input type="checkbox" name="lang" value="en"/><span data-i18n="hotels.l_en">English</span></label>
+              <label class="checkbox-chip"><input type="checkbox" name="lang" value="es"/><span data-i18n="hotels.l_es">Spanish</span></label>
+              <label class="checkbox-chip"><input type="checkbox" name="lang" value="fr"/><span data-i18n="hotels.l_fr">French</span></label>
+              <label class="checkbox-chip"><input type="checkbox" name="lang" value="de"/><span data-i18n="hotels.l_de">German</span></label>
+              <label class="checkbox-chip"><input type="checkbox" name="lang" value="it"/><span data-i18n="hotels.l_it">Italian</span></label>
+              <label class="checkbox-chip"><input type="checkbox" name="lang" value="pt"/><span data-i18n="hotels.l_pt">Portuguese</span></label>
+              <label class="checkbox-chip"><input type="checkbox" name="lang" value="ja"/><span data-i18n="hotels.l_ja">Japanese</span></label>
+              <label class="checkbox-chip"><input type="checkbox" name="lang" value="zh"/><span data-i18n="hotels.l_zh">Chinese</span></label>
+              <label class="checkbox-chip"><input type="checkbox" name="lang" value="ar"/><span data-i18n="hotels.l_ar">Arabic</span></label>
+              <label class="checkbox-chip"><input type="checkbox" name="lang" value="ru"/><span data-i18n="hotels.l_ru">Russian</span></label>
+              <label class="checkbox-chip"><input type="checkbox" name="lang" value="other"/><span data-i18n="hotels.l_other">Other</span></label>
             </div>
           </div>
         </div>
 
         <div class="form-row full">
           <div class="form-field">
-            <label>What's your biggest current pain? (pick one)</label>
+            <label data-i18n="hotels.f_pain_q">What's your biggest current pain? (pick one)</label>
             <div class="radio-group" data-radio>
               <label class="radio-option">
                 <input type="radio" name="pain" value="after_hours"/>
                 <span class="radio-marker"></span>
-                <span class="radio-label">After-hours coverage <span class="sub">Guests calling at 2am with no one to answer</span></span>
+                <span class="radio-label"><span data-i18n="hotels.f_pain1_t">After-hours coverage</span> <span class="sub" data-i18n="hotels.f_pain1_s">Guests calling at 2am with no one to answer</span></span>
               </label>
               <label class="radio-option">
                 <input type="radio" name="pain" value="missed_bookings"/>
                 <span class="radio-marker"></span>
-                <span class="radio-label">Missed reservation calls <span class="sub">Calls during meal service or peak check-in go unanswered</span></span>
+                <span class="radio-label"><span data-i18n="hotels.f_pain2_t">Missed reservation calls</span> <span class="sub" data-i18n="hotels.f_pain2_s">Calls during meal service or peak check-in go unanswered</span></span>
               </label>
               <label class="radio-option">
                 <input type="radio" name="pain" value="language_gap"/>
                 <span class="radio-marker"></span>
-                <span class="radio-label">Language gaps <span class="sub">Guests in languages your staff doesn't speak</span></span>
+                <span class="radio-label"><span data-i18n="hotels.f_pain3_t">Language gaps</span> <span class="sub" data-i18n="hotels.f_pain3_s">Guests in languages your staff doesn't speak</span></span>
               </label>
               <label class="radio-option">
                 <input type="radio" name="pain" value="request_chaos"/>
                 <span class="radio-marker"></span>
-                <span class="radio-label">Tracking guest requests <span class="sub">Requests get lost between channels and staff</span></span>
+                <span class="radio-label"><span data-i18n="hotels.f_pain4_t">Tracking guest requests</span> <span class="sub" data-i18n="hotels.f_pain4_s">Requests get lost between channels and staff</span></span>
               </label>
               <label class="radio-option">
                 <input type="radio" name="pain" value="repetitive"/>
                 <span class="radio-marker"></span>
-                <span class="radio-label">Repetitive questions overwhelming staff <span class="sub">Same wifi / breakfast / parking questions, all day</span></span>
+                <span class="radio-label"><span data-i18n="hotels.f_pain5_t">Repetitive questions overwhelming staff</span> <span class="sub" data-i18n="hotels.f_pain5_s">Same wifi / breakfast / parking questions, all day</span></span>
               </label>
               <label class="radio-option">
                 <input type="radio" name="pain" value="other"/>
                 <span class="radio-marker"></span>
-                <span class="radio-label">Something else <span class="sub">Tell us in the call</span></span>
+                <span class="radio-label"><span data-i18n="hotels.f_pain6_t">Something else</span> <span class="sub" data-i18n="hotels.f_pain6_s">Tell us in the call</span></span>
               </label>
             </div>
           </div>
@@ -1898,29 +1866,29 @@
 
         <div class="form-row">
           <div class="form-field">
-            <label>Your PMS</label>
+            <label data-i18n="hotels.f_pms">Your PMS</label>
             <select name="pms">
-              <option value="">Select…</option>
+              <option value="" data-i18n="hotels.f_select">Select…</option>
               <option>Cloudbeds</option>
               <option>Mews</option>
               <option>Apaleo</option>
               <option>Oracle Opera</option>
               <option>Hotelogix</option>
               <option>Little Hotelier</option>
-              <option>Other</option>
-              <option>None / spreadsheets</option>
+              <option data-i18n="hotels.f_pms_other">Other</option>
+              <option data-i18n="hotels.f_pms_none">None / spreadsheets</option>
             </select>
           </div>
           <div class="form-field">
-            <label>Channels your staff uses to coordinate</label>
+            <label data-i18n="hotels.f_channels">Channels your staff uses to coordinate</label>
             <div class="checkbox-group" data-multiselect>
               <label class="checkbox-chip"><input type="checkbox" name="channel" value="telegram"/>Telegram</label>
               <label class="checkbox-chip"><input type="checkbox" name="channel" value="whatsapp"/>WhatsApp</label>
               <label class="checkbox-chip"><input type="checkbox" name="channel" value="sms"/>SMS</label>
               <label class="checkbox-chip"><input type="checkbox" name="channel" value="slack"/>Slack</label>
               <label class="checkbox-chip"><input type="checkbox" name="channel" value="teams"/>Teams</label>
-              <label class="checkbox-chip"><input type="checkbox" name="channel" value="email"/>Email</label>
-              <label class="checkbox-chip"><input type="checkbox" name="channel" value="paper"/>Paper / no system</label>
+              <label class="checkbox-chip"><input type="checkbox" name="channel" value="email"/><span data-i18n="hotels.c_email">Email</span></label>
+              <label class="checkbox-chip"><input type="checkbox" name="channel" value="paper"/><span data-i18n="hotels.c_paper">Paper / no system</span></label>
             </div>
           </div>
         </div>
@@ -1931,54 +1899,54 @@
         <div class="form-block-title"><span class="num">iii.</span> <span data-i18n="hotels.form_block3">About you</span></div>
         <div class="form-row">
           <div class="form-field">
-            <label>Your name <span class="required">*</span></label>
+            <label><span data-i18n="hotels.f_yourname">Your name</span> <span class="required">*</span></label>
             <input type="text" name="name" required placeholder="Marina Costa" />
           </div>
           <div class="form-field">
-            <label>Your role</label>
+            <label data-i18n="hotels.f_role">Your role</label>
             <select name="role">
-              <option value="">Select…</option>
-              <option>Owner</option>
-              <option>General Manager</option>
-              <option>Operations Director</option>
-              <option>Rooms Division Manager</option>
-              <option>Front Office Manager</option>
-              <option>IT / Innovation</option>
-              <option>Other</option>
+              <option value="" data-i18n="hotels.f_select">Select…</option>
+              <option data-i18n="hotels.f_role_owner">Owner</option>
+              <option data-i18n="hotels.f_role_gm">General Manager</option>
+              <option data-i18n="hotels.f_role_ops">Operations Director</option>
+              <option data-i18n="hotels.f_role_rooms">Rooms Division Manager</option>
+              <option data-i18n="hotels.f_role_fo">Front Office Manager</option>
+              <option data-i18n="hotels.f_role_it">IT / Innovation</option>
+              <option data-i18n="hotels.f_role_other">Other</option>
             </select>
           </div>
         </div>
         <div class="form-row full">
           <div class="form-field">
-            <label>Email <span class="required">*</span></label>
+            <label><span data-i18n="hotels.f_email">Email</span> <span class="required">*</span></label>
             <input type="email" name="email" required placeholder="marina@hotelcasalisboa.com" />
-            <span class="helper">We'll only use this to reply about your inquiry. No newsletters.</span>
+            <span class="helper" data-i18n="hotels.f_email_helper">We'll only use this to reply about your inquiry. No newsletters.</span>
           </div>
         </div>
 
         <div class="form-row full">
           <div class="form-field">
-            <label>Preferred next step <span class="required">*</span></label>
+            <label><span data-i18n="hotels.f_next">Preferred next step</span> <span class="required">*</span></label>
             <div class="radio-group" data-radio>
               <label class="radio-option">
                 <input type="radio" name="next_step" value="demo" required/>
                 <span class="radio-marker"></span>
-                <span class="radio-label">Send me a 15-minute demo invite <span class="sub">A live multilingual conversation in the language(s) of your choice</span></span>
+                <span class="radio-label"><span data-i18n="hotels.f_next1_t">Send me a 15-minute demo invite</span> <span class="sub" data-i18n="hotels.f_next1_s">A live multilingual conversation in the language(s) of your choice</span></span>
               </label>
               <label class="radio-option">
                 <input type="radio" name="next_step" value="info_pack"/>
                 <span class="radio-marker"></span>
-                <span class="radio-label">Send me a written information pack <span class="sub">A PDF with all the details, no call required yet</span></span>
+                <span class="radio-label"><span data-i18n="hotels.f_next2_t">Send me a written information pack</span> <span class="sub" data-i18n="hotels.f_next2_s">A PDF with all the details, no call required yet</span></span>
               </label>
               <label class="radio-option">
                 <input type="radio" name="next_step" value="pricing"/>
                 <span class="radio-marker"></span>
-                <span class="radio-label">Just send pricing details <span class="sub">For my property size and channel needs</span></span>
+                <span class="radio-label"><span data-i18n="hotels.f_next3_t">Just send pricing details</span> <span class="sub" data-i18n="hotels.f_next3_s">For my property size and channel needs</span></span>
               </label>
               <label class="radio-option">
                 <input type="radio" name="next_step" value="pilot"/>
                 <span class="radio-marker"></span>
-                <span class="radio-label">I want to start a 30-day pilot <span class="sub">Skip the demo — let's set up a live trial</span></span>
+                <span class="radio-label"><span data-i18n="hotels.f_next4_t">I want to start a 30-day pilot</span> <span class="sub" data-i18n="hotels.f_next4_s">Skip the demo — let's set up a live trial</span></span>
               </label>
             </div>
           </div>
@@ -2010,11 +1978,11 @@
       <span class="success-mark">
         <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 L10 17 L19 7"/></svg>
       </span>
-      <h2 class="success-title" id="success-title">Thank you, <span class="italic" id="success-name">there</span>.</h2>
-      <p class="success-body" id="success-body">
+      <h2 class="success-title" id="success-title" data-i18n-html="hotels.f_success_title_html">Thank you, <span class="italic" id="success-name">there</span>.</h2>
+      <p class="success-body" id="success-body" data-i18n-html="hotels.f_success_body_html">
         We'll be in touch about your inquiry within <strong>one business day</strong>.
       </p>
-      <div class="success-next" id="success-next">
+      <div class="success-next" id="success-next" data-i18n="hotels.f_success_next">
         Next step · scheduled within 3 business days
       </div>
     </div>
@@ -2029,28 +1997,28 @@
       <p class="footer-tag" data-i18n="footer.tagline">A multilingual voice concierge for hotels and residences that turns every guest request into action — in the tool your team already uses.</p>
     </div>
     <div>
-      <h5 data-i18n="footer.col1_title">Product</h5>
+      <h5 data-i18n="footer.col2_title">Product</h5>
       <a href="voxtera.html" data-i18n="nav.home">Home</a>
-      <a href="voxtera-hotels.html" data-i18n="nav.hotels">For hotels</a>
+      <a href="voxtera-hotels.html" data-i18n="nav.for_hotels">For hotels</a>
       <a href="voxtera.html#pricing" data-i18n="nav.pricing">Pricing</a>
       <a href="#" data-i18n="footer.technology">Technology</a>
     </div>
     <div>
-      <h5 data-i18n="footer.col2_title">For operators</h5>
+      <h5 data-i18n="footer.col3_title">For operators</h5>
       <a href="#" data-i18n="footer.independent">Independent hotels</a>
-      <a href="#" data-i18n="footer.branded">Branded residences</a>
-      <a href="#" data-i18n="footer.vacation">Vacation rentals</a>
+      <a href="#" data-i18n="footer.link_residences">Branded residences</a>
+      <a href="#" data-i18n="footer.link_rentals">Vacation rentals</a>
       <a href="#" data-i18n="footer.resort">Resort groups</a>
     </div>
     <div>
-      <h5 data-i18n="footer.col3_title">Contact</h5>
+      <h5 data-i18n="footer.col4_title">Contact</h5>
       <a href="mailto:hello@voxtera.ai">hello@voxtera.ai</a>
       <a href="#form" data-i18n="hotels.form_label">Discovery form</a>
-      <a href="#" data-i18n="footer.trust">Trust Center</a>
+      <a href="#" data-i18n="footer.link_trust">Trust Center</a>
     </div>
   </div>
   <div class="footer-bottom">
-    <span data-i18n="footer.copy">© 2026 Voxtera — Built in Canada</span>
+    <span data-i18n="footer.copyright">© 2026 Voxtera — Built in Canada</span>
     <span data-i18n="footer.legal">Privacy · Terms · GDPR · DPA</span>
   </div>
 </footer>
@@ -2237,10 +2205,6 @@
   <div class="vx-launcher" id="vx-launcher" role="button" tabindex="0" aria-label="Open Voxtera concierge">
     <div class="vx-orb" aria-hidden="true"></div>
     <span class="vx-launcher-label">Ask Voxtera</span>
-    <span class="vx-launcher-cta">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-      Start a call
-    </span>
   </div>
   <div class="vx-panel" id="vx-panel" role="dialog" aria-label="Voxtera assistant" aria-hidden="true">
     <div class="vx-panel-header">
@@ -2259,13 +2223,9 @@
       <div class="vx-orb-area" id="vx-orb-area">
         <div class="vx-orb-wrap">
           <div class="vx-orb lg" id="vx-orb-lg" aria-hidden="true"></div>
-          <button class="vx-call-btn" id="vx-call-btn" type="button" aria-label="Start a voice call">
-            <span class="vx-pulse-ring" aria-hidden="true"></span>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-          </button>
         </div>
         <div class="vx-helper" id="vx-helper">
-          Ask anything about Voxtera&nbsp;— or tap the phone to hear it in action.<br/>This is the same widget your guests would use.
+          Ask anything about Voxtera in any language.<br/>This is the same widget your guests would use.
         </div>
       </div>
       <div class="vx-messages" id="vx-messages"></div>
@@ -2284,7 +2244,6 @@
     const launcher  = document.getElementById('vx-launcher');
     const panel     = document.getElementById('vx-panel');
     const closeBtn  = document.getElementById('vx-close');
-    const callBtn   = document.getElementById('vx-call-btn');
     const inputEl   = document.getElementById('vx-input');
     const sendBtn   = document.getElementById('vx-send');
     const msgList   = document.getElementById('vx-messages');
@@ -2314,8 +2273,6 @@
       if (e.key === 'Escape' && panel.classList.contains('open')) closePanel();
     });
 
-    // Call button — open the voice demo
-    callBtn.addEventListener('click', () => window.open('chat.html', '_blank'));
 
     // Auto-grow textarea
     inputEl.addEventListener('input', () => {

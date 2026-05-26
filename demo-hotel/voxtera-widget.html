@@ -63,10 +63,10 @@
   .vx-launcher{
     display:flex;
     align-items:center;
-    gap:0.9rem;
+    gap:0.7rem;
     background:#ffffff;
     border-radius:999px;
-    padding:0.55rem 0.6rem 0.55rem 1rem;
+    padding:0.55rem 1.2rem 0.55rem 0.55rem;
     box-shadow:
       0 1px 2px rgba(26,24,20,0.06),
       0 20px 40px -18px rgba(26,24,20,0.22),
@@ -135,35 +135,7 @@
       font-size:1.05rem;
       color:var(--ink);
       letter-spacing:-0.01em;
-      padding-right:0.4rem;
       white-space:nowrap;
-    }
-
-    .vx-launcher-cta{
-      display:inline-flex;
-      align-items:center;
-      gap:0.55rem;
-      background:var(--ink);
-      color:#ffffff;
-      border-radius:999px;
-      padding:0.7rem 1.2rem 0.7rem 1rem;
-      font-family:'Fraunces',serif;
-      font-weight:500;
-      font-size:0.98rem;
-      letter-spacing:-0.005em;
-      transition:background .25s;
-    }
-    .vx-launcher:hover .vx-launcher-cta{
-      background:var(--rust);
-    }
-    .vx-launcher-cta svg{
-      width:16px;
-      height:16px;
-      stroke:#ffffff;
-      fill:none;
-      stroke-width:2;
-      stroke-linecap:round;
-      stroke-linejoin:round;
     }
 
     /* ---------- PANEL (expanded state) ---------- */
@@ -296,64 +268,12 @@
     .vx-orb-wrap{
       position:relative;
       display:flex;
-      align-items:flex-end;
-      justify-content:center;
-    }
-
-    /* The call button — overlaps the orb at bottom-center */
-    .vx-call-btn{
-      position:absolute;
-      bottom:-18px;
-      left:50%;
-      transform:translateX(-50%);
-      width:56px;
-      height:56px;
-      border-radius:50%;
-      background:var(--ink);
-      border:4px solid #ffffff;
-      cursor:pointer;
-      display:inline-flex;
       align-items:center;
       justify-content:center;
-      color:#ffffff;
-      box-shadow:
-        0 4px 12px rgba(26,24,20,0.25),
-        0 12px 30px -8px rgba(26,24,20,0.3);
-      transition:background .25s, transform .25s, box-shadow .25s;
-      z-index:2;
-    }
-    .vx-call-btn:hover{
-      background:var(--rust);
-      transform:translateX(-50%) scale(1.06);
-      box-shadow:
-        0 4px 12px rgba(164,57,28,0.3),
-        0 16px 36px -8px rgba(164,57,28,0.4);
-    }
-    .vx-call-btn:active{
-      transform:translateX(-50%) scale(0.98);
-    }
-    .vx-call-btn svg{
-      width:22px;
-      height:22px;
-      fill:currentColor;
-    }
-    .vx-call-btn .vx-pulse-ring{
-      position:absolute;
-      inset:-4px;
-      border-radius:50%;
-      border:2px solid var(--ink);
-      opacity:0;
-      animation:vx-ring 2.5s ease-out infinite;
-      pointer-events:none;
-    }
-    @keyframes vx-ring{
-      0%{ transform:scale(0.95); opacity:0.7; }
-      80%{ transform:scale(1.4); opacity:0; }
-      100%{ transform:scale(1.4); opacity:0; }
     }
 
     .vx-helper{
-      margin-top:2.5rem;
+      margin-top:1.25rem;
       text-align:center;
       font-family:'Instrument Serif',serif;
       font-style:italic;
@@ -452,9 +372,9 @@
   <div class="demo-note">
     <strong>Widget demo · paste-ready</strong>
     Hover the bottom-right of the page. Click <em>"Need help?"</em> to expand
-    the panel. The phone button is the click target you'll wire to your call
-    flow (Daily.co / Pipecat); the input is the click target for chat. Everything
-    else is presentation only.
+    the panel. The input is the click target for chat — wire it to your
+    backend via the <code>voxtera:send-message</code> event. Everything else is
+    presentation only.
   </div>
 
   <!-- =========================================================
@@ -467,12 +387,6 @@
     <div class="vx-launcher" id="vx-launcher" role="button" tabindex="0" aria-label="Open Voxtera chat">
       <div class="vx-orb" aria-hidden="true"></div>
       <span class="vx-launcher-label">Need help?</span>
-      <span class="vx-launcher-cta">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>
-        </svg>
-        Start a call
-      </span>
     </div>
 
     <!-- Expanded panel -->
@@ -496,16 +410,10 @@
       <div class="vx-panel-body">
         <div class="vx-orb-wrap">
           <div class="vx-orb lg" aria-hidden="true"></div>
-          <button class="vx-call-btn" id="vx-call-btn" type="button" aria-label="Start a voice call">
-            <span class="vx-pulse-ring" aria-hidden="true"></span>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>
-            </svg>
-          </button>
         </div>
         <div class="vx-helper">
-          Tap the phone to talk — or type a message below.<br/>
-          Voxtera speaks your language.
+          Type a message in any language —<br/>
+          Voxtera replies in the same one.
         </div>
       </div>
 
@@ -530,7 +438,6 @@
       const launcher = document.getElementById('vx-launcher');
       const panel    = document.getElementById('vx-panel');
       const closeBtn = document.getElementById('vx-close');
-      const callBtn  = document.getElementById('vx-call-btn');
       const input    = document.getElementById('vx-input');
       const sendBtn  = document.getElementById('vx-send');
 
@@ -557,12 +464,6 @@
       closeBtn.addEventListener('click', closePanel);
       document.addEventListener('keydown', e => {
         if (e.key === 'Escape' && panel.classList.contains('open')) closePanel();
-      });
-
-      // Call button — placeholder, wire to Daily.co / Pipecat later
-      callBtn.addEventListener('click', () => {
-        console.log('[Voxtera] start-call clicked');
-        // window.dispatchEvent(new CustomEvent('voxtera:start-call'));
       });
 
       // Auto-grow textarea + enable/disable send
