@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="i18n/i18n.css">
 <style>
   :root{
     --cream:#f4ede1;
@@ -46,14 +47,71 @@
   }
   .mono{font-family:'JetBrains Mono',monospace;letter-spacing:0.02em;}
 
-  /* ============ TOP BAR ============ */
-  .topbar{
-    position:relative;z-index:10;
+  /* ============ MARKETING NAV (matches voxtera.html) ============ */
+  .site-nav{
+    position:relative;z-index:11;
     padding:1.2rem 2rem;
     display:flex;justify-content:space-between;align-items:center;
-    border-bottom:1px solid var(--line);
     backdrop-filter:blur(20px) saturate(140%);
-    background:rgba(244,237,225,0.72);
+    background:rgba(244,237,225,0.85);
+    border-bottom:1px solid var(--line);
+  }
+  .site-nav .logo{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:1.35rem;
+    letter-spacing:-0.02em;
+    display:flex;align-items:center;gap:0.6rem;
+    color:var(--ink);
+    text-decoration:none;
+  }
+  .site-nav .logo-mark{
+    width:26px;height:26px;
+    display:inline-flex;align-items:center;justify-content:center;
+  }
+  .site-nav .logo-mark svg{width:100%;height:100%;}
+  .site-nav .logo sup{
+    font-size:0.5rem;
+    font-family:'JetBrains Mono',monospace;
+    color:var(--gold-deep);
+    margin-left:0.2rem;
+    letter-spacing:0.1em;
+    font-weight:400;
+  }
+  .site-nav .nav-links{
+    display:flex;gap:2.2rem;align-items:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.74rem;
+    text-transform:uppercase;
+    letter-spacing:0.12em;
+  }
+  .site-nav .nav-links a{
+    color:var(--ink-soft);
+    text-decoration:none;
+    transition:color .25s;
+  }
+  .site-nav .nav-links a:hover{color:var(--rust);}
+  .site-nav .nav-links a.is-active{color:var(--rust);}
+  .site-nav .nav-cta{
+    background:var(--ink);
+    color:#fff;
+    padding:0.65rem 1.3rem;
+    border-radius:999px;
+    transition:all .3s;
+    border:1px solid var(--ink);
+    font:inherit;
+    cursor:pointer;
+  }
+  .site-nav .nav-cta:hover{background:var(--rust);border-color:var(--rust);color:#fff;}
+
+  /* ============ TOP BAR (hotel context band) ============ */
+  .topbar{
+    position:relative;z-index:10;
+    padding:0.7rem 2rem;
+    display:flex;justify-content:flex-end;align-items:center;
+    border-bottom:1px solid var(--line);
+    background:rgba(244,237,225,0.55);
+    min-height:42px;
   }
   .logo{
     font-family:'Fraunces',serif;
@@ -342,51 +400,7 @@
   }
   #stop-btn:hover{ background:var(--rust); color:var(--cream); }
 
-  /* ============ CHAT DRAWER (transcript panel) ============ */
-  #chat-drawer{
-    position:fixed;
-    bottom:240px;left:0;right:0;
-    z-index:90;
-    max-height:calc(100vh - 310px);
-    background:var(--paper);
-    border-top:1px solid var(--line-strong);
-    border-radius:20px 20px 0 0;
-    box-shadow:0 -8px 32px -6px rgba(26,24,20,0.15);
-    display:flex;flex-direction:column;
-    transform:translateY(calc(100% + 240px));
-    transition:transform .35s cubic-bezier(.2,.7,.2,1);
-    pointer-events:none;
-  }
-  #chat-drawer.open{
-    transform:translateY(0);
-    pointer-events:auto;
-  }
-  #chat-drawer-handle{
-    flex-shrink:0;
-    padding:10px 0 4px;
-    display:flex;align-items:center;justify-content:center;
-    cursor:grab;
-  }
-  #chat-drawer-handle::before{
-    content:"";width:36px;height:4px;
-    border-radius:2px;background:var(--line-strong);
-  }
-  #chat-drawer-header{
-    flex-shrink:0;
-    display:flex;align-items:center;justify-content:space-between;
-    padding:0.3rem 1.2rem 0.6rem;
-  }
-  #chat-drawer-header h4{
-    margin:0;font-family:'JetBrains Mono',monospace;
-    font-size:0.65rem;text-transform:uppercase;
-    letter-spacing:0.14em;color:var(--rust);
-  }
-  #chat-drawer-close{
-    background:none;border:none;cursor:pointer;
-    color:var(--ink-soft);font-size:1rem;padding:2px 8px;
-    border-radius:6px;
-  }
-  #chat-drawer-close:hover{background:var(--cream-deep);}
+  /* ============ TRANSCRIPT (shared message styles) ============ */
   .transcript{
     flex:1;
     overflow-y:auto;
@@ -616,15 +630,24 @@
 
   /* small print at the very bottom */
   .input-footnote{
-    text-align:center;
+    display:flex;flex-wrap:wrap;justify-content:center;align-items:center;
+    gap:0.8rem;
     margin-top:0.8rem;
     font-family:'JetBrains Mono',monospace;
     font-size:0.62rem;
     color:var(--ink-soft);
-    opacity:0.55;
+    opacity:0.6;
     letter-spacing:0.1em;
     text-transform:uppercase;
+    text-align:center;
   }
+  .input-footnote .footnote-sep{opacity:0.4;}
+  .input-footnote a{
+    color:var(--ink-soft);
+    text-decoration:none;
+    transition:color .25s, opacity .25s;
+  }
+  .input-footnote a:hover{color:var(--rust);opacity:1;}
 
   /* mic recording state */
   .icon-btn.mic.recording{
@@ -800,23 +823,70 @@
     opacity:.7;
   }
   .diag-row.warn{ color:var(--rust); }
-  #diag-toggle{
+  /* ============ RIGHT TAB STRIP ============ */
+  #right-tab-strip{
     position:fixed;
     right:0;top:50%;
     transform:translateY(-50%);
-    background:var(--rust);
-    color:var(--cream);
-    border:none;cursor:pointer;
-    writing-mode:vertical-rl;
-    font-family:'JetBrains Mono',monospace;
-    font-size:0.6rem;letter-spacing:0.12em;
-    text-transform:uppercase;
-    padding:10px 6px;
-    border-radius:6px 0 0 6px;
+    display:flex;flex-direction:column;gap:2px;
     z-index:101;
     transition:right .3s cubic-bezier(.2,.7,.2,1);
   }
-  #diag-toggle.open{ right:340px; }
+  #right-tab-strip.shifted{ right:340px; }
+  .right-tab{
+    background:var(--cream-deep);
+    color:var(--ink-soft);
+    border:1px solid var(--line-strong);
+    border-right:none;
+    cursor:pointer;
+    writing-mode:vertical-rl;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.58rem;letter-spacing:0.12em;
+    text-transform:uppercase;
+    padding:12px 6px;
+    border-radius:6px 0 0 6px;
+    transition:background .2s, color .2s;
+  }
+  .right-tab:hover{ background:var(--line-strong); }
+  .right-tab.active{
+    background:var(--rust);
+    color:var(--cream);
+    border-color:var(--rust);
+  }
+
+  /* ============ TRANSCRIPT PANEL ============ */
+  #transcript-panel{
+    position:fixed;
+    top:0;right:-360px;
+    width:340px;
+    height:100vh;
+    background:var(--paper);
+    border-left:1px solid var(--line-strong);
+    box-shadow:-8px 0 30px -8px rgba(26,24,20,0.18);
+    display:flex;flex-direction:column;
+    z-index:100;
+    transition:right .3s cubic-bezier(.2,.7,.2,1);
+  }
+  #transcript-panel.open{ right:0; }
+  #transcript-panel-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:1rem 1rem 0.75rem;
+    border-bottom:1px solid var(--line);
+    flex-shrink:0;
+  }
+  #transcript-panel-header h3{
+    font-size:0.7rem;letter-spacing:0.14em;text-transform:uppercase;
+    color:var(--rust);margin:0;
+  }
+  #transcript-panel .transcript{
+    flex:1;
+    overflow-y:auto;
+    padding:0.8rem 1rem 2rem;
+    scrollbar-width:thin;
+    scrollbar-color:var(--line-strong) transparent;
+  }
+  #transcript-panel .transcript::-webkit-scrollbar{width:6px;}
+  #transcript-panel .transcript::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:3px;}
 
   /* ============ HOTEL STRIP (topbar center) ============ */
   .hotel-strip{
@@ -874,11 +944,19 @@
   }
 
   /* ============ RESPONSIVE ============ */
+  @media (max-width:1024px){
+    .site-nav{padding:1rem 1.2rem;}
+    .site-nav .nav-links{gap:1rem;}
+    .site-nav .nav-links a:not(.nav-cta):not(.is-active){display:none;}
+  }
   @media (max-width:640px){
-    .topbar{padding:1rem 1rem;}
+    .site-nav{padding:0.8rem 1rem;}
+    .site-nav .nav-links a:not(.nav-cta){display:none;}
+    .site-nav .nav-cta{padding:0.55rem 1rem;font-size:0.72rem;}
+    .topbar{padding:0.6rem 1rem;}
     .topbar-right{gap:0.8rem;font-size:0.65rem;}
-    .topbar-right a:not(.session-state){display:none;}
-    .hotel-strip{display:none;}
+    .hotel-strip{position:static;transform:none;align-items:flex-start;text-align:left;}
+    .topbar{justify-content:space-between;}
     main{padding:1rem 1rem 130px;}
     .stage-title{font-size:1.4rem;}
     .stage-sub{font-size:0.95rem;}
@@ -888,7 +966,6 @@
     .suggestions{gap:0.35rem;padding:0.5rem 1rem 0;}
     .chip{font-size:0.65rem;padding:0.4rem 0.75rem;}
     .transcript{min-height:unset;max-height:unset;}
-    #chat-drawer{bottom:200px;transform:translateY(calc(100% + 200px));}
     .input-bar-wrap{padding:0.8rem 1rem 1.2rem;}
     .input-bar{padding:0.7rem 0.9rem;border-radius:18px;}
   }
@@ -957,8 +1034,8 @@
   </div>
 </div>
 
-<!-- TOP BAR -->
-<header class="topbar">
+<!-- MARKETING NAV (matches voxtera.html) -->
+<nav class="site-nav">
   <a href="voxtera.html" class="logo">
     <span class="logo-mark">
       <svg viewBox="0 0 32 32" fill="none">
@@ -968,13 +1045,25 @@
     </span>
     Voxtera<sup>™</sup>
   </a>
+  <div class="nav-links">
+    <a href="voxtera.html#solution" data-i18n="nav.solution">Solution</a>
+    <a href="voxtera-hotels.html" data-i18n="nav.for_hotels">For hotels</a>
+    <a href="voxtera-demo.html" class="is-active" data-i18n="nav.try_demo">Try demo</a>
+    <a href="voxtera.html#languages" data-i18n="nav.languages">Languages</a>
+    <a href="voxtera.html#compare" data-i18n="nav.compare">Compare</a>
+    <a href="voxtera.html#pricing" data-i18n="nav.pricing">Pricing</a>
+    <div class="i18n-picker" id="lang-picker"></div>
+    <button onclick="openCalPopup()" class="nav-cta" data-i18n="nav.book_demo">Book a demo →</button>
+  </div>
+</nav>
+
+<!-- HOTEL CONTEXT BAND (demo fiction) -->
+<header class="topbar">
   <div class="hotel-strip" aria-hidden="true">
     <span class="hotel-name">Grand Hôtel Lumière</span>
     <span class="hotel-meta">Paris 8e · Concierge</span>
   </div>
   <div class="topbar-right">
-    <a href="voxtera-hotels.html">For hotels</a>
-    <a href="voxtera.html">Home</a>
     <span class="session-state" id="session-state">
       <span class="session-dot"></span>
       <span id="session-label">Ready</span>
@@ -1007,15 +1096,6 @@
 </main>
 
 <!-- CHAT DRAWER (slide-up panel) -->
-<div id="chat-drawer">
-  <div id="chat-drawer-handle"></div>
-  <div id="chat-drawer-header">
-    <h4>● Conversation</h4>
-    <button id="chat-drawer-close" aria-label="Minimize chat">✕</button>
-  </div>
-  <div class="transcript" id="transcript" aria-live="polite"></div>
-</div>
-
 <!-- INPUT BAR -->
 <div class="input-bar-wrap">
   <!-- SUGGESTION CHIPS -->
@@ -1083,14 +1163,33 @@
       </button>
     </div>
   </form>
-  <div class="input-footnote">Grand Hôtel Lumière · powered by Voxtera</div>
+  <div class="input-footnote">
+    <span>Grand Hôtel Lumière · powered by Voxtera</span>
+    <span class="footnote-sep">·</span>
+    <span class="footnote-meta">© 2026 Voxtera</span>
+    <a href="#" data-i18n="footer.privacy">Privacy</a>
+    <a href="#" data-i18n="footer.terms">Terms</a>
+  </div>
 </div>
 
 <audio id="bot-audio" playsinline style="display:none"></audio>
 <audio id="remote-audio" autoplay playsinline style="display:none"></audio>
 
+<!-- RIGHT TAB STRIP -->
+<nav id="right-tab-strip" aria-label="Panel tabs">
+  <button class="right-tab" data-panel="transcript" aria-label="Toggle transcript panel">TRANSCRIPT</button>
+  <button class="right-tab" data-panel="diag" aria-label="Toggle diagnostic panel">DIAG</button>
+</nav>
+
+<!-- TRANSCRIPT PANEL -->
+<aside id="transcript-panel" aria-label="Transcript panel">
+  <div id="transcript-panel-header">
+    <h3>&#9679; Transcript</h3>
+  </div>
+  <div class="transcript" id="transcript" aria-live="polite"></div>
+</aside>
+
 <!-- DIAGNOSTIC PANEL -->
-<button id="diag-toggle" aria-label="Toggle diagnostic panel">DIAG</button>
 <aside id="diag-panel" aria-label="Diagnostic panel">
   <div id="diag-panel-header">
     <h3>&#9679; Voice Diagnostics</h3>
@@ -1214,43 +1313,59 @@
     }
   }
 
-  // ─── Chat drawer ───
-  const chatDrawer = document.getElementById('chat-drawer');
-  const chatDrawerClose = document.getElementById('chat-drawer-close');
-  const suggestionsEl = document.getElementById('suggestions');
+  // ─── Right panel tab strip ───
+  const rightTabStrip   = document.getElementById('right-tab-strip');
+  const transcriptPanel = document.getElementById('transcript-panel');
+  const diagPanel       = document.getElementById('diag-panel');
+  const diagFeed        = document.getElementById('diag-feed');
+  const diagFill        = document.getElementById('diag-mic-fill');
+  const diagWarn        = document.getElementById('diag-mic-warn');
+  const diagLabel       = document.getElementById('diag-mic-label');
+  const suggestionsEl   = document.getElementById('suggestions');
+
+  const _panels = { transcript: transcriptPanel, diag: diagPanel };
+  let _activePanel = null; // 'transcript' | 'diag' | null
+
+  function _openPanel(name) {
+    // Close other panel
+    Object.entries(_panels).forEach(([k, el]) => {
+      if (k === name) el.classList.add('open');
+      else el.classList.remove('open');
+    });
+    // Update tabs
+    rightTabStrip.querySelectorAll('.right-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.panel === name);
+    });
+    rightTabStrip.classList.add('shifted');
+    _activePanel = name;
+  }
+
+  function _closeAllPanels() {
+    Object.values(_panels).forEach(el => el.classList.remove('open'));
+    rightTabStrip.querySelectorAll('.right-tab').forEach(btn => btn.classList.remove('active'));
+    rightTabStrip.classList.remove('shifted');
+    _activePanel = null;
+  }
+
+  // Tab clicks
+  rightTabStrip.addEventListener('click', (e) => {
+    const tab = e.target.closest('.right-tab');
+    if (!tab) return;
+    const name = tab.dataset.panel;
+    if (_activePanel === name) _closeAllPanels();
+    else _openPanel(name);
+  });
+
+  // Close button inside diag panel
+  document.getElementById('diag-close').addEventListener('click', _closeAllPanels);
+
+  // Auto-open transcript when messages come in
   function _openChatDrawer() {
-    chatDrawer.classList.add('open');
-    suggestionsEl.style.opacity = '0';
-    suggestionsEl.style.pointerEvents = 'none';
+    _openPanel('transcript');
   }
   function _closeChatDrawer() {
-    chatDrawer.classList.remove('open');
-    suggestionsEl.style.opacity = '1';
-    suggestionsEl.style.pointerEvents = 'auto';
+    if (_activePanel === 'transcript') _closeAllPanels();
   }
-  chatDrawerClose.addEventListener('click', _closeChatDrawer);
-  // Tapping the handle also toggles
-  document.getElementById('chat-drawer-handle').addEventListener('click', () => {
-    if (chatDrawer.classList.contains('open')) _closeChatDrawer();
-    else _openChatDrawer();
-  });
-
-  // ─── diagnostic panel ───
-  const diagPanel   = document.getElementById('diag-panel');
-  const diagToggle  = document.getElementById('diag-toggle');
-  const diagFeed    = document.getElementById('diag-feed');
-  const diagFill    = document.getElementById('diag-mic-fill');
-  const diagWarn    = document.getElementById('diag-mic-warn');
-  const diagLabel   = document.getElementById('diag-mic-label');
-
-  document.getElementById('diag-close').addEventListener('click', () => {
-    diagPanel.classList.remove('open');
-    diagToggle.classList.remove('open');
-  });
-  diagToggle.addEventListener('click', () => {
-    diagPanel.classList.toggle('open');
-    diagToggle.classList.toggle('open');
-  });
 
   function diagLog(type, text) {
     const row = document.createElement('div');
@@ -1990,8 +2105,7 @@
     if (sugEl) { sugEl.style.opacity = '0'; sugEl.style.pointerEvents = 'none'; }
     _startCallTimer();
     // Auto-open diagnostic panel when call starts
-    diagPanel.classList.add('open');
-    diagToggle.classList.add('open');
+    _openPanel('diag');
     diagLog('info', '📞 Voice call started — session ' + (sessionId || '?'));
     _startMicMonitor();
   }
@@ -2460,6 +2574,35 @@
 
 })();
 </script>
+
+<!-- Cal.com popup embed (matches voxtera.html) -->
+<script>
+  // REPLACE 'YOUR_USERNAME/voxtera-demo' with your Cal.com event link
+  const CAL_LINK = 'YOUR_USERNAME/voxtera-demo';
+
+  (function(C,A,L){
+    let p=function(a,ar){a.q.push(ar)};
+    let d=C.document;
+    C.Cal=C.Cal||function(){let cal=C.Cal;let ar=arguments;
+      if(!cal.loaded){cal.ns={};cal.q=cal.q||[];d.head.appendChild(d.createElement('script')).src=A;cal.loaded=true;}
+      if(ar[0]===L){const api=function(){p(api,arguments)};const namespace=ar[1];api.q=api.q||[];cal.ns[namespace]=api;return;}
+      p(cal,ar);};
+  })(window,'https://app.cal.com/embed/embed.js','init');
+
+  Cal('init', {origin:'https://app.cal.com'});
+
+  function openCalPopup() {
+    Cal('ui', {
+      styles: { branding: { brandColor: '#b8884a' } },
+      hideEventTypeDetails: false,
+      layout: 'month_view'
+    });
+    Cal('openModal', { calLink: CAL_LINK });
+  }
+</script>
+
+<!-- i18n (powers #lang-picker + data-i18n attributes) -->
+<script src="i18n/i18n.js"></script>
 
 </body>
 </html>

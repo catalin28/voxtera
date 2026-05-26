@@ -33,6 +33,7 @@ import contextlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 import tkinter as tk
@@ -640,8 +641,11 @@ class VoxteraTestRunner(tk.Tk):
             bar, text="Generate audio for all questions", command=self.on_generate_all
         )
         self.generate_btn.pack(side="left")
-        ttk.Button(bar, text="Open clips folder", command=lambda: _open_path(CLIPS_DIR)).pack(
+        ttk.Button(bar, text="+ Import clips...", command=self.on_import_clips).pack(
             side="left", padx=6
+        )
+        ttk.Button(bar, text="Open clips folder", command=lambda: _open_path(CLIPS_DIR)).pack(
+            side="left"
         )
         self.gen_status = tk.StringVar(
             value="Ready."
@@ -731,12 +735,16 @@ class VoxteraTestRunner(tk.Tk):
             if q["mode"] == "translate" and not spoken:
                 spoken = "(translates on generate)"
             ready = bool(q.get("audio")) and (CLIPS_DIR / q["audio"]).exists()
+            if ready:
+                audio_label = "imported" if q.get("source") == "imported" else "ready"
+            else:
+                audio_label = "—"
             tags = ("played",) if q["id"] in self.played else ()
             self.tree.insert(
                 "",
                 "end",
                 iid=q["id"],
-                values=(i + 1, q["english"], spoken, q["locale"], "ready" if ready else "—"),
+                values=(i + 1, q["english"], spoken, q["locale"], audio_label),
                 tags=tags,
             )
         self.questions_header.config(text=f"Questions  ({len(self.questions)})")
@@ -791,8 +799,11 @@ class VoxteraTestRunner(tk.Tk):
         if not dlg.result:
             return
         new = dlg.result
+        # Preserve provenance — the QuestionDialog doesn't know about `source`.
+        new["source"] = q.get("source", "generated")
         after = (new["english"], new["translation"], new["voice"], new["mode"])
-        if before != after and q.get("audio"):
+        # Imported clips are user-provided, not regeneratable — never auto-delete.
+        if before != after and q.get("audio") and new["source"] != "imported":
             # the spoken content changed — drop the now-stale clip
             with contextlib.suppress(OSError):
                 (CLIPS_DIR / q["audio"]).unlink()
@@ -885,6 +896,99 @@ class VoxteraTestRunner(tk.Tk):
             messagebox.showwarning("Some clips failed", "\n".join(errors[:12]))
         else:
             self.gen_status.set("All audio generated.")
+
+    # --- import existing clips --------------------------------------------
+    def on_import_clips(self) -> None:
+        """Import one or more existing WAV files into the questions list.
+
+        Multi-select file picker; files outside CLIPS_DIR are copied in so
+        the rehearsal player resolves them by basename like generated clips.
+        Each imported clip becomes a new question (mode='as_typed', label
+        derived from filename stem) and is marked source='imported' so the
+        edit handler won't auto-delete it when the label changes.
+        """
+        chosen = filedialog.askopenfilenames(
+            title="Import WAV clips",
+            initialdir=str(CLIPS_DIR),
+            filetypes=[("WAV audio", "*.wav"), ("All files", "*.*")],
+        )
+        if not chosen:
+            return
+
+        defaults = self._defaults()
+        added = 0
+        errors: list[str] = []
+        skipped: list[str] = []
+
+        for raw in chosen:
+            src = Path(raw)
+            if src.suffix.lower() != ".wav":
+                skipped.append(f"{src.name} (not a .wav)")
+                continue
+            if not src.exists():
+                errors.append(f"{src.name}: file not found")
+                continue
+
+            # Ensure the WAV lives inside CLIPS_DIR — copy it in if it doesn't.
+            try:
+                src_resolved = src.resolve()
+                clips_resolved = CLIPS_DIR.resolve()
+                already_in_clips = src_resolved.parent == clips_resolved
+            except OSError as exc:
+                errors.append(f"{src.name}: {exc}")
+                continue
+
+            if already_in_clips:
+                dest_name = src.name
+            else:
+                dest_name = src.name
+                dest = CLIPS_DIR / dest_name
+                # Avoid clobbering: append a short suffix if a file of the same
+                # name already lives in clips/ but isn't the same file.
+                if dest.exists() and dest.resolve() != src_resolved:
+                    dest_name = f"{src.stem}_{new_qid()[:4]}{src.suffix}"
+                    dest = CLIPS_DIR / dest_name
+                try:
+                    shutil.copy2(src, dest)
+                except OSError as exc:
+                    errors.append(f"{src.name}: copy failed ({exc})")
+                    continue
+
+            # Build a question entry. Use the file stem as the label so the
+            # row has something readable; user can rename via Edit later.
+            label = src.stem.replace("_", " ").strip() or src.stem
+            q = {
+                "id": new_qid(),
+                "english": label,
+                "mode": "as_typed",
+                "locale": defaults.get("locale", ""),
+                "voice": defaults.get("voice", ""),
+                "translation": "",
+                "audio": dest_name,
+                "source": "imported",
+            }
+            self.questions.append(q)
+            if self.current_id is None:
+                self.current_id = q["id"]
+            added += 1
+
+        self._refresh_tree()
+        self._update_rehearsal()
+
+        # Status summary — concise, plus a popup only if something went wrong.
+        parts = [f"Imported {added} clip(s)."]
+        if skipped:
+            parts.append(f"Skipped {len(skipped)}.")
+        if errors:
+            parts.append(f"{len(errors)} error(s).")
+        self.gen_status.set(" ".join(parts))
+        if errors or skipped:
+            detail = []
+            if errors:
+                detail.append("Errors:\n" + "\n".join(f"• {e}" for e in errors[:10]))
+            if skipped:
+                detail.append("Skipped:\n" + "\n".join(f"• {s}" for s in skipped[:10]))
+            messagebox.showwarning("Import finished with issues", "\n\n".join(detail))
 
     # --- rehearsal ---------------------------------------------------------
     def _update_rehearsal(self) -> None:
@@ -1042,6 +1146,9 @@ class VoxteraTestRunner(tk.Tk):
             q.setdefault("locale", "")
             q.setdefault("voice", "")
             q.setdefault("english", "")
+            # source: "generated" (default) vs "imported" — drives the audio
+            # column label and gates the edit-time auto-delete behavior.
+            q.setdefault("source", "generated")
         self.questions = questions
         self.played.clear()
         self.current_id = questions[0]["id"] if questions else None

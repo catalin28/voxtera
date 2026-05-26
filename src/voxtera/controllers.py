@@ -907,12 +907,28 @@ class InstantAckFiller(FrameProcessor):
 # which does it in the guest's own language — no keyword tables, no extra call.
 _RESUME_NOTE = (
     "[System note — not spoken by the guest: your previous reply was cut off "
-    "mid-sentence when the guest began speaking. Judge the guest's most recent "
-    "message: if it ADDS a request (e.g. 'and also...', 'what about...'), "
-    "answer the new request first, then briefly finish the cut-off point "
-    "without repeating what the guest already heard; if it DISMISSES or "
-    "REPLACES the topic (e.g. 'no', 'stop', 'actually...'), drop the cut-off "
-    "point and answer only the new message. Keep the whole reply brief.]"
+    "mid-sentence when the guest began speaking. You MUST handle BOTH the "
+    "new message and the cut-off answer in this reply:\n"
+    "\n"
+    "1. If the new message ADDS a request (e.g. 'and also...', 'what "
+    "about...', 'but the pool?'), first answer the new request, then "
+    "bridge back with a brief transition phrase ('And to your first "
+    "question...', 'As for the restaurants...', 'Returning to what you "
+    "asked...') and finish your cut-off answer in one short sentence. "
+    "Answering only the new request is a regression; jumping between the "
+    "two answers without a transition sounds abrupt.\n"
+    "\n"
+    "2. If the new message DISMISSES or REPLACES the topic (e.g. 'no', "
+    "'stop', 'actually...', 'never mind'), drop the cut-off point and "
+    "answer only the new message.\n"
+    "\n"
+    "For this single reply, BREVITY is relaxed: covering both points may "
+    "run slightly longer than usual.\n"
+    "\n"
+    "Example: guest asks 'what time does the restaurant open?' → you begin "
+    "'The restaurant opens at 7—' → guest cuts in 'but the pool?' → you "
+    "reply: 'The pool opens at 9. As for the restaurant, it's open from "
+    "7 to 11pm.']"
 )
 
 
@@ -968,18 +984,46 @@ class InterruptionResumer(FrameProcessor):
         # One-shot: set when a barge-in truncates a reply early enough to be
         # worth resuming; consumed by the next TranscriptionFrame.
         self._pending_resume = False
+        # Monotonic timestamp when _pending_resume was armed. Used to drop
+        # stale flags that never got consumed by a TranscriptionFrame —
+        # typically when the barge-in audio was noise/cough that produced
+        # no transcript.
+        self._pending_resume_at: float | None = None
+        # Discard _pending_resume if no TranscriptionFrame consumes it
+        # within this many seconds. Protects against injecting a "your
+        # reply was cut off" note onto a brand-new question that has
+        # nothing to do with the original (e.g. user coughs, falls silent,
+        # then asks something else minutes later).
+        self._pending_resume_ttl_secs = 15.0
 
     async def process_frame(self, frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
 
         if isinstance(frame, BotStartedSpeakingFrame):
+            # Defensive clear: if a previous turn's barge-in armed a resume
+            # note that never got injected (no TranscriptionFrame consumed
+            # it — typically because the barge-in audio was noise/cough
+            # that STT filtered out), the bot has now spoken a new reply,
+            # so the flag is stale. Drop it before timing the new reply.
+            if self._pending_resume:
+                logger.debug(
+                    "[interruption-resumer] clearing stale _pending_resume "
+                    "at new bot turn (no transcription consumed it)"
+                )
+                self._pending_resume = False
+                self._pending_resume_at = None
             self._bot_started_at = time.monotonic()
 
         elif isinstance(frame, BotStoppedSpeakingFrame):
-            # Reply finished cleanly — nothing was truncated. Clear state so a
-            # stale flag can't fire on an unrelated later turn.
+            # Bot stopped — either naturally or due to interruption (which
+            # cancels TTS and emits this frame in close succession with
+            # InterruptionFrame). Do NOT clear _pending_resume here: it is
+            # either already False, or just armed by the barge-in, and
+            # clearing here would erase the armed signal before the
+            # interrupting TranscriptionFrame can consume it. Cleanup
+            # happens in the TranscriptionFrame consumer (on inject) and
+            # in the BotStartedSpeakingFrame defensive path (stale flags).
             self._bot_started_at = None
-            self._pending_resume = False
 
         elif isinstance(frame, InterruptionFrame):
             # A barge-in. Only meaningful if the bot was actually speaking (a
@@ -988,6 +1032,7 @@ class InterruptionResumer(FrameProcessor):
                 elapsed = time.monotonic() - self._bot_started_at
                 if elapsed <= self._resume_window_secs:
                     self._pending_resume = True
+                    self._pending_resume_at = time.monotonic()
                     logger.info(
                         "[interruption-resumer] barge-in {:.1f}s into reply "
                         "(window {:.1f}s) — arming resume note",
@@ -1009,16 +1054,39 @@ class InterruptionResumer(FrameProcessor):
             and self._pending_resume
         ):
             # The interrupting utterance has been transcribed. Inject the
-            # out-of-band note BEFORE letting the transcript continue, so the
-            # note lands in context ahead of the user turn that triggers the
-            # LLM run. One-shot: cleared here so a multi-segment utterance
-            # doesn't inject the note more than once.
-            self._pending_resume = False
-            await self.push_frame(
-                LLMMessagesAppendFrame([{"role": "user", "content": _RESUME_NOTE}]),
-                FrameDirection.DOWNSTREAM,
+            # out-of-band note BEFORE letting the transcript continue, so
+            # the note lands in context ahead of the user turn that
+            # triggers the LLM run. One-shot: cleared here so a
+            # multi-segment utterance doesn't inject the note more than
+            # once.
+            #
+            # Freshness check: if the flag was armed long ago, the
+            # interrupting audio likely produced no transcript (cough or
+            # noise) and this TranscriptionFrame is a brand-new user
+            # utterance — not a continuation. Drop the flag without
+            # injecting so we don't mis-tag an unrelated question.
+            age = (
+                time.monotonic() - self._pending_resume_at
+                if self._pending_resume_at is not None
+                else 0.0
             )
-            logger.info("[interruption-resumer] injected resume note into context")
+            if age > self._pending_resume_ttl_secs:
+                logger.debug(
+                    "[interruption-resumer] _pending_resume stale "
+                    "({:.1f}s > {:.1f}s) — clearing without injecting",
+                    age,
+                    self._pending_resume_ttl_secs,
+                )
+                self._pending_resume = False
+                self._pending_resume_at = None
+            else:
+                self._pending_resume = False
+                self._pending_resume_at = None
+                await self.push_frame(
+                    LLMMessagesAppendFrame([{"role": "user", "content": _RESUME_NOTE}]),
+                    FrameDirection.DOWNSTREAM,
+                )
+                logger.info("[interruption-resumer] injected resume note into context")
 
         await self.push_frame(frame, direction)
 

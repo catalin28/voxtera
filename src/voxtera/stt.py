@@ -810,18 +810,14 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     languages = list(settings.gladia_languages)
     code_switching = settings.gladia_code_switching
 
-    # If no explicit language list is configured, default to bounded
-    # auto-detect using all languages from languages.json. This avoids
-    # Gladia's 99-language open mode which can produce translations
-    # instead of transcriptions for non-English speech.
+    # If no explicit language list is configured, send an empty list to
+    # Gladia so it uses full open auto-detect (all 99 languages with
+    # code_switching=true). This matches Gladia's own website behavior
+    # and produces the best transcription quality for languages like
+    # Romanian that degrade when constrained to a large language set.
     _t_lang = time.perf_counter()
     if not languages:
-        from voxtera.lang_config import language_codes as _all_lang_codes
-        from voxtera.lang_config import stt_code_for as _stt_code
-
-        languages = [c for c in (_stt_code(lc, "gladia") for lc in _all_lang_codes()) if c]
-        if len(languages) >= 2:
-            code_switching = True
+        code_switching = True
     logger.info("[stt] gladia lang_config took {:.0f}ms", (time.perf_counter() - _t_lang) * 1000)
 
     if code_switching and len(languages) < 2:
@@ -843,7 +839,13 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
         )
         mode_desc = f"detect-within={languages}" + (" + code-switching" if code_switching else "")
     else:
-        mode_desc = "auto-detect (all 99 languages)"
+        # Empty list = open auto-detect across all 99 languages with
+        # code_switching enabled (matches Gladia website behavior).
+        language_config = LanguageConfig(
+            languages=[],
+            code_switching=True,
+        )
+        mode_desc = "auto-detect (all 99 languages, code_switching=true)"
 
     # Use Pipecat 1.0.0's canonical Settings API directly instead of the
     # deprecated ``params=GladiaInputParams(...)`` path. The deprecation path
@@ -852,6 +854,11 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     settings_kwargs: dict[str, object] = {"model": STT_MODEL_GLADIA}
     if language_config is not None:
         settings_kwargs["language_config"] = language_config
+
+    logger.info(
+        "[stt] gladia FULL settings_kwargs sent to /v2/live: {}",
+        settings_kwargs,
+    )
 
     # Custom vocabulary — bias Gladia toward hotel-concierge domain terms so
     # domain words ("breakfast", "amenities", the hotel's venue names) stop
