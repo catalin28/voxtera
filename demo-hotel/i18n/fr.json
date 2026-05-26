@@ -79,7 +79,24 @@
     "f7_title": "Résumés de conversation vers votre PMS",
     "f7_desc": "Chaque appel se termine par un résumé structuré envoyé à votre CRM ou PMS — préférences clients captées, suivis planifiés, plaintes remontées.",
     "f8_title": "Tableau de bord opérateur",
-    "f8_desc": "Voyez les conversations actives, les langues utilisées, les questions fréquentes et les taux d'escalade. Ajustez les réponses depuis un admin web sans code."
+    "f8_desc": "Voyez les conversations actives, les langues utilisées, les questions fréquentes et les taux d'escalade. Ajustez les réponses depuis un admin web sans code.",
+    "subtitle": "Voxtera remplace le vide entre les rotations de réception — et les complète pendant la journée. Il répond au téléphone du lobby, à l'interphone, au chat web et à l'appel WhatsApp, avec la même aisance à chaque fois.",
+    "f01_title": "Concierge d'hôtel & résidence",
+    "f01_desc": "Room service, questions d'enregistrement, départ tardif, réservations spa, réveil — traités dans la langue du client, enregistrés pour votre équipe.",
+    "f02_title": "Recommandations locales, vérifiées",
+    "f02_desc": "S'appuie sur votre liste de restaurants, promenades et attractions — pas sur Internet. Vos partenaires préférés restent préférés.",
+    "f03_title": "Widget web · téléphone · SDK mobile",
+    "f03_desc": "Intégrez Voxtera sur votre page de réservation, redirigez votre ligne existante, ou intégrez-le dans votre app. Une plateforme, trois façons de vous joindre.",
+    "f04_title": "Sécurité & escalade intégrées",
+    "f04_desc": "Les urgences médicales, de sécurité ou émotionnelles sont signalées et dirigées vers un humain en temps réel — aucun client ne reste bloqué avec un bot quand ça compte.",
+    "f05_title": "Tickets envoyés dans vos outils",
+    "f05_desc": "Chaque demande devient un ticket structuré — publié dans le groupe Telegram, WhatsApp, Slack ou SMS de votre équipe, traduit dans leur langue. Pas de nouvelle app à apprendre.",
+    "f06_title": "Résumés traduits — dans votre langue",
+    "f06_desc": "Un client japonais appelle à 3h. À 3h05 votre responsable de nuit a un résumé clair en français : « Le client chambre 412 demande un départ tardif à 14h. Confirmé. » Chaque appel, chaque langue, traduit automatiquement.",
+    "f07_title": "Résumés de conversation vers votre PMS",
+    "f07_desc": "Chaque appel se termine par un résumé structuré envoyé à votre CRM ou PMS — préférences clients captées, suivis planifiés, plaintes remontées.",
+    "f08_title": "Tableau de bord opérateur",
+    "f08_desc": "Voyez les conversations actives, les langues utilisées, les questions fréquentes et les taux d'escalade. Ajustez les réponses depuis un admin web sans code."
   },
   "audiences": {
     "guest_tag": "Pour le client",
@@ -95,14 +112,26 @@
     "hotelier_2": "Préférences et plaintes des clients captées automatiquement dans votre PMS",
     "hotelier_3": "Tableau de bord en direct : appels actifs, langues utilisées, taux d'escalade",
     "hotelier_4": "Notes post-appel pour repérer les problèmes de service avant les avis",
-    "hotelier_5": "Mettez à jour menus, horaires, recommandations depuis un admin web — sans code"
+    "hotelier_5": "Mettez à jour menus, horaires, recommandations depuis un admin web — sans code",
+    "guest_item1": "Parler dans la langue dans laquelle il pense — Voxtera la détecte dès la première syllabe",
+    "guest_item2": "Obtenir une réponse en moins d'une seconde, jour ou nuit",
+    "guest_item3": "Interrompre librement. Changer de sujet. Parler naturellement — il suit",
+    "guest_item4": "Recevoir un message de suivi dans la même langue s'il le préfère",
+    "guest_item5": "Joindre une vraie personne instantanément quand l'appel le nécessite",
+    "hotelier_item1": "Résumé traduit de chaque appel livré dans votre boîte dans votre langue",
+    "hotelier_item2": "Préférences et plaintes des clients captées automatiquement dans votre PMS",
+    "hotelier_item3": "Tableau de bord en direct : appels actifs, langues utilisées, taux d'escalade",
+    "hotelier_item4": "Notes post-appel pour repérer les problèmes de service avant les avis",
+    "hotelier_item5": "Mettez à jour menus, horaires, recommandations depuis un admin web — sans code"
   },
   "languages_section": {
     "label": "Couverture",
     "title_line1": "Quatre-vingt-dix-neuf langues.",
     "title_line2": "Aucun réglage nécessaire.",
     "desc": "Du mandarin au maltais, du tagalog au tamoul. Le client parle ; Voxtera répond. La synthèse vocale est disponible dans plus de 75 de ces langues avec des voix natives — les autres fonctionnent en mode dégradé.",
-    "more": "+78 autres"
+    "more": "+78 autres",
+    "description": "Du mandarin au maltais, du tagalog au tamoul. Le client parle ; Voxtera répond. La synthèse vocale est disponible dans plus de 75 de ces langues avec des voix natives — les autres fonctionnent en mode dégradé.",
+    "headline": "Quatre-vingt-dix-neuf langues.<br/><span class=\"italic\">Aucun réglage nécessaire.</span>"
   },
   "demo_section": {
     "label": "Un matin typique",
@@ -135,7 +164,29 @@
     "row_tickets": "Tickets & routage",
     "us_tickets": "Chaque demande devient un ticket — envoyé sur Telegram, WhatsApp, Slack ou votre PMS",
     "them_tickets": "Une transcription dans une boîte mail, au mieux",
-    "footnote": "Nous ne citons personne — ce sont des tendances honnêtes de la catégorie en 2026."
+    "footnote": "Nous ne citons personne — ce sont des tendances honnêtes de la catégorie en 2026.",
+    "row1_label": "Langues",
+    "row1_us": "99, détectées automatiquement dès la première parole",
+    "row1_them": "« Multilingue » — configuration par établissement requise",
+    "row2_label": "Latence de bout en bout",
+    "row2_us": "~740ms publiée, toutes langues",
+    "row2_them": "Non divulguée",
+    "row3_label": "Canaux",
+    "row3_us": "Téléphone · widget web · SDK mobile",
+    "row3_them": "Habituellement téléphone ou web, rarement les deux",
+    "row4_label": "Essayer avant d'acheter",
+    "row4_us": "Essayer →",
+    "row4_them": "« Demander une démo »",
+    "row5_label": "Tarifs",
+    "row5_us": "Publiés, à partir de 290 $/mois",
+    "row5_them": "Contacter le commercial",
+    "row6_label": "Résidence des données",
+    "row6_us": "Régional — déployé au plus près de votre établissement",
+    "row6_them": "Varie selon le déploiement",
+    "row7_label": "Tickets & routage",
+    "row7_us": "Chaque demande devient un ticket — envoyé sur Telegram, WhatsApp, Slack ou votre PMS",
+    "row7_them": "Une transcription dans une boîte mail, au mieux",
+    "foot": "Nous ne citons personne — ce sont des tendances honnêtes de la catégorie en 2026."
   },
   "pricing_section": {
     "label": "Tarifs",
@@ -176,7 +227,8 @@
     "tier3_f4": "Déploiement on-prem / résidence UE",
     "tier3_f5": "Intégrations CRM, PMS, IPTV sur mesure",
     "tier3_f6": "Success manager dédié + SLA",
-    "tier3_cta": "Parler aux ventes →"
+    "tier3_cta": "Parler aux ventes →",
+    "subtitle": "Pas de surprises à la minute. Choisissez le niveau adapté à votre volume d'appels mensuel."
   },
   "faq": {
     "label": "Questions, réponses brèves",
@@ -211,7 +263,19 @@
     "t5_name": "Opt-out enregistrement",
     "t5_note": "Désactivez le stockage audio par établissement.",
     "t6_name": "On-prem disponible",
-    "t6_note": "Exécutez dans votre propre VPC en Entreprise."
+    "t6_note": "Exécutez dans votre propre VPC en Entreprise.",
+    "card1_name": "Déploiement régional",
+    "card1_note": "Hébergé au plus près de votre établissement. Détails sur demande.",
+    "card2_name": "Chiffré, de bout en bout",
+    "card2_note": "En transit (TLS 1.3) et au repos (AES-256).",
+    "card3_name": "RGPD & DPA prêt",
+    "card3_note": "Signez notre DPA à tout niveau. RoPA disponible.",
+    "card4_name": "SOC 2 en cours",
+    "card4_note": "Actuellement en cours de certification.",
+    "card5_name": "Opt-out enregistrement",
+    "card5_note": "Désactivez le stockage audio par établissement.",
+    "card6_name": "On-prem disponible",
+    "card6_note": "Exécutez dans votre propre VPC en Entreprise."
   },
   "cta": {
     "label": "— Prêt quand vous l'êtes —",
@@ -245,7 +309,22 @@
     "link_press": "Kit presse",
     "link_careers": "Carrières",
     "copyright": "© 2026 Voxtera — Construit au Canada",
-    "legal": "Confidentialité · CGU · RGPD · DPA"
+    "legal": "Confidentialité · CGU · RGPD · DPA",
+    "col2_title": "Produit",
+    "how_it_works": "Comment ça marche",
+    "languages": "Langues",
+    "compare": "Comparer",
+    "pricing": "Tarifs",
+    "col3_title": "Pour les opérateurs",
+    "hotels": "Hôtels",
+    "branded_residences": "Résidences de marque <span style=\"opacity:0.5;font-size:0.85em;\">· bientôt</span>",
+    "vacation_rentals": "Locations de vacances <span style=\"opacity:0.5;font-size:0.85em;\">· bientôt</span>",
+    "cruise_travel": "Croisière & voyage <span style=\"opacity:0.5;font-size:0.85em;\">· bientôt</span>",
+    "col4_title": "Contact",
+    "book_demo": "Réserver une démo",
+    "trust_center": "Centre de confiance",
+    "press_kit": "Kit presse",
+    "careers": "Carrières"
   },
   "widget": {
     "need_help": "Besoin d'aide ?",
@@ -258,7 +337,9 @@
     "thinking": "Réflexion…",
     "error": "Désolé, une erreur s'est produite. Veuillez réessayer.",
     "no_response": "Aucune réponse reçue. Veuillez réessayer.",
-    "connection_error": "Connexion indisponible. Veuillez réessayer plus tard."
+    "connection_error": "Connexion indisponible. Veuillez réessayer plus tard.",
+    "launcher_label": "Besoin d'aide ?",
+    "input_placeholder": "Envoyer un message…"
   },
   "hotels": {
     "nav_cta": "Nous contacter →",

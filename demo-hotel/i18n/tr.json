@@ -79,7 +79,24 @@
     "f7_title": "Konuşma özetleri PMS'inize",
     "f7_desc": "Her arama, CRM veya PMS'inize gönderilen yapılandırılmış bir özetle sona erer — tercihler kaydedilir, takipler planlanır, şikayetler tespit edilir.",
     "f8_title": "Operatör paneli",
-    "f8_desc": "Aktif konuşmaları, kullanılan dilleri, sık sorulan soruları ve yükseltme oranlarını görün. Yanıtları kodsuz bir web yönetici panelinden ayarlayın."
+    "f8_desc": "Aktif konuşmaları, kullanılan dilleri, sık sorulan soruları ve yükseltme oranlarını görün. Yanıtları kodsuz bir web yönetici panelinden ayarlayın.",
+    "subtitle": "Voxtera, resepsiyon vardiyaları arasındaki boşluğu doldurur — ve gün boyunca onları destekler. Lobi telefonunu, interkomu, web sohbetini ve WhatsApp aramasını, her seferinde aynı akıcılıkla yanıtlar.",
+    "f01_title": "Otel ve residence concierge",
+    "f01_desc": "Oda servisi, check-in soruları, geç çıkış, spa rezervasyonları, uyandırma — misafirin dilinde işlenir, ekibiniz için kaydedilir.",
+    "f02_title": "Doğrulanmış yerel tavsiyeler",
+    "f02_desc": "Sizin restoran, gezi ve cazibe listenize dayanır — açık internete değil. Tercih ettiğiniz ortaklar tercih edilmeye devam eder.",
+    "f03_title": "Web widget · telefon · mobil SDK",
+    "f03_desc": "Voxtera'yı rezervasyon sayfanıza yerleştirin, mevcut hattınızı yönlendirin veya uygulamanıza entegre edin. Bir platform, üç ulaşım yolu.",
+    "f04_title": "Yerleşik güvenlik ve yükseltme",
+    "f04_desc": "Tıbbi, güvenlik veya duygusal acil durumlar işaretlenir ve gerçek zamanlı olarak bir insana yönlendirilir — önemli anlarda hiçbir misafir bir botla kalmaz.",
+    "f05_title": "Araçlarınıza biletler",
+    "f05_desc": "Her talep yapılandırılmış bir bilete dönüşür — ekibinizin Telegram, WhatsApp, Slack veya SMS grubuna gönderilir, onların diline çevrilir. Öğrenecek yeni uygulama yok.",
+    "f06_title": "Çevrilmiş özetler — sizin dilinizde",
+    "f06_desc": "Japon bir misafir gece 3'te arar. 3:05'te gece müdürünüz Türkçe net bir özete sahiptir: \"412 numaralı odanın misafiri 14:00'e kadar geç çıkış istedi. Onaylandı.\" Her arama, her dil, otomatik olarak çevrilir.",
+    "f07_title": "Konuşma özetleri PMS'inize",
+    "f07_desc": "Her arama, CRM veya PMS'inize gönderilen yapılandırılmış bir özetle sona erer — tercihler kaydedilir, takipler planlanır, şikayetler tespit edilir.",
+    "f08_title": "Operatör paneli",
+    "f08_desc": "Aktif konuşmaları, kullanılan dilleri, sık sorulan soruları ve yükseltme oranlarını görün. Yanıtları kodsuz bir web yönetici panelinden ayarlayın."
   },
   "audiences": {
     "guest_tag": "Misafir için",
@@ -95,14 +112,26 @@
     "hotelier_2": "Misafir tercihleri ve şikayetleri otomatik olarak PMS'inizde yakalanır",
     "hotelier_3": "Canlı panel: aktif aramalar, kullanılan diller, yükseltme oranı",
     "hotelier_4": "Yorumlardan önce hizmet sorunlarını tespit etmek için arama sonrası notlar",
-    "hotelier_5": "Menüleri, saatleri, tavsiyeleri kodsuz bir web yönetici panelinden güncelleyin"
+    "hotelier_5": "Menüleri, saatleri, tavsiyeleri kodsuz bir web yönetici panelinden güncelleyin",
+    "guest_item1": "Düşündüğü dilde konuşur — Voxtera ilk heceden algılar",
+    "guest_item2": "Gece gündüz, bir saniyeden kısa sürede yanıt alır",
+    "guest_item3": "Özgürce keser. Konu değiştirir. Doğal konuşur — takip eder",
+    "guest_item4": "Tercih ederse aynı dilde takip mesajı alır",
+    "guest_item5": "Arama gerektirdiğinde anında gerçek bir kişiye ulaşır",
+    "hotelier_item1": "Her aramanın çevrilmiş özeti kendi dilinizde gelen kutunuza iletilir",
+    "hotelier_item2": "Misafir tercihleri ve şikayetleri otomatik olarak PMS'inizde yakalanır",
+    "hotelier_item3": "Canlı panel: aktif aramalar, kullanılan diller, yükseltme oranı",
+    "hotelier_item4": "Yorumlardan önce hizmet sorunlarını tespit etmek için arama sonrası notlar",
+    "hotelier_item5": "Menüleri, saatleri, tavsiyeleri kodsuz bir web yönetici panelinden güncelleyin"
   },
   "languages_section": {
     "label": "Kapsam",
     "title_line1": "Doksan dokuz dil.",
     "title_line2": "Kurulum gerekmez.",
     "desc": "Mandarinceden Maltacaya, Tagalogdan Tamilceye. Misafir konuşur; Voxtera yanıtlar. Konuşma sentezi bu dillerin 75'inden fazlasında yerel seslerle kullanılabilir — geri kalanı yedek modda çalışır.",
-    "more": "+78 daha"
+    "more": "+78 daha",
+    "description": "Mandarinceden Maltacaya, Tagalogdan Tamilceye. Misafir konuşur; Voxtera yanıtlar. Konuşma sentezi bu dillerin 75'inden fazlasında yerel seslerle kullanılabilir — geri kalanı yedek modda çalışır.",
+    "headline": "Doksan dokuz dil.<br/><span class=\"italic\">Kurulum gerekmez.</span>"
   },
   "demo_section": {
     "label": "Tipik bir sabah",
@@ -135,7 +164,29 @@
     "row_tickets": "Biletler ve yönlendirme",
     "us_tickets": "Her talep bilet olur — Telegram, WhatsApp, Slack veya PMS'inize gönderilir",
     "them_tickets": "En iyi ihtimalle bir posta kutusunda transkript",
-    "footnote": "Kimseyi isim vermiyoruz — bunlar 2026'da kategorinin dürüst eğilimleri."
+    "footnote": "Kimseyi isim vermiyoruz — bunlar 2026'da kategorinin dürüst eğilimleri.",
+    "row1_label": "Diller",
+    "row1_us": "99, ilk kelimeden otomatik algılanır",
+    "row1_them": "\"Çok dilli\" — tesis başına yapılandırma gerekir",
+    "row2_label": "Uçtan uca gecikme",
+    "row2_us": "~740ms yayınlanmış, tüm diller",
+    "row2_them": "Açıklanmamış",
+    "row3_label": "Kanallar",
+    "row3_us": "Telefon · web widget · mobil SDK",
+    "row3_them": "Genellikle telefon veya web, nadiren ikisi birden",
+    "row4_label": "Satın almadan önce dene",
+    "row4_us": "Deneyin →",
+    "row4_them": "\"Demo talep edin\"",
+    "row5_label": "Fiyatlar",
+    "row5_us": "Yayınlanmış, 290$/aydan başlar",
+    "row5_them": "Satışla iletişime geçin",
+    "row6_label": "Veri ikameti",
+    "row6_us": "Bölgesel — tesisinize en yakın konuşlandırılmış",
+    "row6_them": "Dağıtıma göre değişir",
+    "row7_label": "Biletler ve yönlendirme",
+    "row7_us": "Her talep bilet olur — Telegram, WhatsApp, Slack veya PMS'inize gönderilir",
+    "row7_them": "En iyi ihtimalle bir posta kutusunda transkript",
+    "foot": "Kimseyi isim vermiyoruz — bunlar 2026'da kategorinin dürüst eğilimleri."
   },
   "pricing_section": {
     "label": "Fiyatlar",
@@ -176,7 +227,8 @@
     "tier3_f4": "On-prem dağıtım / AB veri ikameti",
     "tier3_f5": "Özel CRM, PMS, IPTV entegrasyonları",
     "tier3_f6": "Özel başarı yöneticisi + SLA",
-    "tier3_cta": "Satışla konuşun →"
+    "tier3_cta": "Satışla konuşun →",
+    "subtitle": "Dakika başı sürpriz yok. Aylık arama hacminize uyan seviyeyi seçin."
   },
   "faq": {
     "label": "Sorular, kısa cevaplar",
@@ -211,7 +263,19 @@
     "t5_name": "Kayıt iptali",
     "t5_note": "Tesis bazında ses depolamayı devre dışı bırakın.",
     "t6_name": "On-prem mevcut",
-    "t6_note": "Enterprise ile kendi VPC'nizde çalıştırın."
+    "t6_note": "Enterprise ile kendi VPC'nizde çalıştırın.",
+    "card1_name": "Bölgesel dağıtım",
+    "card1_note": "Tesisinize en yakın noktada barındırılır. Detaylar talep üzerine.",
+    "card2_name": "Şifreli, uçtan uca",
+    "card2_note": "Aktarımda (TLS 1.3) ve beklemede (AES-256).",
+    "card3_name": "GDPR ve DPA hazır",
+    "card3_note": "Herhangi bir seviyede DPA'mızı imzalayın. RoPA mevcuttur.",
+    "card4_name": "SOC 2 devam ediyor",
+    "card4_note": "Şu anda sertifikasyon sürecinde.",
+    "card5_name": "Kayıt iptali",
+    "card5_note": "Tesis bazında ses depolamayı devre dışı bırakın.",
+    "card6_name": "On-prem mevcut",
+    "card6_note": "Enterprise ile kendi VPC'nizde çalıştırın."
   },
   "cta": {
     "label": "— Siz hazır olduğunuzda hazır —",
@@ -245,7 +309,22 @@
     "link_press": "Basın kiti",
     "link_careers": "Kariyer",
     "copyright": "© 2026 Voxtera — Kanada'da üretildi",
-    "legal": "Gizlilik · Koşullar · GDPR · DPA"
+    "legal": "Gizlilik · Koşullar · GDPR · DPA",
+    "col2_title": "Ürün",
+    "how_it_works": "Nasıl çalışır",
+    "languages": "Diller",
+    "compare": "Karşılaştır",
+    "pricing": "Fiyatlar",
+    "col3_title": "Operatörler için",
+    "hotels": "Oteller",
+    "branded_residences": "Markalı residanslar <span style=\"opacity:0.5;font-size:0.85em;\">· yakında</span>",
+    "vacation_rentals": "Tatil kiralama <span style=\"opacity:0.5;font-size:0.85em;\">· yakında</span>",
+    "cruise_travel": "Kruvaziyer ve seyahat <span style=\"opacity:0.5;font-size:0.85em;\">· yakında</span>",
+    "col4_title": "İletişim",
+    "book_demo": "Demo rezervasyonu",
+    "trust_center": "Güven merkezi",
+    "press_kit": "Basın kiti",
+    "careers": "Kariyer"
   },
   "widget": {
     "need_help": "Yardım mı lazım?",
@@ -258,7 +337,9 @@
     "thinking": "Düşünüyorum…",
     "error": "Özür dileriz, bir hata oluştu. Lütfen tekrar deneyin.",
     "no_response": "Yanıt alınamadı. Lütfen tekrar deneyin.",
-    "connection_error": "Bağlantı mevcut değil. Lütfen daha sonra tekrar deneyin."
+    "connection_error": "Bağlantı mevcut değil. Lütfen daha sonra tekrar deneyin.",
+    "launcher_label": "Yardım mı lazım?",
+    "input_placeholder": "Mesaj gönderin…"
   },
   "hotels": {
     "nav_cta": "Bize ulaşın →",

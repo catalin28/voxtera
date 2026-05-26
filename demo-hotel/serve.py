@@ -1223,21 +1223,23 @@ def _send_inquiry_email(payload: dict) -> None:
     import email.mime.text
     import smtplib
 
-    subject = f"New Voxtera inquiry: {payload.get('property_name', 'Unknown')} ({payload.get('location', '?')})"
+    prop = payload.get("property_name", "Unknown")
+    loc = payload.get("location", "?")
+    subject = f"New Voxtera inquiry: {prop} ({loc})"
     lines = [
         f"Property: {payload.get('property_name')} — {payload.get('location')}",
         f"Size: {payload.get('size', '—')} keys | Type: {payload.get('property_type', '—')}",
-        f"",
+        "",
         f"Languages: {', '.join(payload.get('languages', []))}",
         f"Pain: {payload.get('pain', '—')}",
         f"PMS: {payload.get('pms', '—')}",
         f"Channels: {', '.join(payload.get('channels', []))}",
-        f"",
+        "",
         f"Name: {payload.get('name')}",
         f"Role: {payload.get('role', '—')}",
         f"Email: {payload.get('email')}",
         f"Next step: {payload.get('next_step', '—')}",
-        f"",
+        "",
         f"Submitted: {payload.get('submitted_at', '—')}",
         f"IP: {payload.get('_ip', '—')}",
     ]
@@ -1297,13 +1299,10 @@ def _demo_anon_count(ip: str) -> int:
 
 def _generate_demo_token(email: str) -> str:
     """Generate an HMAC-signed demo access token."""
-    import math
     exp = int(time.time()) + (_DEMO_TOKEN_TTL_DAYS * 86400)
     payload = json.dumps({"email": email, "exp": exp}, separators=(",", ":"))
     payload_b64 = base64.urlsafe_b64encode(payload.encode()).decode()
-    sig = hmac.new(
-        _DEMO_SECRET.encode(), payload_b64.encode(), hashlib.sha256
-    ).hexdigest()[:32]
+    sig = hmac.new(_DEMO_SECRET.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()[:32]
     return f"{payload_b64}.{sig}"
 
 
@@ -1341,7 +1340,7 @@ def _load_demo_codes() -> set[str]:
     """Load predefined codes from demo_codes.txt (re-reads each call for hot-reload)."""
     codes: set[str] = set()
     try:
-        with open(_DEMO_CODES_FILE, "r", encoding="utf-8") as f:
+        with open(_DEMO_CODES_FILE, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#"):
@@ -1468,7 +1467,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/api/audit/sessions"):
             return self._handle_audit_sessions()
         if self.path.startswith("/api/audit/session/"):
-            filename = self.path[len("/api/audit/session/"):]
+            filename = self.path[len("/api/audit/session/") :]
             return self._handle_audit_session_detail(filename)
         if self.path.startswith("/api/rag/chunks"):
             return self._handle_rag_chunks()
@@ -1491,6 +1490,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             ".html",
             ".js",
             ".css",
+            ".json",
             ".png",
             ".jpg",
             ".jpeg",
@@ -1702,7 +1702,9 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
     def _handle_admin_verify(self) -> None:
         """GET /api/admin/verify — returns 200 if token is valid, 401 otherwise."""
         if not _ADMIN_TOKEN:
-            self._send_json(503, {"error": "admin_disabled", "detail": "VOXTERA_ADMIN_TOKEN is not set."})
+            self._send_json(
+                503, {"error": "admin_disabled", "detail": "VOXTERA_ADMIN_TOKEN is not set."}
+            )
             return
         provided = self.headers.get("X-Admin-Token", "")
         if not provided or provided != _ADMIN_TOKEN:
@@ -2066,10 +2068,13 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
         demo_token = (start_body.get("demo_token") or "").strip()
         if not _validate_demo_token(demo_token) and demo_token not in _load_demo_codes():
-            self._send_json(403, {
-                "error": "demo_token_required",
-                "detail": "Voice calls require an access code. Request one for free.",
-            })
+            self._send_json(
+                403,
+                {
+                    "error": "demo_token_required",
+                    "detail": "Voice calls require an access code. Request one for free.",
+                },
+            )
             return
 
         # ------------------------------------------------------------------
@@ -2483,7 +2488,14 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     _INQUIRY_MAX_BODY = 8192  # 8 KB max request body
-    _INQUIRY_VALID_PAINS = {"after_hours", "missed_bookings", "language_gap", "request_chaos", "repetitive", "other"}
+    _INQUIRY_VALID_PAINS = {
+        "after_hours",
+        "missed_bookings",
+        "language_gap",
+        "request_chaos",
+        "repetitive",
+        "other",
+    }
     _INQUIRY_VALID_STEPS = {"demo", "info_pack", "pricing", "pilot"}
 
     # ------------------------------------------------------------------
@@ -2516,7 +2528,9 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
         # Rate limit per email
         if not _demo_request_rate_ok(email):
-            self._send_json(429, {"error": "rate_limited", "detail": "Code already sent. Check your inbox."})
+            self._send_json(
+                429, {"error": "rate_limited", "detail": "Code already sent. Check your inbox."}
+            )
             return
 
         # Generate token and send
@@ -2533,9 +2547,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         sys.stderr.write(f"[demo-gate] code requested: {json.dumps(log_entry)}\n")
 
         # Send email in background thread
-        t = threading.Thread(
-            target=_send_demo_code_email, args=(name, email, token), daemon=True
-        )
+        t = threading.Thread(target=_send_demo_code_email, args=(name, email, token), daemon=True)
         t.start()
 
         self._send_json(200, {"ok": True, "detail": "Code sent to your email."})
@@ -2557,7 +2569,14 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # Check HMAC-signed token first
         payload = _validate_demo_token(token)
         if payload:
-            self._send_json(200, {"valid": True, "email": payload.get("email", ""), "expires": payload.get("exp", 0)})
+            self._send_json(
+                200,
+                {
+                    "valid": True,
+                    "email": payload.get("email", ""),
+                    "expires": payload.get("exp", 0),
+                },
+            )
             return
         # Check predefined codes file
         if token and token in _load_demo_codes():
@@ -2589,7 +2608,13 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         direct_ip, fwd_ip = self._client_ip()
         client_ip = fwd_ip or direct_ip
         if not _inquiry_rate_ok(client_ip):
-            self._send_json(429, {"error": "rate_limited", "detail": "Too many submissions. Please try again later."})
+            self._send_json(
+                429,
+                {
+                    "error": "rate_limited",
+                    "detail": "Too many submissions. Please try again later.",
+                },
+            )
             return
 
         # 3. Parse JSON
@@ -2618,11 +2643,18 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         next_step = str(body.get("next_step", "")).strip()
 
         if not property_name or not location or not name or not email_val or not next_step:
-            self._send_json(422, {"error": "missing_required", "detail": "property_name, location, name, email, and next_step are required."})
+            self._send_json(
+                422,
+                {
+                    "error": "missing_required",
+                    "detail": "property_name, location, name, email, and next_step are required.",
+                },
+            )
             return
 
         # 6. Email format validation (basic)
         import re as _re
+
         if not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email_val):
             self._send_json(422, {"error": "invalid_email"})
             return
@@ -2644,7 +2676,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
         # Lists — only accept known short values
         languages_raw = body.get("languages", [])
-        languages = [str(l).strip()[:10] for l in languages_raw if isinstance(l, str)][:20]
+        languages = [str(lang).strip()[:10] for lang in languages_raw if isinstance(lang, str)][:20]
         channels_raw = body.get("channels", [])
         channels = [str(c).strip()[:20] for c in channels_raw if isinstance(c, str)][:10]
 
@@ -2956,18 +2988,20 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             first = json.loads(lines[0])
             last = json.loads(lines[-1]) if len(lines) > 1 else first
 
-            results.append({
-                "filename": f.name,
-                "date": file_date,
-                "time": name[11:19].replace("-", ":"),
-                "session_id": first.get("session_id", ""),
-                "turns": len(lines),
-                "client_ip": first.get("client_ip", ""),
-                "first_query": (first.get("user_query", ""))[:80],
-                "last_ts": last.get("ts", ""),
-                "channel": first.get("channel", ""),
-                "model": first.get("model", ""),
-            })
+            results.append(
+                {
+                    "filename": f.name,
+                    "date": file_date,
+                    "time": name[11:19].replace("-", ":"),
+                    "session_id": first.get("session_id", ""),
+                    "turns": len(lines),
+                    "client_ip": first.get("client_ip", ""),
+                    "first_query": (first.get("user_query", ""))[:80],
+                    "last_ts": last.get("ts", ""),
+                    "channel": first.get("channel", ""),
+                    "model": first.get("model", ""),
+                }
+            )
 
         self._send_json(200, results)
 
@@ -2980,7 +3014,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
         sessions_dir = Path(__file__).resolve().parent.parent / "logs" / "audit" / "sessions"
         filepath = sessions_dir / filename
-        if not filepath.exists() or not filepath.suffix == ".jsonl":
+        if not filepath.exists() or filepath.suffix != ".jsonl":
             self._send_json(404, {"error": "not found"})
             return
 
@@ -3006,17 +3040,26 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         per_page = min(int((params.get("per_page") or ["50"])[0]), 200)
 
         import os
+
         default_db = str(Path.home() / ".voxtera" / "voxtera.db")
         db_path = Path(os.environ.get("VOXTERA_DB_PATH", default_db))
         if not db_path.exists():
-            self._send_json(200, {"chunks": [], "total": 0, "hotels": [], "docs": [], "languages": []})
+            self._send_json(
+                200, {"chunks": [], "total": 0, "hotels": [], "docs": [], "languages": []}
+            )
             return
 
         import sqlite3
+
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
 
         # Get distinct values for filters
-        hotels = [r[0] for r in conn.execute("SELECT DISTINCT hotel_id FROM chunks ORDER BY hotel_id").fetchall()]
+        hotels = [
+            r[0]
+            for r in conn.execute(
+                "SELECT DISTINCT hotel_id FROM chunks ORDER BY hotel_id"
+            ).fetchall()
+        ]
         docs = []
         languages_list = []
 
@@ -3036,21 +3079,39 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         where_clause = (" WHERE " + " AND ".join(where_parts)) if where_parts else ""
 
         # Get total count
-        total = conn.execute(f"SELECT COUNT(*) FROM chunks{where_clause}", query_params).fetchone()[0]
+        total = conn.execute(f"SELECT COUNT(*) FROM chunks{where_clause}", query_params).fetchone()[
+            0
+        ]
 
         # Get distinct docs and languages for current hotel filter
         if hotel_id:
-            docs = [r[0] for r in conn.execute(
-                "SELECT DISTINCT doc_id FROM chunks WHERE hotel_id = ? ORDER BY doc_id",
-                (hotel_id,)
-            ).fetchall()]
-            languages_list = [r[0] for r in conn.execute(
-                "SELECT DISTINCT language FROM chunks WHERE hotel_id = ? ORDER BY language",
-                (hotel_id,)
-            ).fetchall()]
+            docs = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT DISTINCT doc_id FROM chunks WHERE hotel_id = ? ORDER BY doc_id",
+                    (hotel_id,),
+                ).fetchall()
+            ]
+            languages_list = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT DISTINCT language FROM chunks WHERE hotel_id = ? ORDER BY language",
+                    (hotel_id,),
+                ).fetchall()
+            ]
         else:
-            docs = [r[0] for r in conn.execute("SELECT DISTINCT doc_id FROM chunks ORDER BY doc_id").fetchall()]
-            languages_list = [r[0] for r in conn.execute("SELECT DISTINCT language FROM chunks ORDER BY language").fetchall()]
+            docs = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT DISTINCT doc_id FROM chunks ORDER BY doc_id"
+                ).fetchall()
+            ]
+            languages_list = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT DISTINCT language FROM chunks ORDER BY language"
+                ).fetchall()
+            ]
 
         # Paginated fetch (exclude embedding blob for performance)
         offset = (page - 1) * per_page
@@ -3058,33 +3119,38 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             f"SELECT id, hotel_id, doc_id, chunk_index, language, category, text, updated_at "
             f"FROM chunks{where_clause} ORDER BY hotel_id, doc_id, chunk_index "
             f"LIMIT ? OFFSET ?",
-            query_params + [per_page, offset]
+            query_params + [per_page, offset],
         ).fetchall()
         conn.close()
 
         chunks = []
         for r in rows:
-            chunks.append({
-                "id": r[0],
-                "hotel_id": r[1],
-                "doc_id": r[2],
-                "chunk_index": r[3],
-                "language": r[4],
-                "category": r[5],
-                "text": r[6],
-                "updated_at": r[7],
-            })
+            chunks.append(
+                {
+                    "id": r[0],
+                    "hotel_id": r[1],
+                    "doc_id": r[2],
+                    "chunk_index": r[3],
+                    "language": r[4],
+                    "category": r[5],
+                    "text": r[6],
+                    "updated_at": r[7],
+                }
+            )
 
-        self._send_json(200, {
-            "chunks": chunks,
-            "total": total,
-            "page": page,
-            "per_page": per_page,
-            "pages": (total + per_page - 1) // per_page,
-            "hotels": hotels,
-            "docs": docs,
-            "languages": languages_list,
-        })
+        self._send_json(
+            200,
+            {
+                "chunks": chunks,
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+                "pages": (total + per_page - 1) // per_page,
+                "hotels": hotels,
+                "docs": docs,
+                "languages": languages_list,
+            },
+        )
 
     def _handle_languages(self):
         """GET /api/languages — full language config for the demo UI.
@@ -3195,15 +3261,20 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
         # ── Demo access gate ──
         # If user has a valid token, allow. Otherwise enforce free message limit.
-        has_valid_token = _validate_demo_token(demo_token) is not None or (demo_token in _load_demo_codes())
+        has_valid_token = _validate_demo_token(demo_token) is not None or (
+            demo_token in _load_demo_codes()
+        )
         if not has_valid_token:
             ip_for_limit = forwarded_for or client_ip
             if not _demo_anon_ok(ip_for_limit):
-                self._send_json(403, {
-                    "error": "demo_limit_reached",
-                    "detail": "Free messages used. Enter an access code for full demo.",
-                    "remaining": 0,
-                })
+                self._send_json(
+                    403,
+                    {
+                        "error": "demo_limit_reached",
+                        "detail": "Free messages used. Enter an access code for full demo.",
+                        "remaining": 0,
+                    },
+                )
                 return
 
         # ── streaming response headers ──
@@ -3644,34 +3715,48 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
 
-    # --- Kill stale bot processes from previous runs --------------------------
-    # Prevents ghost bots from holding Daily rooms or STT sessions open.
+    # --- Kill ALL stale voxtera processes from previous runs --------------------
+    # Prevents phantom processes from holding Daily rooms, STT sessions, ports,
+    # or memory open. This is the FIRST operation at startup.
     import signal
 
     _my_pid = os.getpid()
+    _my_ppid = os.getppid()
     _killed = []
+    _STALE_PATTERNS = ("voxtera.bot", "embedding_server.py", "serve.py")
     try:
         import psutil
 
-        for proc in psutil.process_iter(["pid", "cmdline"]):
-            if proc.info["pid"] == _my_pid:
+        for proc in psutil.process_iter(["pid", "ppid", "cmdline"]):
+            if proc.info["pid"] in (_my_pid, _my_ppid):
                 continue
             cmdline = proc.info.get("cmdline") or []
-            if any("voxtera.bot" in arg for arg in cmdline):
-                proc.send_signal(signal.SIGKILL)
-                _killed.append(proc.info["pid"])
+            cmdline_str = " ".join(cmdline)
+            if any(pat in cmdline_str for pat in _STALE_PATTERNS):
+                try:
+                    proc.send_signal(signal.SIGKILL)
+                    _killed.append(proc.info["pid"])
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
     except ImportError:
         # psutil not available — fall back to pkill
         import subprocess as _sp
 
-        result = _sp.run(
-            ["pkill", "-9", "-f", "voxtera.bot"],
-            capture_output=True,
-        )
-        if result.returncode == 0:
-            _killed.append("(pkill)")
+        for pat in _STALE_PATTERNS:
+            result = _sp.run(
+                ["pkill", "-9", "-f", pat],
+                capture_output=True,
+            )
+            if result.returncode == 0:
+                _killed.append(f"(pkill {pat})")
     if _killed:
-        print(f"[startup] killed stale bot processes: {_killed}")
+        print(f"[startup] killed stale phantom processes: {_killed}")
+        # Give OS time to release ports held by killed processes
+        import time
+
+        time.sleep(0.5)
+    else:
+        print("[startup] no stale processes found — clean start")
     # --------------------------------------------------------------------------
 
     # Resolve the launcher base URL once we know the actual port. Spawned bot

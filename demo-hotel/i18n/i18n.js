@@ -60,17 +60,18 @@
 
   // Apply translations to DOM
   function applyTranslations() {
-    // data-i18n → textContent (supports HTML via data-i18n-html)
+    // data-i18n → textContent
     document.querySelectorAll('[data-i18n]').forEach(el => {
       const key = el.getAttribute('data-i18n');
       const val = getNestedValue(translations, key);
-      if (val) {
-        if (el.hasAttribute('data-i18n-html')) {
-          el.innerHTML = val;
-        } else {
-          el.textContent = val;
-        }
-      }
+      if (val) el.textContent = val;
+    });
+
+    // data-i18n-html → innerHTML (for rich content with spans/br)
+    document.querySelectorAll('[data-i18n-html]').forEach(el => {
+      const key = el.getAttribute('data-i18n-html');
+      const val = getNestedValue(translations, key);
+      if (val) el.innerHTML = val;
     });
 
     // data-i18n-placeholder → placeholder attribute
