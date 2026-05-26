@@ -1,0 +1,1614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Voxtera plugs directly into Cloudbeds. Every call, every request, every after-hours booking inquiry becomes a structured ticket — linked to the right reservation, in your team's language." />
+<title data-i18n="cb.page_title">Voxtera × Cloudbeds — Your Cloudbeds. Your team's chat. One connected loop.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700;9..144,900&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="i18n/i18n.css">
+<link rel="alternate" hreflang="en" href="?lang=en">
+<link rel="alternate" hreflang="fr" href="?lang=fr">
+<link rel="alternate" hreflang="es" href="?lang=es">
+<link rel="alternate" hreflang="it" href="?lang=it">
+<link rel="alternate" hreflang="ar" href="?lang=ar">
+<link rel="alternate" hreflang="tr" href="?lang=tr">
+<link rel="alternate" hreflang="x-default" href="?lang=en">
+<style>
+  :root{
+    --cream:#f4ede1;
+    --cream-deep:#ebe1cf;
+    --ink:#1a1814;
+    --ink-soft:#2c2822;
+    --gold:#b8884a;
+    --gold-deep:#8a5f2a;
+    --rust:#a4391c;
+    --sage:#5a6b4a;
+    --paper:#faf6ec;
+    --line:rgba(26,24,20,0.14);
+    --line-strong:rgba(26,24,20,0.32);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--cream);
+    color:var(--ink);
+    font-family:'Fraunces',serif;
+    font-weight:400;
+    overflow-x:hidden;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  body::before{
+    content:"";
+    position:fixed;inset:0;
+    pointer-events:none;
+    z-index:1;
+    opacity:.35;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.4 0 0 0 0 0.35 0 0 0 0 0.25 0 0 0 0.08 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode:multiply;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;letter-spacing:0.02em;}
+  .italic{font-family:'Instrument Serif',serif;font-style:italic;font-weight:400;}
+
+  /* ============ NAV ============ */
+  nav{
+    position:fixed;top:0;left:0;right:0;
+    padding:1.4rem 2.5rem;
+    display:flex;justify-content:space-between;align-items:center;
+    z-index:100;
+    backdrop-filter:blur(20px) saturate(140%);
+    background:rgba(244,237,225,0.72);
+    border-bottom:1px solid var(--line);
+  }
+  .logo{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:1.45rem;
+    letter-spacing:-0.02em;
+    display:flex;align-items:center;gap:0.6rem;
+    color:var(--ink);text-decoration:none;
+  }
+  .logo-mark{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;}
+  .logo-mark svg{width:100%;height:100%;}
+  .logo sup{
+    font-size:0.55rem;
+    font-family:'JetBrains Mono',monospace;
+    color:var(--gold-deep);
+    margin-left:0.2rem;letter-spacing:0.1em;font-weight:400;
+  }
+  .nav-links{
+    display:flex;gap:2.5rem;align-items:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.78rem;text-transform:uppercase;letter-spacing:0.12em;
+  }
+  .nav-links a{color:var(--ink-soft);text-decoration:none;transition:color .25s;}
+  .nav-links a:hover{color:var(--rust);}
+  .nav-links a.active{color:var(--ink);font-weight:500;}
+  .nav-links a.nav-cta{
+    background:var(--ink);color:#fff;
+    padding:0.7rem 1.4rem;border-radius:999px;
+    transition:all .3s;border:1px solid var(--ink);
+  }
+  .nav-links a.nav-cta:hover{background:var(--rust);border-color:var(--rust);color:#fff;}
+
+  /* ============ HERO ============ */
+  .hero{
+    padding:10rem 2.5rem 5rem;
+    position:relative;z-index:2;
+    max-width:1200px;margin:0 auto;
+  }
+  .hero-eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;color:var(--gold-deep);
+    letter-spacing:0.18em;text-transform:uppercase;
+    display:flex;align-items:center;gap:1rem;margin-bottom:2rem;
+  }
+  .hero-eyebrow::before{content:"";width:48px;height:1px;background:var(--gold-deep);}
+  .hero h1{
+    font-family:'Fraunces',serif;font-weight:300;
+    font-size:clamp(2.6rem,5.8vw,5.5rem);
+    line-height:0.98;letter-spacing:-0.035em;
+    margin-bottom:1.8rem;max-width:22ch;
+  }
+  .hero h1 .italic{color:var(--rust);}
+  .hero-sub{
+    font-size:1.2rem;line-height:1.55;color:var(--ink-soft);
+    max-width:38rem;margin-bottom:2.5rem;
+  }
+  .hero-sub .italic{color:var(--ink);}
+  .hero-lockup{
+    display:inline-flex;align-items:center;gap:1.4rem;
+    padding:0.9rem 1.6rem;
+    border:1px solid var(--line);
+    border-radius:999px;
+    background:var(--paper);
+    margin-top:1rem;
+  }
+  .hero-lockup .vox{
+    font-family:'Fraunces',serif;font-weight:500;font-size:1.05rem;letter-spacing:-0.01em;
+  }
+  .hero-lockup .x{
+    color:var(--gold-deep);font-family:'JetBrains Mono',monospace;font-size:0.9rem;
+  }
+  .hero-lockup .cb{
+    font-family:'Fraunces',serif;font-weight:500;font-size:1.05rem;letter-spacing:-0.01em;
+    display:inline-flex;align-items:center;gap:0.4rem;
+  }
+  .hero-lockup .cb-mark{
+    width:22px;height:22px;border-radius:6px;
+    background:var(--ink);color:var(--cream);
+    font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:500;
+    display:inline-flex;align-items:center;justify-content:center;letter-spacing:0;
+  }
+
+  /* ============ SHARED SECTION HEADER ============ */
+  .section-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;text-transform:uppercase;letter-spacing:0.18em;
+    color:var(--gold-deep);display:flex;align-items:center;gap:1rem;
+    margin-bottom:1.8rem;
+  }
+  .section-label::before{content:"";display:inline-block;width:32px;height:1px;background:var(--gold-deep);}
+  .section-title{
+    font-family:'Fraunces',serif;font-weight:300;
+    font-size:clamp(2rem,4vw,3.6rem);
+    line-height:1.05;letter-spacing:-0.03em;
+    margin-bottom:1.4rem;max-width:26ch;
+  }
+  .section-title .italic{color:var(--rust);}
+  .section-intro{
+    font-size:1.08rem;line-height:1.6;color:var(--ink-soft);
+    max-width:38rem;margin-bottom:3.5rem;
+  }
+
+  /* ============ BRIDGE (Why Cloudbeds + Voxtera) ============ */
+  .bridge{
+    padding:7rem 2.5rem;
+    background:var(--paper);
+    border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);
+    position:relative;z-index:2;
+  }
+  .bridge-inner{max-width:1300px;margin:0 auto;}
+  .bridge-intro-p{
+    font-size:1.05rem;line-height:1.6;color:var(--ink-soft);
+    max-width:42rem;margin-bottom:1.1rem;
+  }
+  .bridge-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;
+    margin-top:3rem;
+  }
+  .bridge-col{
+    background:var(--cream);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:2.2rem 2rem;
+  }
+  .bridge-col h4{
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:1.4rem;font-weight:400;
+    color:var(--rust);margin-bottom:1.4rem;
+    padding-bottom:1rem;border-bottom:1px solid var(--line);
+  }
+  .bridge-col ul{list-style:none;}
+  .bridge-col li{
+    padding:0.7rem 0;border-bottom:1px solid var(--line);
+    font-size:0.98rem;line-height:1.45;color:var(--ink);
+    display:grid;grid-template-columns:auto 1fr;gap:0.7rem;align-items:start;
+  }
+  .bridge-col li:last-child{border-bottom:none;}
+  .bridge-col li::before{
+    content:"—";color:var(--gold-deep);
+    font-family:'Instrument Serif',serif;font-style:italic;
+  }
+
+  /* ============ ROI MATH ============ */
+  .roi{
+    padding:7rem 2.5rem;
+    background:var(--cream-deep);
+    position:relative;z-index:2;
+  }
+  .roi-inner{max-width:1200px;margin:0 auto;}
+  .roi-grid{
+    display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.5rem;
+    margin-top:3rem;
+  }
+  .roi-card{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:2.4rem 1.8rem;
+    transition:transform .35s, box-shadow .35s, border-color .35s;
+  }
+  .roi-card:hover{
+    transform:translateY(-3px);
+    border-color:var(--gold-deep);
+    box-shadow:0 20px 40px -22px rgba(26,24,20,0.18);
+  }
+  .roi-card-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.66rem;text-transform:uppercase;letter-spacing:0.14em;
+    color:var(--gold-deep);margin-bottom:1rem;
+  }
+  .roi-card-figure{
+    font-family:'Fraunces',serif;font-weight:300;
+    font-size:clamp(1.8rem,3.4vw,2.6rem);
+    line-height:1.05;letter-spacing:-0.025em;
+    color:var(--ink);margin-bottom:1.2rem;
+  }
+  .roi-card-figure .italic{color:var(--gold-deep);font-family:'Instrument Serif',serif;font-style:italic;}
+  .roi-card-detail{
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:1rem;line-height:1.55;color:var(--ink-soft);
+  }
+  .roi-closer{
+    margin-top:3.5rem;text-align:center;
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:clamp(1.2rem,1.8vw,1.6rem);
+    color:var(--ink-soft);
+  }
+  .roi-closer .italic-rust{color:var(--rust);}
+
+  /* ============ USE CASES (5 cards, 2-col grid) ============ */
+  .uc{
+    padding:7rem 2.5rem;
+    position:relative;z-index:2;
+  }
+  .uc-inner{max-width:1400px;margin:0 auto;}
+  .uc-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;
+    margin-top:3rem;
+  }
+  .uc-card{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:2.2rem 2rem;
+    transition:transform .35s, box-shadow .35s, border-color .35s;
+    display:flex;flex-direction:column;gap:1.4rem;
+  }
+  .uc-card:hover{
+    transform:translateY(-4px);
+    border-color:var(--gold-deep);
+    box-shadow:0 24px 50px -22px rgba(26,24,20,0.2);
+  }
+  .uc-head{
+    display:flex;align-items:center;gap:1rem;
+    padding-bottom:1.2rem;border-bottom:1px solid var(--line);
+  }
+  .uc-mark{
+    width:44px;height:44px;border-radius:50%;
+    background:rgba(184,136,74,0.14);color:var(--gold-deep);
+    display:inline-flex;align-items:center;justify-content:center;
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:1.5rem;font-weight:400;flex-shrink:0;
+  }
+  .uc-title{
+    font-family:'Fraunces',serif;font-weight:500;
+    font-size:1.3rem;letter-spacing:-0.02em;color:var(--ink);
+  }
+  .uc-tag{
+    font-family:'JetBrains Mono',monospace;font-size:0.6rem;
+    text-transform:none;letter-spacing:0.04em;
+    color:var(--gold-deep);margin-top:0.3rem;word-break:break-word;
+  }
+  .uc-scenario{
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:1.05rem;line-height:1.55;color:var(--ink-soft);
+    padding:1rem 1.2rem;background:var(--cream);
+    border-left:3px solid var(--gold);border-radius:0 8px 8px 0;
+  }
+  .uc-block-label{
+    font-family:'JetBrains Mono',monospace;font-size:0.62rem;
+    text-transform:uppercase;letter-spacing:0.14em;
+    color:var(--gold-deep);margin-bottom:0.6rem;
+  }
+  .uc-list{list-style:none;}
+  .uc-list li{
+    padding:0.45rem 0;font-size:0.96rem;line-height:1.45;color:var(--ink);
+    display:grid;grid-template-columns:auto 1fr;gap:0.7rem;align-items:start;
+  }
+  .uc-list li::before{
+    content:"—";color:var(--gold-deep);
+    font-family:'Instrument Serif',serif;font-style:italic;line-height:1.4;
+  }
+  .uc-limit{
+    margin-top:auto;padding:1rem 1.2rem;
+    background:rgba(164,57,28,0.04);
+    border:1px solid rgba(164,57,28,0.18);
+    border-radius:10px;
+  }
+  .uc-limit-label{
+    font-family:'JetBrains Mono',monospace;font-size:0.6rem;
+    text-transform:uppercase;letter-spacing:0.14em;
+    color:var(--rust);margin-bottom:0.4rem;
+  }
+  .uc-limit-text{
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:0.95rem;line-height:1.5;color:var(--ink-soft);
+  }
+  .uc-status{
+    margin-top:0.8rem;
+    font-family:'JetBrains Mono',monospace;font-size:0.6rem;
+    text-transform:uppercase;letter-spacing:0.14em;
+    color:var(--sage);display:flex;align-items:center;gap:0.5rem;
+  }
+  .uc-status::before{
+    content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+    background:var(--sage);
+  }
+  .uc-status.roadmap{color:var(--gold-deep);}
+  .uc-status.roadmap::before{background:var(--gold);}
+
+  /* ============ INTEGRATION DEPTH ============ */
+  .integration{
+    padding:7rem 2.5rem;
+    background:var(--ink);color:var(--cream);
+    position:relative;overflow:hidden;
+  }
+  .integration::before{
+    content:"";position:absolute;inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.85 0 0 0 0 0.7 0 0 0 0.1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity:.4;mix-blend-mode:screen;pointer-events:none;
+  }
+  .integration-inner{max-width:1300px;margin:0 auto;position:relative;}
+  .integration .section-label{color:var(--gold);}
+  .integration .section-label::before{background:var(--gold);}
+  .integration .section-title{color:var(--cream);}
+  .integration .section-title .italic{color:var(--gold);}
+  .integration .section-intro{color:rgba(244,237,225,0.78);}
+  .int-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;
+    margin-top:3rem;
+  }
+  .int-col{
+    background:rgba(244,237,225,0.04);
+    border:1px solid rgba(244,237,225,0.12);
+    border-radius:18px;
+    padding:2.2rem 2rem;
+  }
+  .int-col h4{
+    font-family:'Fraunces',serif;font-weight:500;
+    font-size:1.3rem;color:var(--cream);
+    margin-bottom:0.4rem;letter-spacing:-0.01em;
+  }
+  .int-col .int-tag{
+    font-family:'JetBrains Mono',monospace;font-size:0.62rem;
+    text-transform:uppercase;letter-spacing:0.14em;
+    color:var(--gold);margin-bottom:1.4rem;
+  }
+  .int-col ul{list-style:none;}
+  .int-col li{
+    padding:0.7rem 0;
+    border-bottom:1px solid rgba(244,237,225,0.1);
+    font-size:0.95rem;line-height:1.5;color:rgba(244,237,225,0.85);
+    display:grid;grid-template-columns:auto 1fr;gap:0.7rem;align-items:start;
+  }
+  .int-col li:last-child{border-bottom:none;}
+  .int-col li::before{content:"→";color:var(--gold);font-family:'JetBrains Mono',monospace;}
+  .int-never{
+    margin-top:2.5rem;padding:1.6rem 1.8rem;
+    border:1px solid rgba(244,237,225,0.18);
+    border-radius:14px;
+    font-family:'JetBrains Mono',monospace;font-size:0.72rem;
+    line-height:1.7;text-transform:uppercase;letter-spacing:0.1em;
+    color:rgba(244,237,225,0.75);
+  }
+  .int-never strong{color:var(--rust);font-weight:500;}
+
+  /* ============ STAGED ROLLOUT ============ */
+  .rollout{
+    padding:7rem 2.5rem;
+    background:var(--cream);
+    position:relative;z-index:2;
+  }
+  .rollout-inner{max-width:1300px;margin:0 auto;}
+  .rollout-grid{
+    display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.5rem;
+    margin-top:3rem;
+  }
+  .roll-card{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:2.4rem 2rem;
+    position:relative;
+  }
+  .roll-card::before{
+    content:"";position:absolute;top:-7px;left:2rem;
+    width:14px;height:14px;border-radius:50%;
+    background:var(--gold);
+    box-shadow:0 0 0 4px var(--cream), 0 0 0 5px var(--gold-deep);
+  }
+  .roll-when{
+    font-family:'Fraunces',serif;font-weight:500;
+    font-size:1.4rem;letter-spacing:-0.02em;
+    margin-bottom:0.4rem;color:var(--ink);
+  }
+  .roll-when .italic{color:var(--rust);}
+  .roll-stage{
+    font-family:'JetBrains Mono',monospace;font-size:0.62rem;
+    text-transform:uppercase;letter-spacing:0.14em;
+    color:var(--gold-deep);margin-bottom:1.4rem;
+  }
+  .roll-list{list-style:none;}
+  .roll-list li{
+    padding:0.55rem 0;
+    border-bottom:1px solid var(--line);
+    font-size:0.95rem;line-height:1.45;
+    display:grid;grid-template-columns:auto 1fr;gap:0.7rem;align-items:start;
+  }
+  .roll-list li:last-child{border-bottom:none;}
+  .roll-list li::before{
+    content:"—";color:var(--gold-deep);
+    font-family:'Instrument Serif',serif;font-style:italic;
+  }
+  .rollout-note{
+    margin-top:3rem;text-align:center;
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:1.05rem;color:var(--ink-soft);
+  }
+
+  /* ============ PRICING ============ */
+  .pricing{
+    padding:7rem 2.5rem;
+    background:var(--paper);
+    border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    position:relative;z-index:2;
+  }
+  .pricing-inner{max-width:1300px;margin:0 auto;}
+  .pricing-grid{
+    display:grid;grid-template-columns:1fr 1fr 1fr;gap:2rem;
+    margin-top:3.5rem;
+  }
+  .price-card{
+    border:1px solid var(--line-strong);
+    border-radius:24px;padding:2.5rem 2rem;
+    background:var(--cream);
+    display:flex;flex-direction:column;position:relative;
+  }
+  .price-card.feature{
+    background:var(--ink);color:var(--cream);
+    border-color:var(--ink);transform:translateY(-12px);
+  }
+  .price-tag{
+    font-family:'JetBrains Mono',monospace;font-size:0.7rem;
+    text-transform:uppercase;letter-spacing:0.16em;
+    color:var(--gold-deep);margin-bottom:1.2rem;
+  }
+  .price-card.feature .price-tag{color:var(--gold);}
+  .price-name{
+    font-family:'Fraunces',serif;font-weight:400;
+    font-size:1.8rem;letter-spacing:-0.02em;margin-bottom:0.4rem;
+  }
+  .price-desc{
+    font-size:0.95rem;color:var(--ink-soft);
+    margin-bottom:2rem;line-height:1.45;
+  }
+  .price-card.feature .price-desc{color:rgba(244,237,225,0.7);}
+  .price-num{
+    font-family:'Fraunces',serif;font-weight:300;
+    font-size:3rem;line-height:1;
+    letter-spacing:-0.04em;color:var(--ink);margin-bottom:0.4rem;
+  }
+  .price-card.feature .price-num{color:var(--gold);}
+  .price-num .small{
+    font-size:1rem;font-family:'JetBrains Mono',monospace;
+    color:var(--ink-soft);font-weight:400;letter-spacing:0;
+  }
+  .price-card.feature .price-num .small{color:rgba(244,237,225,0.6);}
+  .price-features{list-style:none;margin:2rem 0;flex:1;}
+  .price-features li{
+    padding:0.7rem 0;
+    border-bottom:1px solid var(--line);
+    font-size:0.92rem;display:flex;align-items:flex-start;gap:0.7rem;
+    line-height:1.4;
+  }
+  .price-card.feature .price-features li{border-color:rgba(244,237,225,0.15);}
+  .price-features li::before{
+    content:"→";color:var(--gold-deep);flex-shrink:0;
+    font-family:'JetBrains Mono',monospace;
+  }
+  .price-card.feature .price-features li::before{color:var(--gold);}
+  .price-features li:last-child{border-bottom:none;}
+  .price-cta{
+    margin-top:auto;padding:0.95rem 1.6rem;
+    background:var(--ink);color:#fff;
+    border:1px solid var(--ink);border-radius:999px;
+    font-family:'JetBrains Mono',monospace;font-size:0.74rem;
+    text-transform:uppercase;letter-spacing:0.14em;
+    cursor:pointer;text-decoration:none;text-align:center;
+    transition:all .3s;
+  }
+  .price-cta:hover{background:var(--rust);border-color:var(--rust);}
+  .price-card.feature .price-cta{background:var(--gold);color:var(--ink);border-color:var(--gold);}
+  .price-card.feature .price-cta:hover{background:var(--cream);border-color:var(--cream);}
+  .pricing-foot{
+    margin-top:2.5rem;text-align:center;
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:1rem;color:var(--ink-soft);
+  }
+
+  /* ============ FAQ ============ */
+  .faq{
+    padding:7rem 2.5rem;
+    background:var(--cream-deep);
+    position:relative;z-index:2;
+  }
+  .faq-inner{max-width:1200px;margin:0 auto;}
+  .faq-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:2rem;
+    margin-top:3rem;
+  }
+  .faq-item{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:1.8rem 2rem;
+  }
+  .faq-q{
+    font-family:'Fraunces',serif;font-weight:500;
+    font-size:1.15rem;line-height:1.35;
+    color:var(--ink);margin-bottom:0.9rem;letter-spacing:-0.01em;
+  }
+  .faq-a{
+    font-size:0.98rem;line-height:1.6;color:var(--ink-soft);
+  }
+  .faq-a .italic{color:var(--rust);}
+
+  /* ============ FORM SECTION ============ */
+  .form-section{
+    padding:7rem 2.5rem;
+    background:var(--ink);color:var(--cream);
+    position:relative;overflow:hidden;
+  }
+  .form-section::before{
+    content:"";position:absolute;inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.85 0 0 0 0 0.7 0 0 0 0.1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity:.4;mix-blend-mode:screen;pointer-events:none;
+  }
+  .form-inner{max-width:880px;margin:0 auto;position:relative;}
+  .form-section .section-label{color:var(--gold);}
+  .form-section .section-label::before{background:var(--gold);}
+  .form-section .section-title{color:var(--cream);}
+  .form-section .section-title .italic{color:var(--gold);}
+  .form-section .section-intro{color:rgba(244,237,225,0.78);}
+  .form-card{
+    background:var(--cream);color:var(--ink);
+    border:1px solid var(--line);
+    border-radius:24px;padding:3rem;
+    box-shadow:0 40px 80px -50px rgba(0,0,0,0.6);
+    margin-top:3rem;
+  }
+  .form-block{
+    padding-bottom:2rem;margin-bottom:2rem;
+    border-bottom:1px solid var(--line);
+  }
+  .form-block:last-of-type{border-bottom:none;margin-bottom:1.5rem;}
+  .form-block-title{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.7rem;text-transform:uppercase;letter-spacing:0.18em;
+    color:var(--gold-deep);margin-bottom:1.5rem;
+    display:flex;align-items:center;gap:0.8rem;
+  }
+  .form-block-title .num{
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:1.3rem;color:var(--gold);font-weight:400;letter-spacing:0;
+  }
+  .form-row{
+    display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;
+    margin-bottom:1.2rem;
+  }
+  .form-row.full{grid-template-columns:1fr;}
+  .form-field{display:flex;flex-direction:column;}
+  .form-field label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.66rem;text-transform:uppercase;letter-spacing:0.14em;
+    color:var(--ink-soft);margin-bottom:0.5rem;
+  }
+  .form-field label .required{color:var(--rust);}
+  .form-field input[type=text],
+  .form-field input[type=email],
+  .form-field select{
+    background:transparent;border:none;
+    border-bottom:1px solid var(--line-strong);
+    padding:0.6rem 0;
+    font-family:'Fraunces',serif;font-size:1.05rem;
+    color:var(--ink);transition:border-color .25s;border-radius:0;
+  }
+  .form-field input:focus, .form-field select:focus{outline:none;border-bottom-color:var(--rust);}
+  .form-field select{
+    appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 12 8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5 L6 6.5 L11 1.5' stroke='%238a5f2a' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 0.3rem center;
+    background-size:12px;padding-right:1.5rem;cursor:pointer;
+  }
+  .form-field .helper{
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:0.82rem;color:var(--ink-soft);margin-top:0.4rem;
+  }
+  .checkbox-group{display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.4rem;}
+  .checkbox-chip{
+    display:inline-flex;align-items:center;
+    padding:0.5rem 1rem;border:1px solid var(--line-strong);
+    border-radius:999px;font-family:'Fraunces',serif;font-size:0.92rem;
+    cursor:pointer;transition:all .25s;background:transparent;user-select:none;
+  }
+  .checkbox-chip input{position:absolute;opacity:0;pointer-events:none;}
+  .checkbox-chip:hover{border-color:var(--gold-deep);}
+  .checkbox-chip.selected{background:var(--ink);color:var(--cream);border-color:var(--ink);}
+  .radio-group{display:flex;flex-direction:column;gap:0.8rem;margin-top:0.4rem;}
+  .radio-option{
+    display:flex;align-items:flex-start;gap:0.8rem;
+    padding:1rem 1.2rem;border:1px solid var(--line-strong);
+    border-radius:12px;cursor:pointer;transition:all .25s;background:transparent;
+  }
+  .radio-option:hover{border-color:var(--gold-deep);background:rgba(184,136,74,0.04);}
+  .radio-option.selected{border-color:var(--rust);background:rgba(164,57,28,0.04);}
+  .radio-option input{position:absolute;opacity:0;pointer-events:none;}
+  .radio-marker{
+    width:18px;height:18px;border-radius:50%;
+    border:1.5px solid var(--line-strong);
+    flex-shrink:0;margin-top:0.15rem;transition:all .25s;position:relative;
+  }
+  .radio-option.selected .radio-marker{border-color:var(--rust);}
+  .radio-option.selected .radio-marker::after{
+    content:"";position:absolute;inset:3px;background:var(--rust);border-radius:50%;
+  }
+  .radio-label{font-family:'Fraunces',serif;font-size:1rem;line-height:1.4;}
+  .radio-label .sub{
+    display:block;font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:0.88rem;color:var(--ink-soft);margin-top:0.2rem;
+  }
+  .form-submit{
+    margin-top:1.5rem;text-align:right;
+    display:flex;justify-content:space-between;align-items:center;
+    flex-wrap:wrap;gap:1rem;
+  }
+  .form-privacy{
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:0.88rem;color:var(--ink-soft);max-width:24rem;
+  }
+  .submit-btn{
+    background:var(--ink);color:var(--cream);
+    border:1px solid var(--ink);
+    padding:1.1rem 2.2rem;border-radius:999px;
+    font-family:'JetBrains Mono',monospace;font-size:0.78rem;
+    text-transform:uppercase;letter-spacing:0.14em;
+    cursor:pointer;transition:all .3s;
+    display:inline-flex;align-items:center;gap:0.6rem;
+  }
+  .submit-btn:hover{background:var(--rust);border-color:var(--rust);transform:translateY(-2px);}
+  .submit-btn .arrow{transition:transform .3s;}
+  .submit-btn:hover .arrow{transform:translateX(4px);}
+  .submit-btn:disabled{opacity:0.6;cursor:wait;transform:none;}
+  .submit-btn:disabled:hover{background:var(--ink);border-color:var(--ink);transform:none;}
+  .hp-field{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;}
+  .form-error{
+    display:none;margin:1rem 0;padding:0.9rem 1.2rem;
+    background:rgba(164,57,28,0.08);
+    border:1px solid rgba(164,57,28,0.25);
+    border-radius:10px;color:var(--rust);
+    font-family:'Fraunces',serif;font-size:0.95rem;line-height:1.4;
+  }
+  .form-error.visible{display:block;}
+  .form-success{
+    display:none;background:var(--cream);
+    border:1px solid var(--gold);border-radius:24px;
+    padding:4rem 3rem;text-align:center;
+    box-shadow:0 40px 80px -50px rgba(0,0,0,0.6);
+    margin-top:3rem;color:var(--ink);
+  }
+  .form-success.visible{display:block;}
+  .success-mark{
+    width:70px;height:70px;border-radius:50%;
+    background:var(--gold);color:var(--ink);
+    display:inline-flex;align-items:center;justify-content:center;
+    margin-bottom:2rem;
+  }
+  .success-title{
+    font-family:'Fraunces',serif;font-weight:300;
+    font-size:2.4rem;line-height:1;letter-spacing:-0.03em;margin-bottom:1rem;
+  }
+  .success-title .italic{color:var(--rust);}
+  .success-body{
+    font-size:1.1rem;line-height:1.6;color:var(--ink-soft);
+    max-width:28rem;margin:0 auto 2rem;
+  }
+  .success-body strong{color:var(--ink);font-weight:500;}
+  .success-next{
+    border-top:1px solid var(--line);padding-top:2rem;margin-top:2rem;
+    font-family:'JetBrains Mono',monospace;font-size:0.7rem;
+    color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.14em;
+  }
+
+  /* ============ FOOTER ============ */
+  footer{
+    padding:4rem 2.5rem 2rem;
+    background:var(--ink);color:rgba(244,237,225,0.6);
+    position:relative;z-index:2;
+  }
+  .footer-grid{
+    max-width:1400px;margin:0 auto;
+    display:grid;grid-template-columns:2fr 1fr 1fr 1fr;
+    gap:3rem;padding-bottom:3rem;
+    border-bottom:1px solid rgba(244,237,225,0.1);
+  }
+  .footer-grid h5{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.7rem;text-transform:uppercase;letter-spacing:0.16em;
+    color:var(--gold);margin-bottom:1.2rem;
+  }
+  .footer-grid a{
+    display:block;color:rgba(244,237,225,0.7);text-decoration:none;
+    padding:0.4rem 0;font-size:0.95rem;transition:color .25s;
+  }
+  .footer-grid a:hover{color:var(--cream);}
+  .footer-brand{
+    font-family:'Fraunces',serif;font-size:2rem;font-weight:400;color:var(--cream);
+    margin-bottom:1rem;letter-spacing:-0.02em;
+  }
+  .footer-tag{
+    font-family:'Instrument Serif',serif;font-style:italic;font-size:1.1rem;
+    color:rgba(244,237,225,0.6);max-width:24rem;line-height:1.5;
+  }
+  .footer-bottom{
+    max-width:1400px;margin:0 auto;padding-top:2rem;
+    display:flex;justify-content:space-between;align-items:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.72rem;letter-spacing:0.1em;
+    text-transform:uppercase;color:rgba(244,237,225,0.4);
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width:1024px){
+    .bridge-grid{grid-template-columns:1fr;}
+    .roi-grid{grid-template-columns:1fr;}
+    .uc-grid{grid-template-columns:1fr;}
+    .int-grid{grid-template-columns:1fr;}
+    .rollout-grid{grid-template-columns:1fr;}
+    .pricing-grid{grid-template-columns:1fr;}
+    .price-card.feature{transform:none;}
+    .faq-grid{grid-template-columns:1fr;}
+  }
+  @media (max-width:640px){
+    nav{padding:1rem 1.2rem;}
+    .nav-links{gap:1rem;}
+    .nav-links a:not(.nav-cta):not(.active){display:none;}
+    .hero{padding:7rem 1.2rem 3rem;}
+    .bridge,.roi,.uc,.integration,.rollout,.pricing,.faq,.form-section{
+      padding:5rem 1.2rem;
+    }
+    .form-card{padding:2rem 1.5rem;}
+    .form-row{grid-template-columns:1fr;gap:1rem;}
+    .footer-grid{grid-template-columns:1fr;gap:2rem;}
+    .footer-bottom{flex-direction:column;gap:1rem;text-align:center;}
+    .form-submit{flex-direction:column;align-items:stretch;}
+    .submit-btn{justify-content:center;}
+  }
+
+  /* scroll reveal */
+  .reveal{opacity:0;transform:translateY(30px);transition:opacity .9s cubic-bezier(.2,.7,.2,1), transform .9s cubic-bezier(.2,.7,.2,1);}
+  .reveal.in{opacity:1;transform:translateY(0);}
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav>
+  <a href="voxtera.html" class="logo">
+    <span class="logo-mark">
+      <svg viewBox="0 0 32 32" fill="none">
+        <circle cx="16" cy="16" r="15" stroke="#1a1814" stroke-width="1.2" fill="none"/>
+        <path d="M8 16 L11 16 L13 10 L16 22 L19 8 L21 18 L24 16" stroke="#b8884a" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    Voxtera<sup>™</sup>
+  </a>
+  <div class="nav-links">
+    <a href="voxtera.html" data-i18n="nav.home">Home</a>
+    <a href="voxtera-hotels.html" data-i18n="nav.for_hotels">For hotels</a>
+    <a href="voxtera-cloudbeds.html" class="active" data-i18n="cb.nav_link">Cloudbeds</a>
+    <a href="voxtera-demo.html" data-i18n="nav.try_demo">Try demo</a>
+    <a href="voxtera.html#pricing" data-i18n="nav.pricing">Pricing</a>
+    <div class="i18n-picker" id="lang-picker"></div>
+    <a href="#form" class="nav-cta" data-i18n="cb.nav_cta">Talk to us →</a>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <div class="hero-eyebrow" data-i18n="cb.hero_eyebrow">For Cloudbeds-powered hotels</div>
+  <h1 data-i18n-html="cb.hero_h1">
+    Your <span class="italic">Cloudbeds</span>.<br/>
+    Your team's <span class="italic">chat</span>.<br/>
+    Every guest, every language —<br/>
+    one connected loop.
+  </h1>
+  <p class="hero-sub" data-i18n-html="cb.hero_sub">
+    Voxtera plugs directly into Cloudbeds. Every call, every request, every after-hours booking inquiry becomes a structured ticket — already linked to the right reservation, in your team's language, in your team's chat. <span class="italic">No new app for your staff. No new dashboard for you.</span>
+  </p>
+  <div class="hero-lockup">
+    <span class="vox">Voxtera</span>
+    <span class="x">×</span>
+    <span class="cb"><span class="cb-mark">Cb</span> Cloudbeds</span>
+  </div>
+</section>
+
+<!-- ============ BRIDGE: Why Cloudbeds + Voxtera ============ -->
+<section class="bridge">
+  <div class="bridge-inner">
+    <div class="section-label" data-i18n="cb.bridge_label">The bridge</div>
+    <h2 class="section-title" data-i18n-html="cb.bridge_title">
+      Cloudbeds runs your hotel.<br/>
+      Voxtera <span class="italic">runs the phone</span>.
+    </h2>
+    <p class="bridge-intro-p" data-i18n="cb.bridge_intro_p1">
+      Cloudbeds is the system of record — rooms, rates, reservations, channels. Voxtera is the system of conversation — every call your guest makes, in any of 99 languages, captured and resolved.
+    </p>
+    <p class="bridge-intro-p" data-i18n="cb.bridge_intro_p2">
+      Alone, each is incomplete. Cloudbeds doesn't pick up the phone at 2am. Voxtera doesn't know who's in room 412. Together, they close the loop your team has been duct-taping with WhatsApp screenshots and sticky notes.
+    </p>
+
+    <div class="bridge-grid">
+      <div class="bridge-col reveal">
+        <h4 data-i18n="cb.bridge_left_h">Cloudbeds gives Voxtera</h4>
+        <ul>
+          <li data-i18n="cb.bridge_left_b1">Real-time reservation data</li>
+          <li data-i18n="cb.bridge_left_b2">Guest profiles and language preferences</li>
+          <li data-i18n="cb.bridge_left_b3">Room status and assignments</li>
+          <li data-i18n="cb.bridge_left_b4">Arrival webhooks (pre-warm the right voice)</li>
+          <li data-i18n="cb.bridge_left_b5">Rates and availability for booking inquiries</li>
+          <li data-i18n="cb.bridge_left_b6">Guest notes for personalization</li>
+        </ul>
+      </div>
+      <div class="bridge-col reveal">
+        <h4 data-i18n="cb.bridge_right_h">Voxtera gives Cloudbeds</h4>
+        <ul>
+          <li data-i18n="cb.bridge_right_b1">Every call captured as a ticket</li>
+          <li data-i18n="cb.bridge_right_b2">Post-stay notes written back to guest profile</li>
+          <li data-i18n="cb.bridge_right_b3">Maintenance and housekeeping requests, structured</li>
+          <li data-i18n="cb.bridge_right_b4">After-hours coverage Cloudbeds can't provide alone</li>
+          <li data-i18n="cb.bridge_right_b5">Lost-and-found, special requests, escalations</li>
+          <li data-i18n="cb.bridge_right_b6">Multilingual conversation log per guest</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ROI MATH ============ -->
+<section class="roi">
+  <div class="roi-inner">
+    <div class="section-label" data-i18n="cb.roi_label">The math, plainly</div>
+    <h2 class="section-title" data-i18n-html="cb.roi_title">
+      $200 a month is <span class="italic">less than 8 hours</span><br/>
+      of your night receptionist.
+    </h2>
+    <p class="section-intro" data-i18n="cb.roi_intro">
+      Boutique operators ask us this question first, so we'll answer it first.
+    </p>
+
+    <div class="roi-grid">
+      <div class="roi-card reveal">
+        <div class="roi-card-label" data-i18n="cb.roi_c1_label">Cost of one part-time night shift</div>
+        <div class="roi-card-figure" data-i18n-html="cb.roi_c1_fig">$400 – $1,500 <span class="italic">/ month</span></div>
+        <div class="roi-card-detail" data-i18n="cb.roi_c1_detail">Per market: Mexican coast $400, Turkish coast $1,200, Dubai $2,500+. They sleep, take breaks, miss 30% of after-hours calls, and rarely cover more than 2 languages.</div>
+      </div>
+      <div class="roi-card reveal">
+        <div class="roi-card-label" data-i18n="cb.roi_c2_label">Cost of Voxtera</div>
+        <div class="roi-card-figure" data-i18n-html="cb.roi_c2_fig">$200 <span class="italic">/ month</span></div>
+        <div class="roi-card-detail" data-i18n="cb.roi_c2_detail">Never sleeps. 99 languages. Every call captured to Cloudbeds. No sick days, no turnover, no training.</div>
+      </div>
+      <div class="roi-card reveal">
+        <div class="roi-card-label" data-i18n="cb.roi_c3_label">What it takes to pay for itself</div>
+        <div class="roi-card-figure" data-i18n-html="cb.roi_c3_fig">ONE booking inquiry <span class="italic">/ month</span></div>
+        <div class="roi-card-detail" data-i18n="cb.roi_c3_detail">Recovered after-hours. Direct-bookings average $150–400/night in our customer base. One recovered call covers Voxtera twice over.</div>
+      </div>
+    </div>
+
+    <p class="roi-closer" data-i18n-html="cb.roi_closer">
+      <span class="italic italic-rust">Everything below this section is upside.</span>
+    </p>
+  </div>
+</section>
+
+<!-- ============ USE CASES — 5 cards ============ -->
+<section class="uc">
+  <div class="uc-inner">
+    <div class="section-label" data-i18n="cb.uc_label">Five ways Voxtera + Cloudbeds work together</div>
+    <h2 class="section-title" data-i18n-html="cb.uc_title">
+      One integration.<br/>
+      <span class="italic">Five quiet improvements</span> —<br/>
+      every day, every guest.
+    </h2>
+    <p class="section-intro" data-i18n="cb.uc_intro">
+      Each of these uses the Cloudbeds API or webhooks in a specific way. None of them require a new app, a new screen, or a new login for your team. They just happen.
+    </p>
+
+    <div class="uc-grid">
+
+      <!-- Card i: Booking inquiry capture -->
+      <div class="uc-card reveal">
+        <div class="uc-head">
+          <span class="uc-mark">i</span>
+          <div>
+            <div class="uc-title" data-i18n="cb.uc1_title">After-hours booking inquiry capture</div>
+            <div class="uc-tag" data-i18n="cb.uc1_tag">getAvailableRoomTypes · getRatePlans · push to Telegram or WhatsApp · WhatsApp confirmation</div>
+          </div>
+        </div>
+        <div class="uc-scenario" data-i18n="cb.uc1_scenario">
+          11:48pm. A French couple calls about a sea-view room next weekend. Voxtera detects French on the first syllable, quotes live availability from your Cloudbeds — $240/night, breakfast included, two rooms left — and asks for their name and email. By the time your reservations manager opens Telegram or WhatsApp at 8am, the lead is waiting with a recording, transcript, and a one-tap "confirm booking" button.
+        </div>
+        <div>
+          <div class="uc-block-label" data-i18n="cb.uc_why">Why it matters</div>
+          <ul class="uc-list">
+            <li data-i18n="cb.uc1_b1">After-hours booking calls are your highest-intent inbound traffic — direct, not OTA</li>
+            <li data-i18n="cb.uc1_b2">Boutiques lose an estimated 30–60% of these calls today; you can't measure what you can't capture</li>
+            <li data-i18n="cb.uc1_b3">Voxtera writes the call as a structured note on a new Cloudbeds guest profile, so even uncaptured leads aren't lost</li>
+            <li data-i18n="cb.uc1_b4">One recovered booking per month pays Voxtera back roughly twice over at $200–400/night</li>
+          </ul>
+        </div>
+        <div class="uc-limit">
+          <div class="uc-limit-label" data-i18n="cb.uc_limit">Honest limit</div>
+          <div class="uc-limit-text" data-i18n="cb.uc1_limit">Voxtera captures the lead. It does not auto-create confirmed reservations — your team approves each one in the morning. The conversion from warm lead to actual booking depends on how fast your reservations team replies; we recommend within 12 hours.</div>
+        </div>
+        <div class="uc-status" data-i18n="cb.uc1_status">Live in pilot</div>
+      </div>
+
+      <!-- Card ii: Caller recognition -->
+      <div class="uc-card reveal">
+        <div class="uc-head">
+          <span class="uc-mark">ii</span>
+          <div>
+            <div class="uc-title" data-i18n="cb.uc2_title">Inbound caller recognition</div>
+            <div class="uc-tag" data-i18n="cb.uc2_tag">getReservations (arriving / in-house / departing within 7 days) · guest profile lookup by phone</div>
+          </div>
+        </div>
+        <div class="uc-scenario" data-i18n="cb.uc2_scenario">
+          Mr. Müller, currently in room 207, calls from his mobile. Voxtera matches the number to his active Cloudbeds reservation in under a second, greets him by name in German, and already knows his room number and his note about a previous late checkout. He asks about extending one night; Voxtera quotes the rate from live availability and creates a tentative request for your front desk.
+        </div>
+        <div>
+          <div class="uc-block-label" data-i18n="cb.uc_why">Why it matters</div>
+          <ul class="uc-list">
+            <li data-i18n="cb.uc2_b1">No more "what room are you calling from?" misheard through an accent</li>
+            <li data-i18n="cb.uc2_b2">The guest feels recognized from word one — the boutique difference, automated</li>
+            <li data-i18n="cb.uc2_b3">Conversation context (room, language, VIP status, prior notes) is attached to every ticket the call generates</li>
+          </ul>
+        </div>
+        <div class="uc-limit">
+          <div class="uc-limit-label" data-i18n="cb.uc_limit">Honest limit</div>
+          <div class="uc-limit-text" data-i18n="cb.uc2_limit">Recognition only works when the caller's number matches the one in their Cloudbeds profile. International SIMs, family-member phones, and front-desk-collected numbers that staff forgot to log will fall back to "may I have your booking name?" gracefully. Realistic match rate is around 60–70% for active in-house guests, lower pre-arrival.</div>
+        </div>
+        <div class="uc-status" data-i18n="cb.uc2_status">Live in pilot</div>
+      </div>
+
+      <!-- Card iii: In-stay requests -->
+      <div class="uc-card reveal">
+        <div class="uc-head">
+          <span class="uc-mark">iii</span>
+          <div>
+            <div class="uc-title" data-i18n="cb.uc3_title">In-stay requests, structured & tracked</div>
+            <div class="uc-tag" data-i18n="cb.uc3_tag">postGuestNote · webhook write-back · rule-based urgency → priority routing</div>
+          </div>
+        </div>
+        <div class="uc-scenario" data-i18n="cb.uc3_scenario">
+          Brazilian family in room 412 calls reception at 23:51: the AC isn't cooling and the baby is crying. Voxtera classifies the request as urgent based on category ("AC failure") and hour (after 22:00), tags the ticket accordingly, posts it in Portuguese to the maintenance Telegram group with a 15-minute SLA, and pings the duty manager. If no one acknowledges within 15 minutes, the on-call number gets a voice call. Once resolved, Voxtera sends the guest a WhatsApp confirmation in Portuguese: "Quarto 412 — ar-condicionado reparado. Boa noite."
+        </div>
+        <div>
+          <div class="uc-block-label" data-i18n="cb.uc_why">Why it matters</div>
+          <ul class="uc-list">
+            <li data-i18n="cb.uc3_b1">Maintenance complaints after 22:00 escalate before a guest gives up and writes a bad review</li>
+            <li data-i18n="cb.uc3_b2">Routine daytime requests (towels, late checkout, breakfast question) flow through the same pipeline without paging anyone urgently</li>
+            <li data-i18n="cb.uc3_b3">Every ticket — routine or urgent — gets written as a structured note on the guest's Cloudbeds profile, so next time they book your front desk sees the history</li>
+            <li data-i18n="cb.uc3_b4">The audit trail your insurer, brand standards or owner asks for, without anyone manually logging</li>
+          </ul>
+        </div>
+        <div class="uc-limit">
+          <div class="uc-limit-label" data-i18n="cb.uc_limit">Honest limit</div>
+          <div class="uc-limit-text" data-i18n="cb.uc3_limit">Urgency is determined by rules — request category, hour of day, keywords like "broken," "emergency," "leaking," "medical." Voxtera does not analyze voice tone or detect emotion. A guest who calmly asks about a broken AC at 3pm will be classified routine; the same call at 2am will be urgent. The thresholds are tunable per property after the pilot.</div>
+        </div>
+        <div class="uc-status roadmap" data-i18n="cb.uc3_status">Routine ticketing live · category-and-time-based urgency in beta · SLA-driven escalation Q3 2026</div>
+      </div>
+
+      <!-- Card iv: Pre-arrival info drop -->
+      <div class="uc-card reveal">
+        <div class="uc-head">
+          <span class="uc-mark">iv</span>
+          <div>
+            <div class="uc-title" data-i18n="cb.uc4_title">Pre-arrival information drop</div>
+            <div class="uc-tag" data-i18n="cb.uc4_tag">webhook reservation/confirmed · guest language · WhatsApp Business template</div>
+          </div>
+        </div>
+        <div class="uc-scenario" data-i18n="cb.uc4_scenario">
+          Mrs. Tanaka books your hotel through a Japanese OTA. 48 hours before arrival, Cloudbeds fires the confirmation webhook. Voxtera sends her one WhatsApp message in Japanese: check-in time, the property address with a Google Maps link, the wifi network, breakfast hours, and a single sentence — "Reply to this message if you need anything before you arrive." That's it. No promotional content, no upsell. Just the information your front desk would have called or emailed her anyway, delivered in her language, on the channel she actually reads.
+        </div>
+        <div>
+          <div class="uc-block-label" data-i18n="cb.uc_why">Why it matters</div>
+          <ul class="uc-list">
+            <li data-i18n="cb.uc4_b1">Cuts inbound "what time is check-in?" / "where exactly is the hotel?" calls by 30–50% in pilot data</li>
+            <li data-i18n="cb.uc4_b2">Guests in non-English-speaking countries especially appreciate practical info in their language — most boutiques send English-only emails</li>
+            <li data-i18n="cb.uc4_b3">One pre-approved WhatsApp template per property; you write the template once, Voxtera fills in the variables</li>
+            <li data-i18n="cb.uc4_b4">Stays strictly within WhatsApp Business's transactional-message rules — no promotional opt-in headaches</li>
+          </ul>
+        </div>
+        <div class="uc-limit">
+          <div class="uc-limit-label" data-i18n="cb.uc_limit">Honest limit</div>
+          <div class="uc-limit-text" data-i18n="cb.uc4_limit">WhatsApp requires the guest's mobile number in Cloudbeds. Booking via OTA channels that don't share phone numbers (common with Booking.com) means the guest won't get the message — they'll get your existing email confirmation only.</div>
+        </div>
+        <div class="uc-status" data-i18n="cb.uc4_status">Live in pilot</div>
+      </div>
+
+      <!-- Card v: Lost-and-found -->
+      <div class="uc-card reveal">
+        <div class="uc-head">
+          <span class="uc-mark">v</span>
+          <div>
+            <div class="uc-title" data-i18n="cb.uc5_title">Lost-and-found, end to end</div>
+            <div class="uc-tag" data-i18n="cb.uc5_tag">getReservations (checked-out, last 7 days) · postGuestNote · WhatsApp follow-up</div>
+          </div>
+        </div>
+        <div class="uc-scenario" data-i18n="cb.uc5_scenario">
+          Mr. Rossi calls the hotel from the airport in panic — his passport is in the room safe and his flight to Milan boards in three hours. Voxtera doesn't recognize the number (his Italian SIM, not the one in his booking); he gives his name and check-out date in Italian. Voxtera matches the reservation, logs the case as urgent against his guest profile, pings the duty manager directly on Telegram with the room number and the time pressure, and confirms to Mr. Rossi in Italian that the front desk has been alerted and will call him back in five minutes. A real human takes it from there — but the right human, with the right context, in under a minute.
+        </div>
+        <div>
+          <div class="uc-block-label" data-i18n="cb.uc_why">Why it matters</div>
+          <ul class="uc-list">
+            <li data-i18n="cb.uc5_b1">Forgotten passports, jewelry from the safe, wallets, prescription medication — these are the calls that actually come in, and they're high-stress for both guest and staff</li>
+            <li data-i18n="cb.uc5_b2">Voxtera's job here is triage and context, not resolution: get the right reservation in front of the right manager fast, in the guest's language, with the guest already calmed</li>
+            <li data-i18n="cb.uc5_b3">Every case is logged as a structured note on the guest's Cloudbeds profile — owner gets a real lost-property log instead of a chat history nobody can search</li>
+            <li data-i18n="cb.uc5_b4">Recovering a passport in someone's language earns the kind of post-stay review boutiques can't buy</li>
+          </ul>
+        </div>
+        <div class="uc-limit">
+          <div class="uc-limit-label" data-i18n="cb.uc_limit">Honest limit</div>
+          <div class="uc-limit-text" data-i18n="cb.uc5_limit">Voxtera handles the intake and routing. The actual item recovery, the courier arrangement, the conversation with the airline — that's a human job, and should be. The value of this card is that your team gets the call routed to them already structured, not that the bot solves the crisis alone.</div>
+        </div>
+        <div class="uc-status" data-i18n="cb.uc5_status">Live in pilot</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ INTEGRATION DEPTH ============ -->
+<section class="integration">
+  <div class="integration-inner">
+    <div class="section-label" data-i18n="cb.int_label">What we read. What we write.</div>
+    <h2 class="section-title" data-i18n-html="cb.int_title">Honest about the <span class="italic">integration boundary</span>.</h2>
+    <p class="section-intro" data-i18n="cb.int_intro">
+      We're not a black box. Here's exactly what Voxtera reads from your Cloudbeds account, and exactly what it writes back. Nothing more, nothing less.
+    </p>
+
+    <div class="int-grid">
+      <div class="int-col reveal">
+        <h4 data-i18n="cb.int_read_h">We READ</h4>
+        <div class="int-tag" data-i18n="cb.int_read_tag">From your Cloudbeds account</div>
+        <ul>
+          <li data-i18n="cb.int_read_b1">Reservations (current, arriving, departing, checked-out within 7 days)</li>
+          <li data-i18n="cb.int_read_b2">Guest profiles, languages, special requests, VIP status</li>
+          <li data-i18n="cb.int_read_b3">Room status and assignments</li>
+          <li data-i18n="cb.int_read_b4">Rates and availability (for booking inquiries)</li>
+          <li data-i18n="cb.int_read_b5">Webhooks: created, confirmed, checked-in, checked-out, room-changed, cancelled</li>
+        </ul>
+      </div>
+      <div class="int-col reveal">
+        <h4 data-i18n="cb.int_write_h">We WRITE</h4>
+        <div class="int-tag" data-i18n="cb.int_write_tag">Back to your Cloudbeds account</div>
+        <ul>
+          <li data-i18n="cb.int_write_b1">Guest notes (every voice interaction summary)</li>
+          <li data-i18n="cb.int_write_b2">Maintenance and housekeeping issue logs</li>
+          <li data-i18n="cb.int_write_b3">Lost-and-found records</li>
+          <li data-i18n="cb.int_write_b4">Optional: tentative reservations from booking calls (pending your staff confirmation)</li>
+          <li data-i18n="cb.int_write_b5">Optional: post-stay sentiment tags from outbound check-out call</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="int-never">
+      <div data-i18n-html="cb.int_never_1"><strong>We never access</strong> — credit card data, payment methods, financial reports</div>
+      <div data-i18n-html="cb.int_never_2"><strong>We never create</strong> — confirmed bookings without your staff approval</div>
+      <div data-i18n-html="cb.int_never_3"><strong>We never delete</strong> — reservations, notes, profiles. Voxtera is additive, not destructive.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STAGED ROLLOUT ============ -->
+<section class="rollout">
+  <div class="rollout-inner">
+    <div class="section-label" data-i18n="cb.roll_label">How we onboard</div>
+    <h2 class="section-title" data-i18n-html="cb.roll_title">Trust is earned in <span class="italic">three steps</span>.</h2>
+    <p class="section-intro" data-i18n="cb.roll_intro">
+      No "rip and replace." No big-bang go-live. We turn on what you trust, when you trust it.
+    </p>
+
+    <div class="rollout-grid">
+      <div class="roll-card reveal">
+        <div class="roll-when" data-i18n-html="cb.roll_d1_when">Day 1 — <span class="italic">Inbound coverage</span></div>
+        <div class="roll-stage" data-i18n="cb.roll_d1_stage">Start here</div>
+        <ul class="roll-list">
+          <li data-i18n="cb.roll_d1_b1">Voice answers every inbound call in the guest's language</li>
+          <li data-i18n="cb.roll_d1_b2">Tickets route to your existing Telegram, WhatsApp or Slack</li>
+          <li data-i18n="cb.roll_d1_b3">Notes write back to Cloudbeds guest profiles</li>
+          <li data-i18n="cb.roll_d1_b4">Read-only against your PMS. Zero risk.</li>
+        </ul>
+      </div>
+      <div class="roll-card reveal">
+        <div class="roll-when" data-i18n-html="cb.roll_d30_when">Day 30 — <span class="italic">Booking inquiries</span></div>
+        <div class="roll-stage" data-i18n="cb.roll_d30_stage">Once you trust it</div>
+        <ul class="roll-list">
+          <li data-i18n="cb.roll_d30_b1">After-hours booking calls captured as warm leads</li>
+          <li data-i18n="cb.roll_d30_b2">Quoted from live Cloudbeds availability</li>
+          <li data-i18n="cb.roll_d30_b3">Reservations team approves each in the morning</li>
+          <li data-i18n="cb.roll_d30_b4">Still no auto-booking. Still your team in control.</li>
+        </ul>
+      </div>
+      <div class="roll-card reveal">
+        <div class="roll-when" data-i18n-html="cb.roll_d90_when">Day 90 — <span class="italic">Full loop</span></div>
+        <div class="roll-stage" data-i18n="cb.roll_d90_stage">When you're ready</div>
+        <ul class="roll-list">
+          <li data-i18n="cb.roll_d90_b1">Auto-create reservations on Voxtera's side (still cancellable)</li>
+          <li data-i18n="cb.roll_d90_b2">Pre-arrival WhatsApp information drop in guest's language</li>
+          <li data-i18n="cb.roll_d90_b3">Sentiment-tagged post-stay summary calls</li>
+          <li data-i18n="cb.roll_d90_b4">Full guest profile enrichment</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="rollout-note" data-i18n="cb.roll_note">
+      Every step is opt-in. You can stop at any phase and we'll never push you to the next.
+    </p>
+  </div>
+</section>
+
+<!-- ============ PRICING ============ -->
+<section class="pricing">
+  <div class="pricing-inner">
+    <div class="section-label" data-i18n="cb.price_label">Pricing for Cloudbeds properties</div>
+    <h2 class="section-title" data-i18n-html="cb.price_title">Three tiers. <span class="italic">No setup fees.</span> No annual lock-in.</h2>
+
+    <div class="pricing-grid">
+      <div class="price-card reveal">
+        <div class="price-tag" data-i18n="cb.price_t1_tag">Tier 1</div>
+        <div class="price-name" data-i18n="cb.price_t1_name">Coverage</div>
+        <div class="price-desc" data-i18n="cb.price_t1_desc">For boutique properties under 60 keys that want after-hours and language coverage.</div>
+        <div class="price-num" data-i18n-html="cb.price_t1_num">$200<span class="small"> / month per property</span></div>
+        <ul class="price-features">
+          <li data-i18n="cb.price_t1_f1">Voice answers in 99 languages</li>
+          <li data-i18n="cb.price_t1_f2">Tickets to your team's chat</li>
+          <li data-i18n="cb.price_t1_f3">Notes written to Cloudbeds profiles</li>
+          <li data-i18n="cb.price_t1_f4">Up to 300 calls / month</li>
+          <li data-i18n="cb.price_t1_f5">Email support</li>
+        </ul>
+        <a href="#form" class="price-cta" data-i18n="cb.price_t1_cta">Start a pilot →</a>
+      </div>
+
+      <div class="price-card feature reveal">
+        <div class="price-tag" data-i18n="cb.price_t2_tag">Recommended</div>
+        <div class="price-name" data-i18n="cb.price_t2_name">Loop</div>
+        <div class="price-desc" data-i18n="cb.price_t2_desc">For active boutiques (60–150 keys) that want the full conversation loop closed.</div>
+        <div class="price-num" data-i18n-html="cb.price_t2_num">$400<span class="small"> / month per property</span></div>
+        <ul class="price-features">
+          <li data-i18n="cb.price_t2_f1">Everything in Coverage</li>
+          <li data-i18n="cb.price_t2_f2">Booking inquiry capture</li>
+          <li data-i18n="cb.price_t2_f3">Maintenance SLA tracking + escalation</li>
+          <li data-i18n="cb.price_t2_f4">Pre-arrival WhatsApp information drop</li>
+          <li data-i18n="cb.price_t2_f5">Up to 1,500 calls / month</li>
+          <li data-i18n="cb.price_t2_f6">Priority chat support</li>
+        </ul>
+        <a href="#form" class="price-cta" data-i18n="cb.price_t2_cta">Start a pilot →</a>
+      </div>
+
+      <div class="price-card reveal">
+        <div class="price-tag" data-i18n="cb.price_t3_tag">Tier 3</div>
+        <div class="price-name" data-i18n="cb.price_t3_name">Group</div>
+        <div class="price-desc" data-i18n="cb.price_t3_desc">For boutique chains with 3+ properties on Cloudbeds.</div>
+        <div class="price-num" data-i18n="cb.price_t3_num">Custom</div>
+        <ul class="price-features">
+          <li data-i18n="cb.price_t3_f1">Everything in Loop</li>
+          <li data-i18n="cb.price_t3_f2">Centralized reservations queue across properties</li>
+          <li data-i18n="cb.price_t3_f3">Cross-property guest profile enrichment</li>
+          <li data-i18n="cb.price_t3_f4">Custom integrations (Slack, Teams, custom webhooks)</li>
+          <li data-i18n="cb.price_t3_f5">Dedicated success contact</li>
+        </ul>
+        <a href="#form" class="price-cta" data-i18n="cb.price_t3_cta">Talk to us →</a>
+      </div>
+    </div>
+
+    <p class="pricing-foot" data-i18n="cb.price_foot">
+      Annual commitment available with 2 months free. 30-day pilot on any tier, no commitment.
+    </p>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section class="faq">
+  <div class="faq-inner">
+    <div class="section-label" data-i18n="cb.faq_label">Honest answers</div>
+    <h2 class="section-title" data-i18n-html="cb.faq_title">Questions Cloudbeds operators <span class="italic">actually ask</span>.</h2>
+
+    <div class="faq-grid">
+      <div class="faq-item reveal">
+        <div class="faq-q" data-i18n="cb.faq_q1">Do we need a specific Cloudbeds plan?</div>
+        <div class="faq-a" data-i18n="cb.faq_a1">Any Cloudbeds plan with API access works. Some Cloudbeds tiers include API access at no extra cost; some charge for it. We'll help you check during onboarding. If your plan requires an upgrade for API access, we'll tell you before you commit to Voxtera.</div>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q" data-i18n="cb.faq_q2">How long does setup take?</div>
+        <div class="faq-a" data-i18n-html="cb.faq_a2">A typical install takes <span class="italic">under an hour</span>. You authorize Voxtera in your Cloudbeds account (one click), tell us which Telegram or WhatsApp group your team uses, and we provision a phone number. Most properties are live the same day.</div>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q" data-i18n="cb.faq_q3">What happens if Cloudbeds goes down?</div>
+        <div class="faq-a" data-i18n-html="cb.faq_a3">Voxtera still answers calls. It will tell guests we're unable to access reservations momentarily, and queue all tickets for your team in Telegram. Once Cloudbeds is back, queued notes and tickets sync automatically. <span class="italic">Voxtera is never a single point of failure for your phone line.</span></div>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q" data-i18n="cb.faq_q4">Will my staff need to learn anything new?</div>
+        <div class="faq-a" data-i18n-html="cb.faq_a4">No. <span class="italic">That's the whole point.</span> Voxtera posts into the Telegram, WhatsApp or Slack group your team already uses. The only difference your staff notices is more requests show up pre-tagged with room number, language, and priority.</div>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q" data-i18n="cb.faq_q5">What about guests who want a human?</div>
+        <div class="faq-a" data-i18n-html="cb.faq_a5">Anyone asks for a person, they get a person. We route the call to whatever phone number you specify — front desk, night manager, on-call. <span class="italic">No escalation gauntlets. No "are you sure?" loops.</span></div>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q" data-i18n="cb.faq_q6">Is our guest data sold or used to train models?</div>
+        <div class="faq-a" data-i18n-html="cb.faq_a6">No. Guest conversations are never used for training, never shared with third parties, and stored only as long as needed for your operations and audit. <span class="italic">Full DPA available on request.</span></div>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q" data-i18n="cb.faq_q7">Can we try it before paying?</div>
+        <div class="faq-a" data-i18n="cb.faq_a7">Yes. 30-day pilot on any tier, no card required upfront. If at the end of 30 days it isn't earning its $200/month back, you walk away — and we'll send you the conversation logs and ticket history as a parting gift.</div>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q" data-i18n="cb.faq_q8">Do you support Cloudbeds-connected door locks?</div>
+        <div class="faq-a" data-i18n="cb.faq_a8">On the roadmap. Today Voxtera doesn't generate or distribute mobile keys — we keep that securely in Cloudbeds and your door lock vendor. We can announce a room-ready key over voice or WhatsApp once Cloudbeds fires the room-assignment webhook.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FORM ============ -->
+<section class="form-section" id="form">
+  <div class="form-inner">
+    <div class="section-label" data-i18n="cb.cta_label">Discovery</div>
+    <h2 class="section-title" data-i18n-html="cb.cta_title">Ready to <span class="italic">close the loop</span>?</h2>
+    <p class="section-intro" data-i18n="cb.cta_intro">
+      Tell us about your property. We'll come back within one business day with a tailored 15-minute demo in your guest mix's top three languages.
+    </p>
+
+    <form class="form-card" id="discovery-form" novalidate>
+      <!-- Hidden: this lead came from the Cloudbeds page -->
+      <input type="hidden" name="referrer" value="cloudbeds" />
+
+      <!-- Block 0: Cloudbeds-specific qualifier -->
+      <div class="form-block">
+        <div class="form-block-title"><span class="num">i.</span> <span data-i18n="cb.cta_block0">Your Cloudbeds property</span></div>
+        <div class="form-row">
+          <div class="form-field">
+            <label data-i18n="cb.cta_calls_q">Roughly how many calls do you receive per month?</label>
+            <select name="call_volume">
+              <option value="" data-i18n="hotels.f_select">Select…</option>
+              <option value="under_100" data-i18n="cb.cta_calls_a">Under 100</option>
+              <option value="100_500" data-i18n="cb.cta_calls_b">100 – 500</option>
+              <option value="500_2000" data-i18n="cb.cta_calls_c">500 – 2,000</option>
+              <option value="2000_plus" data-i18n="cb.cta_calls_d">2,000+</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label data-i18n="cb.cta_cb_status">Cloudbeds API access</label>
+            <select name="cb_api">
+              <option value="" data-i18n="hotels.f_select">Select…</option>
+              <option value="enabled" data-i18n="cb.cta_cb_enabled">Already enabled</option>
+              <option value="unsure" data-i18n="cb.cta_cb_unsure">Not sure — help me check</option>
+              <option value="need_upgrade" data-i18n="cb.cta_cb_upgrade">Plan upgrade needed</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Block 1: Property -->
+      <div class="form-block">
+        <div class="form-block-title"><span class="num">ii.</span> <span data-i18n="hotels.form_block1">About your property</span></div>
+        <div class="form-row">
+          <div class="form-field">
+            <label><span data-i18n="hotels.f_property_name">Property name</span> <span class="required">*</span></label>
+            <input type="text" name="property_name" required placeholder="The Riad Paloma" />
+          </div>
+          <div class="form-field">
+            <label><span data-i18n="hotels.f_location">City, country</span> <span class="required">*</span></label>
+            <input type="text" name="location" required placeholder="Marrakech, Morocco" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label data-i18n="hotels.f_keys">Number of keys</label>
+            <select name="size">
+              <option value="" data-i18n="hotels.f_select">Select…</option>
+              <option data-i18n="hotels.f_keys_a">Under 20</option>
+              <option>20 – 40</option>
+              <option>40 – 100</option>
+              <option>100 – 250</option>
+              <option data-i18n="hotels.f_keys_e">250 +</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label data-i18n="hotels.f_proptype">Property type</label>
+            <select name="type">
+              <option value="" data-i18n="hotels.f_select">Select…</option>
+              <option data-i18n="hotels.f_ptype_indep">Independent hotel</option>
+              <option data-i18n="hotels.f_ptype_chain">Boutique chain</option>
+              <option data-i18n="hotels.f_ptype_branded">Branded residence</option>
+              <option data-i18n="hotels.f_ptype_vac">Vacation rental group</option>
+              <option data-i18n="hotels.f_ptype_resort">Resort</option>
+              <option data-i18n="hotels.f_ptype_hostel">Hostel</option>
+              <option data-i18n="hotels.f_ptype_serv">Serviced apartments</option>
+              <option data-i18n="hotels.f_ptype_other">Other</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Block 2: You -->
+      <div class="form-block">
+        <div class="form-block-title"><span class="num">iii.</span> <span data-i18n="hotels.form_block3">About you</span></div>
+        <div class="form-row">
+          <div class="form-field">
+            <label><span data-i18n="hotels.f_yourname">Your name</span> <span class="required">*</span></label>
+            <input type="text" name="name" required placeholder="Marina Costa" />
+          </div>
+          <div class="form-field">
+            <label data-i18n="hotels.f_role">Your role</label>
+            <select name="role">
+              <option value="" data-i18n="hotels.f_select">Select…</option>
+              <option data-i18n="hotels.f_role_owner">Owner</option>
+              <option data-i18n="hotels.f_role_gm">General Manager</option>
+              <option data-i18n="hotels.f_role_ops">Operations Director</option>
+              <option data-i18n="hotels.f_role_rooms">Rooms Division Manager</option>
+              <option data-i18n="hotels.f_role_fo">Front Office Manager</option>
+              <option data-i18n="hotels.f_role_it">IT / Innovation</option>
+              <option data-i18n="hotels.f_role_other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-field">
+            <label><span data-i18n="hotels.f_email">Email</span> <span class="required">*</span></label>
+            <input type="email" name="email" required placeholder="marina@hotelcasalisboa.com" />
+            <span class="helper" data-i18n="hotels.f_email_helper">We'll only use this to reply about your inquiry. No newsletters.</span>
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-field">
+            <label><span data-i18n="hotels.f_next">Preferred next step</span> <span class="required">*</span></label>
+            <div class="radio-group" data-radio>
+              <label class="radio-option">
+                <input type="radio" name="next_step" value="demo" required/>
+                <span class="radio-marker"></span>
+                <span class="radio-label"><span data-i18n="hotels.f_next1_t">Send me a 15-minute demo invite</span> <span class="sub" data-i18n="hotels.f_next1_s">A live multilingual conversation in the language(s) of your choice</span></span>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="next_step" value="info_pack"/>
+                <span class="radio-marker"></span>
+                <span class="radio-label"><span data-i18n="hotels.f_next2_t">Send me a written information pack</span> <span class="sub" data-i18n="hotels.f_next2_s">A PDF with all the details, no call required yet</span></span>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="next_step" value="pricing"/>
+                <span class="radio-marker"></span>
+                <span class="radio-label"><span data-i18n="hotels.f_next3_t">Just send pricing details</span> <span class="sub" data-i18n="hotels.f_next3_s">For my property size and channel needs</span></span>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="next_step" value="pilot"/>
+                <span class="radio-marker"></span>
+                <span class="radio-label"><span data-i18n="hotels.f_next4_t">I want to start a 30-day pilot</span> <span class="sub" data-i18n="hotels.f_next4_s">Skip the demo — let's set up a live trial</span></span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden PMS field — pre-set to Cloudbeds (this is the Cloudbeds page) -->
+      <input type="hidden" name="pms" value="Cloudbeds" />
+
+      <!-- Honeypot — hidden from humans, bots fill everything -->
+      <div class="hp-field" aria-hidden="true">
+        <label>Company website</label>
+        <input type="text" name="company_website" tabindex="-1" autocomplete="off" />
+      </div>
+
+      <div class="form-error" id="form-error" role="alert"></div>
+
+      <div class="form-submit">
+        <div class="form-privacy" data-i18n="hotels.form_privacy">
+          We respond within one business day. Your information is used only to reply to your inquiry — never shared, never sold, never added to a newsletter.
+        </div>
+        <button type="submit" class="submit-btn" id="submit-btn">
+          <span class="submit-label" data-i18n="hotels.form_submit">Send inquiry</span>
+          <span class="arrow">→</span>
+        </button>
+      </div>
+    </form>
+
+    <div class="form-success" id="form-success">
+      <span class="success-mark">
+        <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 L10 17 L19 7"/></svg>
+      </span>
+      <h2 class="success-title" id="success-title" data-i18n-html="hotels.f_success_title_html">Thank you, <span class="italic" id="success-name">there</span>.</h2>
+      <p class="success-body" id="success-body" data-i18n-html="hotels.f_success_body_html">
+        We'll be in touch about your inquiry within <strong>one business day</strong>.
+      </p>
+      <div class="success-next" id="success-next" data-i18n="hotels.f_success_next">
+        Next step · scheduled within 3 business days
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="footer-grid">
+    <div>
+      <div class="footer-brand">Voxtera</div>
+      <p class="footer-tag" data-i18n="footer.tagline">A multilingual voice concierge for hotels and residences that turns every guest request into action — in the tool your team already uses.</p>
+    </div>
+    <div>
+      <h5 data-i18n="footer.col2_title">Product</h5>
+      <a href="voxtera.html" data-i18n="nav.home">Home</a>
+      <a href="voxtera-hotels.html" data-i18n="nav.for_hotels">For hotels</a>
+      <a href="voxtera-cloudbeds.html" data-i18n="cb.footer_link">Cloudbeds integration</a>
+      <a href="voxtera.html#pricing" data-i18n="nav.pricing">Pricing</a>
+    </div>
+    <div>
+      <h5 data-i18n="footer.col3_title">For operators</h5>
+      <a href="#" data-i18n="footer.independent">Independent hotels</a>
+      <a href="#" data-i18n="footer.link_residences">Branded residences</a>
+      <a href="#" data-i18n="footer.link_rentals">Vacation rentals</a>
+      <a href="#" data-i18n="footer.resort">Resort groups</a>
+    </div>
+    <div>
+      <h5 data-i18n="footer.col4_title">Contact</h5>
+      <a href="mailto:hello@voxtera.ai">hello@voxtera.ai</a>
+      <a href="voxtera-hotels.html#form" data-i18n="hotels.form_label">Discovery form</a>
+      <a href="#" data-i18n="footer.link_trust">Trust Center</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span data-i18n="footer.copyright">© 2026 Voxtera — Built in Canada</span>
+    <span data-i18n="footer.legal">Privacy · Terms · GDPR · DPA</span>
+  </div>
+</footer>
+
+<script>
+  // Scroll reveal
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach((entry, i) => {
+      if(entry.isIntersecting){
+        setTimeout(() => entry.target.classList.add('in'), i * 50);
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold:0.12, rootMargin:'0px 0px -40px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Chip multi-select
+  document.querySelectorAll('[data-multiselect] .checkbox-chip').forEach(chip => {
+    chip.addEventListener('click', e => {
+      setTimeout(() => {
+        const input = chip.querySelector('input');
+        chip.classList.toggle('selected', input.checked);
+      }, 0);
+    });
+  });
+
+  // Radio button styling
+  document.querySelectorAll('[data-radio]').forEach(group => {
+    group.addEventListener('change', e => {
+      group.querySelectorAll('.radio-option').forEach(opt => {
+        const input = opt.querySelector('input');
+        opt.classList.toggle('selected', input.checked);
+      });
+    });
+  });
+
+  // Form submit — POSTs to /api/inquiry, same shape as the hotels page form
+  const form = document.getElementById('discovery-form');
+  const success = document.getElementById('form-success');
+  const successBody = document.getElementById('success-body');
+  const successNext = document.getElementById('success-next');
+  const errorBox = document.getElementById('form-error');
+  const submitBtn = document.getElementById('submit-btn');
+  const submitLabel = submitBtn.querySelector('.submit-label');
+
+  function collectFormData() {
+    const data = new FormData(form);
+    return {
+      property_name: (data.get('property_name') || '').trim(),
+      location:      (data.get('location') || '').trim(),
+      size:          data.get('size') || null,
+      property_type: data.get('type') || null,
+      pms:           data.get('pms') || 'Cloudbeds',
+      referrer:      data.get('referrer') || 'cloudbeds',
+      call_volume:   data.get('call_volume') || null,
+      cb_api:        data.get('cb_api') || null,
+      name:          (data.get('name') || '').trim(),
+      role:          data.get('role') || null,
+      email:         (data.get('email') || '').trim(),
+      next_step:     data.get('next_step'),
+      company_website: data.get('company_website') || '',
+    };
+  }
+
+  function showError(message) {
+    errorBox.textContent = message;
+    errorBox.classList.add('visible');
+    errorBox.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+  function clearError() {
+    errorBox.textContent = '';
+    errorBox.classList.remove('visible');
+  }
+  function setLoading(isLoading) {
+    submitBtn.disabled = isLoading;
+    submitLabel.textContent = isLoading ? 'Sending…' : 'Send inquiry';
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearError();
+
+    const required = form.querySelectorAll('[required]');
+    let valid = true;
+    required.forEach(field => {
+      const isUnchecked = field.type === 'radio' && !form.querySelector(`[name="${field.name}"]:checked`);
+      if (!field.value || isUnchecked) {
+        valid = false;
+        field.style.borderBottomColor = 'var(--rust)';
+      }
+    });
+    if (!valid) {
+      const firstInvalid = Array.from(required).find(f => !f.value);
+      if (firstInvalid) firstInvalid.scrollIntoView({behavior:'smooth', block:'center'});
+      showError('Please fill in the required fields.');
+      return;
+    }
+
+    const payload = collectFormData();
+    setLoading(true);
+    try {
+      const resp = await fetch('/api/inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (resp.status === 429) { setLoading(false); showError('Too many submissions from this connection. Please try again in a few minutes.'); return; }
+      if (resp.status === 422) { setLoading(false); showError('Some of your answers couldn’t be validated. Please review the form and try again.'); return; }
+      if (!resp.ok)            { setLoading(false); showError('Something went wrong on our side. Please try again in a moment.'); return; }
+
+      const rawName = (payload.name || 'there').split(' ')[0];
+      const name = rawName.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const messages = {
+        demo:      { title: `Thank you, <span class="italic">${name}</span>.`,    body: `You'll receive a <strong>15-minute demo invitation</strong> within one business day, tailored to your Cloudbeds property's size and language mix.`, next: `Demo · scheduled within 3 business days` },
+        info_pack: { title: `On its way, <span class="italic">${name}</span>.`,   body: `Your information pack will arrive by email within <strong>one business day</strong>. It includes the full capability breakdown, Cloudbeds integration details, and pricing.`, next: `Information pack · arrives within 1 business day` },
+        pricing:   { title: `Coming right up, <span class="italic">${name}</span>.`, body: `Pricing for your property size and channel needs will arrive by email within <strong>one business day</strong>. Plain English, no enterprise sales call required.`, next: `Pricing details · arrives within 1 business day` },
+        pilot:     { title: `Let's get started, <span class="italic">${name}</span>.`, body: `You'll hear from us within <strong>one business day</strong> to set up your <strong>30-day pilot</strong> — fully live, no commitment, full Cloudbeds setup included. Pilots are typically live in 3–5 business days.`, next: `Pilot setup · live within 3–5 business days` }
+      };
+      const msg = messages[payload.next_step] || messages.demo;
+      document.getElementById('success-title').innerHTML = msg.title;
+      successBody.innerHTML = msg.body;
+      successNext.textContent = msg.next;
+
+      form.style.display = 'none';
+      success.classList.add('visible');
+      success.scrollIntoView({behavior:'smooth', block:'start'});
+    } catch (networkError) {
+      setLoading(false);
+      console.error('Inquiry POST failed:', networkError);
+      showError('Network error — please check your connection and try again.');
+    }
+  });
+</script>
+
+<!-- i18n -->
+<script src="i18n/i18n.js"></script>
+
+</body>
+</html>
