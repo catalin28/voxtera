@@ -1,0 +1,7 @@
+# Voxtera Demo Hotel — robots.txt
+User-agent: *
+Disallow: /admin/
+Disallow: /api/
+Disallow: /traces/
+Disallow: /eval/
+Disallow: /i18n/

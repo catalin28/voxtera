@@ -1458,6 +1458,10 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_config_get()
         if self.path == "/api/admin/sessions":
             return self._handle_admin_sessions()
+        if self.path.startswith("/api/admin/visitors"):
+            return self._handle_admin_visitors()
+        if self.path.startswith("/api/admin/ip-lookup"):
+            return self._handle_admin_ip_lookup()
         if self.path == "/api/trace/snapshot":
             return self._handle_trace_snapshot()
         if self.path == "/api/trace/stream":
@@ -1711,6 +1715,183 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(401, {"error": "unauthorized"})
             return
         self._send_json(200, {"ok": True})
+
+    # ------------------------------------------------------------------
+    # /api/admin/visitors — parsed Caddy access log with enrichment
+    # ------------------------------------------------------------------
+
+    def _handle_admin_visitors(self) -> None:
+        """GET /api/admin/visitors — returns parsed access log entries."""
+        ok, _ = self._admin_auth()
+        if not ok:
+            return
+
+        from urllib.parse import parse_qs, urlparse
+
+        parsed_url = urlparse(self.path)
+        params = parse_qs(parsed_url.query)
+        last_n = int(params.get("last", ["500"])[0])
+        summary = "summary" in params
+        no_bots = "no-bots" in params
+
+        log_path = "/var/log/caddy/voxtera-access.log"
+        if not os.path.isfile(log_path):
+            self._send_json(404, {"error": "log_not_found", "path": log_path})
+            return
+
+        BOT_KEYWORDS = [
+            "bot",
+            "crawler",
+            "spider",
+            "gptbot",
+            "oai-searchbot",
+            "googlebot",
+            "bingbot",
+            "yandex",
+            "semrush",
+            "ahref",
+            "mj12bot",
+            "dotbot",
+            "bytespider",
+            "petalbot",
+        ]
+
+        # Paths that only scanners/bots probe — never a real human visitor
+        SCANNER_PATHS = [
+            ".env",
+            ".git/",
+            ".aws/",
+            ".boto",
+            ".cargo/credentials",
+            ".circleci/",
+            ".vscode/sftp",
+            ".DS_Store",
+            "wp-includes/",
+            "wp-login",
+            "wp-admin",
+            "phpmyadmin",
+            "actuator/",
+            "docker-compose",
+            ".docker",
+            "credentials",
+            ".ssh/",
+            "/.well-known/security.txt",
+            "admin.zip",
+            "backup.zip",
+            "phish.zip",
+            "unzip.php",
+            "phpinfo",
+        ]
+
+        # First pass: collect all entries and track suspicious IPs
+        scanner_ips: set = set()
+        raw_entries = []
+        with open(log_path, errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                request = entry.get("request", {})
+                ip = request.get("remote_ip", "?")
+                method = request.get("method", "?")
+                uri = request.get("uri", "?")
+                status = entry.get("status", 0)
+                ts = entry.get("ts", 0)
+                headers = request.get("headers", {})
+                ua_list = headers.get("User-Agent", [])
+                user_agent = ua_list[0] if ua_list else ""
+
+                is_bot = any(b in user_agent.lower() for b in BOT_KEYWORDS)
+
+                # Detect scanner behaviour by path probing
+                uri_lower = uri.lower()
+                if any(p in uri_lower for p in SCANNER_PATHS):
+                    scanner_ips.add(ip)
+
+                raw_entries.append(
+                    {
+                        "ip": ip,
+                        "ts": ts,
+                        "method": method,
+                        "uri": uri,
+                        "status": status,
+                        "user_agent": user_agent,
+                        "is_bot": is_bot,
+                    }
+                )
+
+        # Second pass: mark scanner IPs as bots and apply filter
+        entries = []
+        for e in raw_entries:
+            if e["ip"] in scanner_ips:
+                e["is_bot"] = True
+            if no_bots and e["is_bot"]:
+                continue
+            entries.append(e)
+
+        if summary:
+            ip_data: dict = {}
+            for e in entries:
+                ip = e["ip"]
+                if ip not in ip_data:
+                    ip_data[ip] = {
+                        "ip": ip,
+                        "hits": 0,
+                        "pages": set(),
+                        "first_seen": e["ts"],
+                        "last_seen": e["ts"],
+                        "user_agent": e["user_agent"],
+                        "is_bot": e["is_bot"],
+                    }
+                ip_data[ip]["hits"] += 1
+                ip_data[ip]["pages"].add(e["uri"])
+                ip_data[ip]["last_seen"] = e["ts"]
+            result = []
+            for data in sorted(ip_data.values(), key=lambda x: x["hits"], reverse=True):
+                data["pages"] = sorted(data["pages"])[:20]
+                result.append(data)
+            self._send_json(200, {"visitors": result[:200]})
+        else:
+            self._send_json(200, {"entries": entries[-last_n:]})
+
+    # ------------------------------------------------------------------
+    # /api/admin/ip-lookup — proxy IP geolocation to avoid mixed content
+    # ------------------------------------------------------------------
+
+    def _handle_admin_ip_lookup(self) -> None:
+        """GET /api/admin/ip-lookup?ip=x.x.x.x — proxy to ip-api.com."""
+        ok, _ = self._admin_auth()
+        if not ok:
+            return
+
+        import urllib.request
+        from urllib.parse import parse_qs, urlparse
+
+        parsed_url = urlparse(self.path)
+        params = parse_qs(parsed_url.query)
+        ip = params.get("ip", [""])[0].strip()
+
+        # Basic validation: only allow IP-like strings
+        import re
+
+        if not ip or not re.match(r"^[\d.:a-fA-F]+$", ip):
+            self._send_json(400, {"error": "invalid_ip"})
+            return
+
+        fields = "status,country,countryCode,city,regionName,region,zip,lat,lon,timezone,offset,isp,org,as,asname,reverse,mobile,proxy,hosting,query"
+        url = f"http://ip-api.com/json/{ip}?fields={fields}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Voxtera-Admin/1.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+            self._send_json(200, data)
+        except Exception:
+            self._send_json(502, {"error": "lookup_failed"})
 
     # ------------------------------------------------------------------
     # /api/admin/config — hot-reconfigurable runtime settings

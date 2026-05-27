@@ -534,7 +534,14 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
         return None
     _imp_t0 = time.perf_counter()
     try:
-        from pipecat.frames.frames import StartFrame
+        from pipecat.frames.frames import (
+            Frame,
+            StartFrame,
+            TranscriptionFrame,
+            VADUserStartedSpeakingFrame,
+            VADUserStoppedSpeakingFrame,
+        )
+        from pipecat.processors.frame_processor import FrameDirection
         from pipecat.services.gladia.config import (
             CustomVocabularyConfig,  # noqa: F401 — needed when vocab re-enabled
             LanguageConfig,
@@ -679,6 +686,94 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
         """
 
         _pending_connect: bool = False
+
+        # ── Gladia latency instrumentation ──────────────────────────────────
+        # Tracks wall-clock time between VAD-start (first audio chunk of the
+        # current utterance reaches Gladia's WebSocket) and Gladia emitting a
+        # final TranscriptionFrame downstream. Two deltas are logged:
+        #
+        #   first_audio→final   — total Gladia wall-clock (includes the time
+        #                         the user was still talking)
+        #   user_stopped→final  — Gladia's processing tail after the user
+        #                         stopped speaking; the more meaningful number
+        #                         for "how long did Gladia take to answer"
+        #
+        # Both anchors use perf_counter (monotonic, ns precision). Reset on
+        # each new VAD-start so every utterance is measured independently.
+        _t_first_audio: float | None = None
+        _t_user_stopped: float | None = None
+
+        async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
+            # Mark the start of an utterance the moment Silero VAD fires.
+            # Pipecat's STTGate only opens the audio path between VAD-start
+            # and VAD-stop, so this is the wall-clock instant Gladia first
+            # sees voiced audio for this turn.
+            if isinstance(frame, VADUserStartedSpeakingFrame):
+                self._t_first_audio = time.perf_counter()
+                self._t_user_stopped = None
+            elif isinstance(frame, VADUserStoppedSpeakingFrame):
+                # Only stamp the FIRST stop frame of the turn. VAD events can
+                # echo through multiple pipeline branches; we want the earliest
+                # one we see (== when Gladia last received audio).
+                if self._t_user_stopped is None:
+                    self._t_user_stopped = time.perf_counter()
+            await super().process_frame(frame, direction)
+
+        async def push_frame(
+            self,
+            frame: Frame,
+            direction: FrameDirection = FrameDirection.DOWNSTREAM,
+        ) -> None:
+            # Log on the final TranscriptionFrame Gladia emits downstream.
+            # InterimTranscriptionFrames are ignored so the log line marks the
+            # moment Gladia is "done answering".
+            if (
+                isinstance(frame, TranscriptionFrame)
+                and direction == FrameDirection.DOWNSTREAM
+                and getattr(frame, "text", "")
+            ):
+                now = time.perf_counter()
+                audio_to_final_ms = (
+                    int((now - self._t_first_audio) * 1000)
+                    if self._t_first_audio is not None
+                    else None
+                )
+                stopped_to_final_ms = (
+                    int((now - self._t_user_stopped) * 1000)
+                    if self._t_user_stopped is not None
+                    else None
+                )
+                logger.info(
+                    "[stt] gladia latency: first_audio→final={}ms "
+                    "user_stopped→final={}ms text={!r}",
+                    audio_to_final_ms,
+                    stopped_to_final_ms,
+                    frame.text[:80],
+                )
+                # Mirror into the trace bus so the dashboard / exported trace
+                # JSON carries the same numbers. Best-effort: failure to emit
+                # must never block the transcript from flowing downstream.
+                try:
+                    from voxtera.trace import emit as _trace_emit
+                    from voxtera.trace import tracker as _trace_tracker
+
+                    _trace_emit(
+                        "lifecycle",
+                        source="stt.gladia",
+                        turn_id=_trace_tracker().current(),
+                        data={
+                            "event": "gladia_transcript_latency",
+                            "first_audio_to_final_ms": audio_to_final_ms,
+                            "user_stopped_to_final_ms": stopped_to_final_ms,
+                        },
+                    )
+                except Exception as exc:  # noqa: BLE001 — diagnostic only
+                    logger.debug("[stt] gladia latency trace-emit failed: {}", exc)
+                # Reset so a stray late transcript on the same utterance
+                # doesn't double-count against stale anchors.
+                self._t_first_audio = None
+                self._t_user_stopped = None
+            await super().push_frame(frame, direction)
 
         async def start(self, frame: StartFrame) -> None:
             # Skip GladiaSTTService.start (which immediately calls

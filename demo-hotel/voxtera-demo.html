@@ -400,6 +400,29 @@
   }
   #stop-btn:hover{ background:var(--rust); color:var(--cream); }
 
+  /* ============ SAFARI MUTE OVERLAY (left side of orb) ============ */
+  #safari-mute-btn{
+    display:none;
+    position:absolute;
+    bottom:6%;left:6%;
+    width:64px;
+    height:64px;
+    border-radius:50%;
+    background:var(--ink);
+    border:3px solid var(--cream);
+    cursor:pointer;
+    align-items:center;
+    justify-content:center;
+    box-shadow:
+      0 12px 30px -10px rgba(26,24,20,0.5),
+      0 4px 10px -4px rgba(26,24,20,0.3);
+    transition:transform .25s cubic-bezier(.2,.7,.2,1), background .25s, box-shadow .25s;
+    z-index:3;
+  }
+  #safari-mute-btn:hover{ transform:scale(1.08); background:var(--rust); box-shadow:0 16px 40px -10px rgba(164,57,28,0.55), 0 6px 16px -4px rgba(164,57,28,0.35); }
+  #safari-mute-btn svg{ width:24px; height:24px; }
+  #safari-mute-btn.visible{ display:inline-flex; }
+
   /* ============ TRANSCRIPT (shared message styles) ============ */
   .transcript{
     flex:1;
@@ -963,6 +986,8 @@
     .orb-wrap{width:min(220px, 50vw);}
     .orb-call-btn{width:54px;height:54px;}
     .orb-call-btn svg{width:20px;height:20px;}
+    #safari-mute-btn{width:54px;height:54px;}
+    #safari-mute-btn svg{width:20px;height:20px;}
     .suggestions{gap:0.35rem;padding:0.5rem 1rem 0;}
     .chip{font-size:0.65rem;padding:0.4rem 0.75rem;}
     .transcript{min-height:unset;max-height:unset;}
@@ -1082,6 +1107,14 @@
     <div class="orb" aria-hidden="true">
       <div class="orb-shimmer"></div>
     </div>
+    <!-- Safari mute button (left side of orb, mirrors phone btn) -->
+    <button id="safari-mute-btn" aria-label="Tap to unmute Voxtera">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M11 5L6 9H2v6h4l5 4V5z" fill="#fff"/>
+        <line x1="23" y1="9" x2="17" y2="15" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+        <line x1="17" y1="9" x2="23" y2="15" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
     <button class="orb-call-btn" id="call-btn" aria-label="Start voice call">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.72 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.35 1.85.59 2.81.72A2 2 0 0 1 22 16.92z"/>
@@ -2501,13 +2534,14 @@
     setStatus('Tap the orb, or send a message below to begin.', 'Ready');
   }
   // Safari blocks autoplay without a user gesture. Detect if we can play
-  // immediately; if not, wait for the first user interaction to unlock audio.
+  // immediately; if not, show a mute icon so the user can tap to unlock audio.
   (function scheduleGreeting() {
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     if (!isSafari) {
       setTimeout(playWelcome, 900);
       return;
     }
+    const muteBtn = document.getElementById('safari-mute-btn');
     // Try unlocking audio immediately (works on localhost)
     const probe = new Audio();
     probe.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
@@ -2515,13 +2549,18 @@
     if (p) {
       p.then(() => { probe.pause(); setTimeout(playWelcome, 600); })
        .catch(() => {
-         // Autoplay blocked — wait for first user gesture to unlock, then play greeting
-         const events = ['click', 'touchstart', 'keydown'];
-         function unlock() {
-           events.forEach(e => document.removeEventListener(e, unlock, true));
+         // Autoplay blocked — show mute icon overlay
+         muteBtn.classList.add('visible');
+         muteBtn.addEventListener('click', function onUnmute() {
+           muteBtn.removeEventListener('click', onUnmute);
+           muteBtn.classList.remove('visible');
+           // Resume any existing AudioContext
+           try {
+             const ac = new (window.AudioContext || window.webkitAudioContext)();
+             if (ac.state === 'suspended') ac.resume();
+           } catch (_) {}
            setTimeout(playWelcome, 200);
-         }
-         events.forEach(e => document.addEventListener(e, unlock, { once: true, capture: true }));
+         }, { once: true });
        });
     }
   })();

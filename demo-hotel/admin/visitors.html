@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voxtera — Visitor Analytics</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  --bg: #0f0f1a; --bg-2: #1a1a2e; --bg-3: #25253d; --border: #2a2a40;
+  --gold: #c9a84c; --gold-dim: #a08030; --text: #e8e8f0; --text-dim: #aaa;
+  --green: #4caf50; --red: #ef5350; --blue: #4a7cb8; --orange: #e89830;
+}
+* { box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; }
+header { background: var(--bg-2); border-bottom: 1px solid var(--gold-dim); padding: 16px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+header .logo { font-size: 20px; color: var(--gold); font-weight: 600; }
+header .grow { flex: 1; }
+header .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+/* Token gate */
+#token-gate { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 24px; max-width: 480px; margin: 60px auto; }
+#token-gate h2 { margin: 0 0 12px; color: var(--gold); font-size: 18px; }
+#token-gate input { width: 100%; padding: 10px 12px; background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: ui-monospace, monospace; font-size: 14px; margin-top: 8px; }
+#token-gate input:focus { outline: none; border-color: var(--gold); }
+#token-gate .err { color: #ff8787; font-size: 13px; margin-top: 8px; }
+
+/* Stats */
+.stats { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.stat-card { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; min-width: 140px; }
+.stat-card .label { color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-card .value { font-size: 28px; font-weight: 700; color: var(--gold); margin-top: 4px; }
+
+/* Controls */
+.toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.btn { padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-3); color: var(--text); cursor: pointer; font-size: 13px; }
+.btn:hover { border-color: var(--gold-dim); }
+.btn.active { background: var(--gold-dim); color: #fff; border-color: var(--gold); }
+select, input[type="text"] { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-3); color: var(--text); font-size: 13px; }
+select:focus, input[type="text"]:focus { outline: none; border-color: var(--gold); }
+
+/* Table */
+.table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: var(--bg-2); color: var(--gold); text-align: left; padding: 10px 12px; position: sticky; top: 0; white-space: nowrap; border-bottom: 1px solid var(--border); }
+td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:hover td { background: var(--bg-3); }
+.bot-tag { background: var(--red); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+.human-tag { background: var(--green); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+.ip-link { color: var(--blue); cursor: pointer; text-decoration: underline; }
+.geo-info { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+.org-info { color: var(--orange); font-size: 11px; margin-top: 1px; }
+.pages-list { max-width: 300px; word-break: break-all; }
+.ua-cell { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 11px; }
+.loading { text-align: center; padding: 40px; color: var(--text-dim); }
+.hidden { display: none !important; }
+
+/* IP Detail Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.modal { background: var(--bg-2); border: 1px solid var(--gold-dim); border-radius: 12px; padding: 28px; max-width: 560px; width: 90%; max-height: 80vh; overflow-y: auto; }
+.modal h2 { margin: 0 0 16px; color: var(--gold); font-size: 18px; display: flex; align-items: center; gap: 10px; }
+.modal .close-btn { margin-left: auto; background: none; border: none; color: var(--text-dim); font-size: 22px; cursor: pointer; padding: 4px 8px; }
+.modal .close-btn:hover { color: var(--text); }
+.modal-grid { display: grid; grid-template-columns: 140px 1fr; gap: 8px 12px; font-size: 13px; }
+.modal-grid .label { color: var(--text-dim); font-weight: 500; }
+.modal-grid .value { color: var(--text); word-break: break-all; }
+.modal-grid .value.highlight { color: var(--orange); font-weight: 600; }
+.modal-grid .value.geo { color: var(--green); }
+.modal-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+.modal-tag { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 600; }
+.modal-tag.hosting { background: #553; color: #ffd; }
+.modal-tag.proxy { background: #533; color: #fdd; }
+.modal-tag.mobile { background: #335; color: #ddf; }
+.modal-links { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; }
+.modal-links a { color: var(--blue); font-size: 12px; text-decoration: none; padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px; }
+.modal-links a:hover { border-color: var(--blue); background: rgba(74,124,184,0.1); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Voxtera — Visitors</div>
+  <div class="grow"></div>
+  <div class="controls">
+    <a href="admin.html" class="btn">Admin</a>
+    <a href="trace.html" class="btn">Traces</a>
+    <a href="logs.html" class="btn">Logs</a>
+    <button class="btn" id="btn-refresh">↻ Refresh</button>
+    <button class="btn" id="btn-logout">Logout</button>
+  </div>
+</header>
+
+<main>
+  <!-- Token gate -->
+  <div id="token-gate">
+    <h2>Visitor Analytics</h2>
+    <p style="color:var(--text-dim);font-size:14px;">Enter the admin token to view visitor data.</p>
+    <input id="token-input" type="password" placeholder="VOXTERA_ADMIN_TOKEN" autocomplete="off" />
+    <div class="err" id="token-err"></div>
+  </div>
+
+  <!-- IP Detail Modal -->
+  <div id="ip-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <h2><span id="modal-ip">—</span><button class="close-btn" onclick="closeModal()">✕</button></h2>
+      <div class="modal-tags" id="modal-tags"></div>
+      <div class="modal-grid" id="modal-grid"></div>
+      <div class="modal-links" id="modal-links"></div>
+    </div>
+  </div>
+
+  <!-- Dashboard (hidden until auth) -->
+  <div id="dashboard" class="hidden">
+    <div class="stats" id="stats"></div>
+
+    <div class="toolbar">
+      <button class="btn active" id="btn-summary">Summary by IP</button>
+      <button class="btn" id="btn-detail">Recent Requests</button>
+      <label style="color:var(--text-dim);font-size:13px;display:flex;align-items:center;gap:4px;">
+        <input type="checkbox" id="chk-no-bots" checked> Hide bots
+      </label>
+      <input type="text" id="filter-ip" placeholder="Filter by IP..." style="width:160px;" />
+      <select id="select-last">
+        <option value="100">Last 100</option>
+        <option value="500" selected>Last 500</option>
+        <option value="2000">Last 2000</option>
+      </select>
+    </div>
+
+    <div class="table-wrap" id="table-wrap">
+      <div class="loading">Loading...</div>
+    </div>
+  </div>
+</main>
+
+<script>
+const STORAGE_KEY = "voxtera_admin_token";
+let token = localStorage.getItem(STORAGE_KEY) || "";
+let currentView = "summary";
+let visitorData = null;
+let geoCache = {};
+
+// --- Auth ---
+async function verifyToken(t) {
+  const r = await fetch("/api/admin/verify", { headers: { "X-Admin-Token": t } });
+  return r.ok;
+}
+
+async function init() {
+  if (token && await verifyToken(token)) {
+    showDashboard();
+  } else {
+    document.getElementById("token-gate").classList.remove("hidden");
+  }
+}
+
+document.getElementById("token-input").addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter") return;
+  const t = e.target.value.trim();
+  if (await verifyToken(t)) {
+    token = t;
+    localStorage.setItem(STORAGE_KEY, t);
+    showDashboard();
+  } else {
+    document.getElementById("token-err").textContent = "Invalid token.";
+  }
+});
+
+document.getElementById("btn-logout").addEventListener("click", () => {
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+});
+
+// --- Dashboard ---
+async function showDashboard() {
+  document.getElementById("token-gate").classList.add("hidden");
+  document.getElementById("dashboard").classList.remove("hidden");
+  await loadData();
+}
+
+async function loadData() {
+  document.getElementById("table-wrap").innerHTML = '<div class="loading">Loading access logs...</div>';
+  const noBots = document.getElementById("chk-no-bots").checked;
+  const last = document.getElementById("select-last").value;
+  const params = new URLSearchParams();
+  if (noBots) params.set("no-bots", "1");
+  if (currentView === "summary") params.set("summary", "1");
+  else params.set("last", last);
+
+  const r = await fetch(`/api/admin/visitors?${params}`, { headers: { "X-Admin-Token": token } });
+  if (!r.ok) { document.getElementById("table-wrap").innerHTML = '<div class="loading">Error loading data.</div>'; return; }
+  visitorData = await r.json();
+  renderView();
+}
+
+function renderView() {
+  if (currentView === "summary") renderSummary();
+  else renderDetail();
+}
+
+// --- Summary view ---
+function renderSummary() {
+  const data = visitorData.visitors || [];
+  const filterIP = document.getElementById("filter-ip").value.trim();
+  const filtered = filterIP ? data.filter(v => v.ip.includes(filterIP)) : data;
+
+  // Stats
+  const totalIPs = filtered.length;
+  const totalHits = filtered.reduce((s, v) => s + v.hits, 0);
+  const humans = filtered.filter(v => !v.is_bot).length;
+  const bots = filtered.filter(v => v.is_bot).length;
+  document.getElementById("stats").innerHTML = `
+    <div class="stat-card"><div class="label">Unique IPs</div><div class="value">${totalIPs}</div></div>
+    <div class="stat-card"><div class="label">Total Hits</div><div class="value">${totalHits.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="label">Humans</div><div class="value">${humans}</div></div>
+    <div class="stat-card"><div class="label">Bots</div><div class="value">${bots}</div></div>
+  `;
+
+  let html = `<table><thead><tr>
+    <th>IP</th><th>Geo / Org</th><th>Hits</th><th>Type</th><th>First Seen</th><th>Last Seen</th><th>Pages</th><th>Browser</th>
+  </tr></thead><tbody>`;
+
+  for (const v of filtered) {
+    const firstSeen = new Date(v.first_seen * 1000).toLocaleString();
+    const lastSeen = new Date(v.last_seen * 1000).toLocaleString();
+    const tag = v.is_bot ? '<span class="bot-tag">BOT</span>' : '<span class="human-tag">HUMAN</span>';
+    const pages = (v.pages || []).slice(0, 8).join(", ");
+    const morePages = v.pages.length > 8 ? ` +${v.pages.length - 8} more` : "";
+    const browser = parseBrowser(v.user_agent);
+
+    html += `<tr>
+      <td><span class="ip-link" data-ip="${v.ip}">${v.ip}</span><div class="geo-info" id="geo-${v.ip.replace(/\./g,'-')}">…</div><div class="org-info" id="org-${v.ip.replace(/\./g,'-')}"></div></td>
+      <td></td>
+      <td>${v.hits}</td>
+      <td>${tag}</td>
+      <td>${firstSeen}</td>
+      <td>${lastSeen}</td>
+      <td class="pages-list">${escHtml(pages)}${morePages ? `<span style="color:var(--text-dim)"> ${morePages}</span>` : ""}</td>
+      <td class="ua-cell" title="${escHtml(v.user_agent)}">${escHtml(browser)}</td>
+    </tr>`;
+  }
+  html += "</tbody></table>";
+  document.getElementById("table-wrap").innerHTML = html;
+
+  // Async geo lookups
+  const ips = filtered.map(v => v.ip).slice(0, 50);
+  lookupGeo(ips);
+}
+
+// --- Detail view ---
+function renderDetail() {
+  const data = visitorData.entries || [];
+  const filterIP = document.getElementById("filter-ip").value.trim();
+  const filtered = filterIP ? data.filter(e => e.ip.includes(filterIP)) : data;
+
+  document.getElementById("stats").innerHTML = `
+    <div class="stat-card"><div class="label">Entries shown</div><div class="value">${filtered.length}</div></div>
+  `;
+
+  let html = `<table><thead><tr>
+    <th>Date/Time</th><th>IP</th><th>Geo / Org</th><th>Method</th><th>Page</th><th>Status</th><th>Type</th><th>Browser</th>
+  </tr></thead><tbody>`;
+
+  for (const e of filtered.slice().reverse()) {
+    const dt = new Date(e.ts * 1000).toLocaleString();
+    const tag = e.is_bot ? '<span class="bot-tag">BOT</span>' : '<span class="human-tag">HUMAN</span>';
+    const browser = parseBrowser(e.user_agent);
+    html += `<tr>
+      <td style="white-space:nowrap">${dt}</td>
+      <td><span class="ip-link" data-ip="${e.ip}">${e.ip}</span><div class="geo-info" id="geo-d-${e.ip.replace(/\./g,'-')}">…</div></td>
+      <td></td>
+      <td>${e.method}</td>
+      <td style="word-break:break-all;max-width:300px;">${escHtml(e.uri)}</td>
+      <td>${e.status}</td>
+      <td>${tag}</td>
+      <td class="ua-cell" title="${escHtml(e.user_agent)}">${escHtml(browser)}</td>
+    </tr>`;
+  }
+  html += "</tbody></table>";
+  document.getElementById("table-wrap").innerHTML = html;
+
+  const ips = [...new Set(filtered.map(e => e.ip))].slice(0, 50);
+  lookupGeo(ips);
+}
+
+// --- Geo lookup via server proxy (avoids HTTPS mixed content) ---
+async function lookupGeo(ips) {
+  const uncached = ips.filter(ip => !geoCache[ip]);
+  // Lookup one at a time through server proxy (ip-api rate limit: 45/min)
+  for (const ip of uncached.slice(0, 30)) {
+    try {
+      const r = await fetch(`/api/admin/ip-lookup?ip=${ip}`, { headers: { "X-Admin-Token": token } });
+      if (r.ok) {
+        const data = await r.json();
+        if (data.status === "success") geoCache[data.query || ip] = data;
+      }
+    } catch (e) { /* silent */ }
+  }
+
+  // Update DOM
+  for (const ip of ips) {
+    const g = geoCache[ip];
+    if (!g) continue;
+    const key = ip.replace(/\./g, '-');
+    const geoEls = document.querySelectorAll(`[id^="geo-"][id$="${key}"]`);
+    const orgEls = document.querySelectorAll(`[id^="org-"][id$="${key}"]`);
+    for (const el of geoEls) {
+      el.textContent = `${g.city || ""}, ${g.regionName || ""}, ${g.country || ""}`;
+    }
+    for (const el of orgEls) {
+      el.textContent = g.org || g.isp || "";
+    }
+  }
+
+  // Attach click handlers to IP links
+  document.querySelectorAll(".ip-link").forEach(el => {
+    if (!el.dataset.bound) {
+      el.dataset.bound = "1";
+      el.addEventListener("click", () => showIPModal(el.dataset.ip));
+    }
+  });
+}
+
+// --- IP Detail Modal ---
+async function showIPModal(ip) {
+  const modal = document.getElementById("ip-modal");
+  const grid = document.getElementById("modal-grid");
+  const tags = document.getElementById("modal-tags");
+  const links = document.getElementById("modal-links");
+  document.getElementById("modal-ip").textContent = ip;
+  grid.innerHTML = '<div class="label">Loading...</div><div class="value"></div>';
+  tags.innerHTML = "";
+  links.innerHTML = "";
+  modal.classList.remove("hidden");
+
+  // Fetch full details if not cached
+  if (!geoCache[ip]) {
+    try {
+      const r = await fetch(`/api/admin/ip-lookup?ip=${ip}`, { headers: { "X-Admin-Token": token } });
+      if (r.ok) {
+        const data = await r.json();
+        if (data.status === "success") geoCache[data.query || ip] = data;
+      }
+    } catch (e) { /* silent */ }
+  }
+
+  const g = geoCache[ip];
+  if (!g) {
+    grid.innerHTML = '<div class="label">Error</div><div class="value">Could not look up this IP.</div>';
+    return;
+  }
+
+  // Tags
+  let tagHtml = "";
+  if (g.hosting) tagHtml += '<span class="modal-tag hosting">HOSTING / DATACENTER</span>';
+  if (g.proxy) tagHtml += '<span class="modal-tag proxy">PROXY / VPN</span>';
+  if (g.mobile) tagHtml += '<span class="modal-tag mobile">MOBILE</span>';
+  tags.innerHTML = tagHtml;
+
+  // Grid
+  grid.innerHTML = `
+    <div class="label">Location</div><div class="value geo">${g.city || "—"}, ${g.regionName || ""}, ${g.country || ""} ${g.countryCode ? flagEmoji(g.countryCode) : ""}</div>
+    <div class="label">ZIP / Postal</div><div class="value">${g.zip || "—"}</div>
+    <div class="label">Coordinates</div><div class="value"><a href="https://www.google.com/maps?q=${g.lat},${g.lon}" target="_blank" style="color:var(--blue)">${g.lat}, ${g.lon}</a></div>
+    <div class="label">Timezone</div><div class="value">${g.timezone || "—"}</div>
+    <div class="label">ISP</div><div class="value highlight">${g.isp || "—"}</div>
+    <div class="label">Organization</div><div class="value highlight">${g.org || "—"}</div>
+    <div class="label">AS Number</div><div class="value">${g.as || "—"}</div>
+    <div class="label">AS Name</div><div class="value">${g.asname || "—"}</div>
+    <div class="label">Reverse DNS</div><div class="value">${g.reverse || "—"}</div>
+    <div class="label">Hosting/DC</div><div class="value">${g.hosting ? "Yes — likely a server, not a person" : "No — likely residential/business"}</div>
+    <div class="label">Proxy/VPN</div><div class="value">${g.proxy ? "Yes" : "No"}</div>
+    <div class="label">Mobile</div><div class="value">${g.mobile ? "Yes" : "No"}</div>
+  `;
+
+  // External lookup links
+  links.innerHTML = `
+    <a href="https://www.whois.com/whois/${ip}" target="_blank">WHOIS</a>
+    <a href="https://www.abuseipdb.com/check/${ip}" target="_blank">AbuseIPDB</a>
+    <a href="https://www.shodan.io/host/${ip}" target="_blank">Shodan</a>
+    <a href="https://ipinfo.io/${ip}" target="_blank">IPinfo</a>
+    <a href="https://www.virustotal.com/gui/ip-address/${ip}" target="_blank">VirusTotal</a>
+    <a href="https://bgp.he.net/ip/${ip}" target="_blank">BGP/HE.net</a>
+  `;
+}
+
+function closeModal() {
+  document.getElementById("ip-modal").classList.add("hidden");
+}
+
+function flagEmoji(cc) {
+  return cc.toUpperCase().replace(/./g, c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65));
+}
+
+// --- Helpers ---
+function parseBrowser(ua) {
+  if (!ua) return "—";
+  if (/curl/i.test(ua)) return "curl";
+  if (/GPTBot/i.test(ua)) return "GPTBot";
+  if (/OAI-SearchBot/i.test(ua)) return "OpenAI SearchBot";
+  if (/Googlebot/i.test(ua)) return "Googlebot";
+  if (/Bingbot/i.test(ua)) return "Bingbot";
+  if (/Edg\//i.test(ua)) return "Edge";
+  if (/Chrome\/.*Safari/i.test(ua)) return "Chrome";
+  if (/Firefox/i.test(ua)) return "Firefox";
+  if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) return "Safari";
+  if (/python-requests/i.test(ua)) return "Python";
+  return ua.slice(0, 40);
+}
+
+function escHtml(s) {
+  return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// --- Events ---
+document.getElementById("btn-summary").addEventListener("click", () => {
+  currentView = "summary";
+  document.getElementById("btn-summary").classList.add("active");
+  document.getElementById("btn-detail").classList.remove("active");
+  loadData();
+});
+document.getElementById("btn-detail").addEventListener("click", () => {
+  currentView = "detail";
+  document.getElementById("btn-detail").classList.add("active");
+  document.getElementById("btn-summary").classList.remove("active");
+  loadData();
+});
+document.getElementById("btn-refresh").addEventListener("click", loadData);
+document.getElementById("chk-no-bots").addEventListener("change", loadData);
+document.getElementById("select-last").addEventListener("change", loadData);
+document.getElementById("filter-ip").addEventListener("input", renderView);
+
+init();
+</script>
+</body>
+</html>

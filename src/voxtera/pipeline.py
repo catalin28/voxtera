@@ -595,6 +595,34 @@ def build_pipeline(
                     "(os._exit) after 5s — Telegram listener / asyncio "
                     "executor likely still draining"
                 )
+                # Best-effort synchronous Gladia session DELETE before hard
+                # exit. os._exit bypasses asyncio cleanup so lazy_disconnect
+                # may never run — this ensures the session slot is released
+                # and Gladia doesn't see a lingering open WebSocket.
+                try:
+                    _gladia_branch = stt_branches.get("gladia", {})
+                    _gladia_stt = _gladia_branch.get("stt")
+                    if _gladia_stt is not None:
+                        _sid = getattr(_gladia_stt, "_session_id", None)
+                        _key = getattr(_gladia_stt, "_api_key", None)
+                        _reg = getattr(_gladia_stt, "_region", None)
+                        if _sid and _key:
+                            _url = f"https://api.gladia.io/v2/live/{_sid}"
+                            if _reg:
+                                _url += f"?region={_reg}"
+                            _req = Request(
+                                _url,
+                                method="DELETE",
+                                headers={"x-gladia-key": _key},
+                            )
+                            with urlopen(_req, timeout=3) as _resp:  # noqa: S310
+                                _resp.read()
+                            logger.info("[daily] force_exit: deleted Gladia session {}", _sid)
+                except Exception as _exc:  # noqa: BLE001
+                    logger.debug(
+                        "[daily] force_exit: Gladia session cleanup failed (non-fatal): {}",
+                        _exc,
+                    )
                 os._exit(0)
 
             t = threading.Timer(5.0, _force_exit)
