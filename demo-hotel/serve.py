@@ -957,13 +957,13 @@ def _chat_completion(session_id: str, user_text: str, model: str, language: str)
         messages.append({"role": "system", "content": rag_ctx})
 
     # Enforce reply language regardless of what the guest typed.
-    if language and language not in ("auto", "en"):
+    if language and language != "auto":
         messages.append(
             {
                 "role": "system",
                 "content": (
                     f"IMPORTANT: You MUST reply in language code '{language}'. "
-                    f"Do not switch to English even if the guest wrote in English. "
+                    f"Do not switch to another language even if the input is ambiguous. "
                     f"Reply only in '{language}'."
                 ),
             }
@@ -1334,6 +1334,27 @@ _demo_request_lock = threading.Lock()
 
 # Predefined demo codes file (one code per line, # comments allowed)
 _DEMO_CODES_FILE: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "demo_codes.txt")
+_DEMO_CODE_LOG_FILE: str = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "logs", "audit", "demo-code-usage.jsonl"
+)
+
+
+def _log_demo_code_usage(ip: str, user_agent: str, code: str, result: str, email: str) -> None:
+    """Append a line to the demo code usage audit log."""
+    entry = {
+        "ts": datetime.now(UTC).isoformat(),
+        "ip": ip,
+        "ua": user_agent,
+        "code": code if result != "invalid" else code[:4] + "***",
+        "result": result,
+        "email": email,
+    }
+    try:
+        os.makedirs(os.path.dirname(_DEMO_CODE_LOG_FILE), exist_ok=True)
+        with open(_DEMO_CODE_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except OSError:
+        pass
 
 
 def _load_demo_codes() -> set[str]:
@@ -1739,7 +1760,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(404, {"error": "log_not_found", "path": log_path})
             return
 
-        BOT_KEYWORDS = [
+        bot_keywords = [
             "bot",
             "crawler",
             "spider",
@@ -1757,7 +1778,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         ]
 
         # Paths that only scanners/bots probe — never a real human visitor
-        SCANNER_PATHS = [
+        scanner_paths = [
             ".env",
             ".git/",
             ".aws/",
@@ -1806,11 +1827,11 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 ua_list = headers.get("User-Agent", [])
                 user_agent = ua_list[0] if ua_list else ""
 
-                is_bot = any(b in user_agent.lower() for b in BOT_KEYWORDS)
+                is_bot = any(b in user_agent.lower() for b in bot_keywords)
 
                 # Detect scanner behaviour by path probing
                 uri_lower = uri.lower()
-                if any(p in uri_lower for p in SCANNER_PATHS):
+                if any(p in uri_lower for p in scanner_paths):
                     scanner_ips.add(ip)
 
                 raw_entries.append(
@@ -1883,7 +1904,10 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(400, {"error": "invalid_ip"})
             return
 
-        fields = "status,country,countryCode,city,regionName,region,zip,lat,lon,timezone,offset,isp,org,as,asname,reverse,mobile,proxy,hosting,query"
+        fields = (
+            "status,country,countryCode,city,regionName,region,zip,lat,lon,"
+            "timezone,offset,isp,org,as,asname,reverse,mobile,proxy,hosting,query"
+        )
         url = f"http://ip-api.com/json/{ip}?fields={fields}"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Voxtera-Admin/1.0"})
@@ -2747,9 +2771,16 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         token = (body.get("code") or "").strip()
+        direct_ip, fwd_ip = self._client_ip()
+        client_ip = fwd_ip or direct_ip
+        user_agent = self.headers.get("User-Agent", "")
+
         # Check HMAC-signed token first
         payload = _validate_demo_token(token)
         if payload:
+            _log_demo_code_usage(
+                client_ip, user_agent, token, "email_token", payload.get("email", "")
+            )
             self._send_json(
                 200,
                 {
@@ -2761,8 +2792,10 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return
         # Check predefined codes file
         if token and token in _load_demo_codes():
+            _log_demo_code_usage(client_ip, user_agent, token, "predefined_code", "tester")
             self._send_json(200, {"valid": True, "email": "tester", "expires": 0})
             return
+        _log_demo_code_usage(client_ip, user_agent, token, "invalid", "")
         self._send_json(401, {"valid": False, "error": "invalid_or_expired"})
 
     def _handle_demo_check_allowance(self) -> None:

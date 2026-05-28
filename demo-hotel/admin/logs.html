@@ -240,6 +240,25 @@ body {
   padding-left: 4px;
 }
 
+/* Play TTS button */
+.btn-play-tts {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: #9ca3af;
+  background: #2a2b35;
+  border: 1px solid #3f4050;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+.btn-play-tts:hover { background: #3f4050; color: #e5e7eb; }
+.btn-play-tts.playing { color: #60a5fa; }
+.btn-play-tts svg { width: 14px; height: 14px; }
+
 /* Loading */
 .loading {
   text-align: center;
@@ -252,9 +271,49 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+/* Gate overlay */
+.gate-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: #0f1117;
+  display: flex; align-items: center; justify-content: center;
+}
+.gate-overlay.hidden { display: none; }
+.gate-box {
+  background: #1a1b23;
+  border: 1px solid #2a2b35;
+  border-radius: 12px;
+  padding: 40px;
+  width: 380px;
+  text-align: center;
+}
+.gate-box h2 { font-size: 20px; color: #fff; margin-bottom: 6px; }
+.gate-box .subtitle { font-size: 13px; color: #6b7280; margin-bottom: 24px; }
+.gate-box input {
+  width: 100%; background: #0f1117; border: 1px solid #3a3b45;
+  color: #e4e4e7; padding: 10px 14px; border-radius: 8px;
+  font-size: 14px; margin-bottom: 12px;
+}
+.gate-box input:focus { outline: none; border-color: #b88b4a; }
+.gate-box button {
+  width: 100%; background: #b88b4a; color: #fff; border: none;
+  padding: 10px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer;
+}
+.gate-box button:hover { background: #a07a3f; }
+.gate-box .error { color: #ef4444; font-size: 13px; margin-top: 10px; display: none; }
 </style>
 </head>
 <body>
+
+<!-- Demo code gate -->
+<div class="gate-overlay" id="gate-overlay">
+  <div class="gate-box">
+    <h2>Chat Logs</h2>
+    <p class="subtitle">Enter your demo access code to view logs</p>
+    <input type="text" id="gate-input" placeholder="Access code" autocomplete="off" />
+    <button id="gate-btn">Continue</button>
+    <p class="error" id="gate-error">Invalid code. Please try again.</p>
+  </div>
+</div>
 
 <div class="header">
   <h1>Chat Logs</h1>
@@ -288,6 +347,43 @@ body {
 </div>
 
 <script>
+// ─── Demo code gate ───────────────────────────────────────────────────
+(function() {
+  const overlay = document.getElementById('gate-overlay');
+  const input = document.getElementById('gate-input');
+  const btn = document.getElementById('gate-btn');
+  const error = document.getElementById('gate-error');
+
+  const stored = sessionStorage.getItem('voxtera_logs_code');
+  if (stored) { overlay.classList.add('hidden'); return; }
+
+  btn.addEventListener('click', validate);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') validate(); });
+
+  async function validate() {
+    const code = input.value.trim();
+    if (!code) return;
+    error.style.display = 'none';
+    try {
+      const res = await fetch('/api/demo/validate-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      const data = await res.json();
+      if (data.valid) {
+        sessionStorage.setItem('voxtera_logs_code', code);
+        overlay.classList.add('hidden');
+      } else {
+        error.style.display = 'block';
+      }
+    } catch {
+      error.textContent = 'Cannot reach server.';
+      error.style.display = 'block';
+    }
+  }
+})();
+
 const sessionList = document.getElementById('session-list');
 const conversationEl = document.getElementById('conversation');
 const sessionMetaEl = document.getElementById('session-meta');
@@ -391,17 +487,26 @@ function renderConversation(turns) {
 
     const turnEl = document.createElement('div');
     turnEl.className = 'turn';
+    const botText = t.bot_reply || '';
+    const playBtnId = `play-${t.turn_number || Math.random()}`;
     turnEl.innerHTML = `
       <div class="turn-meta">Turn ${t.turn_number || '?'} · ${time}</div>
       <div class="turn-row user-row">
         <div class="bubble user">${escHtml(t.user_query || '')}</div>
       </div>
       <div class="turn-row bot-row">
-        <div class="bubble bot">${escHtml(t.bot_reply || '')}</div>
+        <div class="bubble bot">${escHtml(botText)}</div>
       </div>
-      <div class="turn-timing">${llm}${rag}</div>
+      <div class="turn-timing">${llm}${rag}${botText ? `
+        <button class="btn-play-tts" id="${playBtnId}" data-text="${escAttr(botText)}">
+          <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+          Play
+        </button>` : ''}</div>
     `;
     conversationEl.appendChild(turnEl);
+    if (botText) {
+      turnEl.querySelector(`#${playBtnId}`).addEventListener('click', (e) => playTTS(e.currentTarget));
+    }
   });
 
   // Scroll to top
@@ -412,6 +517,49 @@ function escHtml(s) {
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
+}
+
+function escAttr(s) {
+  return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+let _ttsAudio = null;
+let _ttsActiveBtn = null;
+async function playTTS(btn) {
+  // Stop any currently playing
+  if (_ttsAudio && !_ttsAudio.paused) {
+    _ttsAudio.pause();
+    _ttsAudio = null;
+    if (_ttsActiveBtn) { _ttsActiveBtn.classList.remove('playing'); _ttsActiveBtn.querySelector('svg').innerHTML = '<polygon points="5,3 19,12 5,21"/>'; }
+    if (_ttsActiveBtn === btn) { _ttsActiveBtn = null; return; }
+  }
+  const text = btn.dataset.text;
+  if (!text) return;
+  btn.classList.add('playing');
+  btn.querySelector('svg').innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+  _ttsActiveBtn = btn;
+  try {
+    const resp = await fetch('/api/tts-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, provider: 'elevenlabs', voice: '21m00Tcm4TlvDq8ikWAM', language: 'en' })
+    });
+    if (!resp.ok) throw new Error('TTS failed');
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    _ttsAudio = new Audio(url);
+    _ttsAudio.onended = () => {
+      btn.classList.remove('playing');
+      btn.querySelector('svg').innerHTML = '<polygon points="5,3 19,12 5,21"/>';
+      URL.revokeObjectURL(url);
+      _ttsActiveBtn = null;
+    };
+    await _ttsAudio.play();
+  } catch (e) {
+    btn.classList.remove('playing');
+    btn.querySelector('svg').innerHTML = '<polygon points="5,3 19,12 5,21"/>';
+    _ttsActiveBtn = null;
+  }
 }
 
 // Events

@@ -61,7 +61,9 @@ class TransportHealthMonitor:
         self._empty_timeout = _env_float("EMPTY_ROOM_TIMEOUT_SECS", _DEFAULT_EMPTY_ROOM_TIMEOUT)
         self._idle_timeout = _env_float("IDLE_SESSION_TIMEOUT_SECS", _DEFAULT_IDLE_SESSION_TIMEOUT)
         self._participant_count = 0
-        self._empty_since: float | None = None
+        # Start the empty-room clock immediately — if no human ever joins,
+        # the watchdog will still fire after _empty_timeout seconds.
+        self._empty_since: float | None = time.monotonic()
         self._last_activity: float = time.monotonic()
         self._watchdog_task: asyncio.Task | None = None
 
@@ -75,6 +77,11 @@ class TransportHealthMonitor:
         @transport.event_handler("on_participant_left")
         async def _on_left(transport, participant, reason):
             self._on_participant_left(participant)
+
+        # Start the watchdog as soon as the bot connects to the room.
+        @transport.event_handler("on_joined")
+        async def _on_bot_joined(transport, data):
+            self._ensure_watchdog()
 
     def notify_activity(self) -> None:
         """Call this whenever meaningful activity occurs (speech, user input).
@@ -137,7 +144,7 @@ class TransportHealthMonitor:
                         elapsed,
                         self._empty_timeout,
                     )
-                    sys.exit(0)
+                    self._hard_exit()
 
             # Condition 2: participant connected but no speech activity
             if self._participant_count > 0:
@@ -149,7 +156,22 @@ class TransportHealthMonitor:
                         idle_elapsed,
                         self._idle_timeout,
                     )
-                    sys.exit(0)
+                    self._hard_exit()
+
+    @staticmethod
+    def _hard_exit() -> None:
+        """Force-exit the process. sys.exit() can be caught or blocked by
+        lingering threads/event loops, so schedule os._exit as a fallback."""
+        import threading
+
+        def _force():
+            time.sleep(5)
+            os._exit(0)
+
+        t = threading.Timer(5.0, lambda: os._exit(0))
+        t.daemon = True
+        t.start()
+        sys.exit(0)
 
 
 class ActivityNotifier(FrameProcessor):
