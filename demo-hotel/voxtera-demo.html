@@ -2000,15 +2000,36 @@
 
     _dailySessionId = sessionId;
 
-    // Use the device selected in the panel dropdown (or default if none chosen)
-    const _audioSource = _selectedMicDeviceId || true;
-
+    // Use the device selected in the panel dropdown (or default if none chosen).
+    // Disable browser DSP — Gladia/Whisper do their own noise processing and
+    // browser NS strips high frequencies causing muffled transcripts.
+    // Daily only accepts MediaStreamTrack | boolean | string for audioSource,
+    // so we acquire the track ourselves with full constraints.
+    let _audioSource = _selectedMicDeviceId || true;
     try {
-      _dailyCallObj = window.DailyIframe.createCallObject({ audioSource: _audioSource, videoSource: false });
+      const _audioConstraints = {
+        deviceId:         _selectedMicDeviceId ? { exact: _selectedMicDeviceId } : undefined,
+        channelCount:     1,
+        noiseSuppression: false,
+        echoCancellation: false,
+        autoGainControl:  false,
+      };
+      // Safari/iOS: voiceIsolation is very aggressive — disable if supported
+      if ('voiceIsolation' in navigator.mediaDevices.getSupportedConstraints()) {
+        _audioConstraints.voiceIsolation = false;
+      }
+      const _rawStream = await navigator.mediaDevices.getUserMedia({ audio: _audioConstraints, video: false });
+      _audioSource = _rawStream.getAudioTracks()[0];
+      // Check which constraints were actually applied
+      const settings = _audioSource.getSettings();
+      const dspDisabled = (settings.noiseSuppression === false && settings.echoCancellation === false && settings.autoGainControl === false);
+      diagLog('info', dspDisabled ? '✓ Browser DSP disabled' : '⚠ Some DSP constraints not honoured: ' + JSON.stringify(settings));
     } catch (e) {
-      diagLog('warn', '⚠ createCallObject failed: ' + (e && e.message) + ' — retrying with default');
-      _dailyCallObj = window.DailyIframe.createCallObject({ audioSource: true, videoSource: false });
+      diagLog('warn', '⚠ getUserMedia with DSP constraints failed: ' + (e && e.message) + ' — using default device');
+      _audioSource = _selectedMicDeviceId || true;
     }
+
+    _dailyCallObj = window.DailyIframe.createCallObject({ audioSource: _audioSource, videoSource: false });
 
     let _greetingReadySent = false;
 
@@ -2125,6 +2146,89 @@
       _endVoiceCall(true);
       return;
     }
+
+    // ─── Report audio device diagnostics to server ───
+    try {
+      const localP = _dailyCallObj.participants().local;
+      const localAudio = localP && localP.tracks && localP.tracks.audio;
+      const audioTrack = localAudio && localAudio.persistentTrack;
+      if (audioTrack) {
+        const trackSettings = audioTrack.getSettings();
+        const trackCapabilities = (typeof audioTrack.getCapabilities === 'function')
+          ? audioTrack.getCapabilities() : null;
+
+        // Detect Bluetooth devices from track label
+        const trackLabel = (trackSettings.label || audioTrack.label || '').toLowerCase();
+        const isBluetooth = /airpods|bluetooth|bt[\s-]|hfp|hands.?free|wireless|jabra|bose|sony wh|galaxy buds/i.test(trackLabel);
+        const deviceKind = isBluetooth ? 'bluetooth' : 'wired_or_builtin';
+
+        // Check constraint mismatches (browser may ignore our requests)
+        const mismatch = {};
+        for (const key of ['noiseSuppression', 'echoCancellation', 'autoGainControl']) {
+          const want = _audioConstraints[key];
+          const got = trackSettings[key];
+          if (want !== undefined && got !== undefined && want !== got) {
+            mismatch[key] = { requested: want, actual: got };
+          }
+        }
+        if (Object.keys(mismatch).length > 0) {
+          diagLog('warn', '⚠ Browser ignored audio constraints: ' + JSON.stringify(mismatch));
+          diagLog('warn', '⚠ Recording may be muffled due to browser DSP');
+        } else {
+          diagLog('info', '[audio] Browser DSP disabled ✓ (NS/AEC/AGC all off)');
+        }
+
+        if (isBluetooth) {
+          diagLog('info', '[audio] Bluetooth device detected: ' + trackLabel + ' — adaptive pipeline will engage');
+        }
+
+        // Send device_kind to bot so pipeline can adapt (e.g. spectral pre-emphasis)
+        if (_dailyCallObj) {
+          _dailyCallObj.sendAppMessage({ type: 'voxtera-device-kind', device_kind: deviceKind }, '*');
+        }
+
+        let networkInfo = null;
+        const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        if (conn) {
+          networkInfo = { downlink_mbps: conn.downlink || null, rtt_ms: conn.rtt || null, effective_type: conn.effectiveType || null };
+        }
+        const payload = {
+          session_id: sessionId,
+          platform: navigator.platform || null,
+          requested_constraints: { audio: _audioConstraints },
+          audio_track_settings: trackSettings,
+          audio_track_capabilities: trackCapabilities,
+          audio_track_applied: (typeof audioTrack.getConstraints === 'function') ? audioTrack.getConstraints() : null,
+          constraint_mismatches: Object.keys(mismatch).length > 0 ? mismatch : null,
+          device_kind: deviceKind,
+          available_devices: null,
+          network: networkInfo
+        };
+        const sendPayload = () => {
+          fetch('/api/audio-device-info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }).then(() => {
+            diagLog('info', '[audio-device] reported: sampleRate=' + (trackSettings.sampleRate || '?') +
+              ' device=' + (trackSettings.label || trackSettings.deviceId || 'unknown') +
+              ' kind=' + deviceKind);
+          }).catch(e => diagLog('warn', '[audio-device] report failed: ' + e.message));
+        };
+        if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+          navigator.mediaDevices.enumerateDevices().then(devices => {
+            payload.available_devices = devices
+              .filter(d => d.kind === 'audioinput')
+              .map(d => ({ deviceId: d.deviceId, label: d.label, kind: d.kind, groupId: d.groupId }));
+            sendPayload();
+          }).catch(() => sendPayload());
+        } else {
+          sendPayload();
+        }
+      } else {
+        diagLog('warn', '[audio-device] no local audio track available');
+      }
+    } catch (e) { diagLog('warn', '[audio-device] collection error: ' + e.message); }
 
     inCall = true;
     callBtn.disabled = false;

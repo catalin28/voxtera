@@ -46,9 +46,9 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from loguru import logger
-from pipecat.frames.frames import StartFrame
+from pipecat.frames.frames import CancelFrame, EndFrame, InputAudioRawFrame, StartFrame
 from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
-from pipecat.processors.frame_processor import FrameDirection
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 # ``logs/`` lives at the repo root — two parents up from ``src/voxtera/``.
 # Matches the directory ``conversation_logger`` uses for its JSONL files.
@@ -548,3 +548,73 @@ class CallAudioRecorder(AudioBufferProcessor):
             logger.info("[call-record] audio saved: {} ({:.1f}s)", wav_path, duration)
         except (OSError, wave.Error) as exc:
             logger.error("[call-record] failed to write WAV: {}", exc)
+
+
+# ---------------------------------------------------------------------- #
+# Raw browser input recorder                                              #
+# ---------------------------------------------------------------------- #
+
+# Module-level reference so flush can be called from the force-exit path.
+_raw_input_recorder: RawInputRecorder | None = None
+
+
+class RawInputRecorder(FrameProcessor):
+    """Captures the raw InputAudioRawFrame stream from the browser/transport.
+
+    Placed immediately after ``transport.input()`` in the pipeline, it buffers
+    every audio frame the browser sends (before denoising, VAD, STT) and writes
+    it as a mono 16 kHz WAV (``input_raw.wav``) into the call's log folder on
+    shutdown.
+
+    This lets you hear *exactly* what arrived from the browser — useful for
+    diagnosing STT issues, noise problems, or transport glitches.
+    """
+
+    def __init__(self, sample_rate: int = 16000) -> None:
+        global _raw_input_recorder
+        super().__init__()
+        self._sample_rate = sample_rate
+        self._chunks: list[bytes] = []
+        self._started = False
+        _raw_input_recorder = self
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        if isinstance(frame, InputAudioRawFrame):
+            if not self._started:
+                self._started = True
+            self._chunks.append(frame.audio)
+        elif isinstance(frame, StartFrame):
+            self._started = True
+        elif isinstance(frame, EndFrame | CancelFrame):
+            self._write_wav()
+        await self.push_frame(frame, direction)
+
+    def _write_wav(self) -> None:
+        """Write buffered audio to input_raw.wav. Safe to call multiple times."""
+        if not self._chunks:
+            logger.debug("[call-record] raw input: no audio chunks to write")
+            return
+        call_dir = get_call_dir()
+        if call_dir is None:
+            logger.warning("[call-record] raw input: call not initialised — skipping")
+            return
+        try:
+            pcm = b"".join(self._chunks)
+            wav_path = call_dir / "input_raw.wav"
+            duration = write_wav(wav_path, pcm, sample_rate=self._sample_rate, num_channels=1)
+            logger.info("[call-record] raw input saved: {} ({:.1f}s)", wav_path, duration)
+            # Clear buffer so a second call to _write_wav is a no-op.
+            self._chunks.clear()
+        except (OSError, wave.Error) as exc:
+            logger.error("[call-record] failed to write input_raw.wav: {}", exc)
+
+    def flush(self) -> None:
+        """Synchronous flush — call from force-exit or finally blocks."""
+        self._write_wav()
+
+
+async def flush_raw_input() -> None:
+    """Force-write the raw input buffer to disk. Non-fatal if not started."""
+    if _raw_input_recorder is not None and _raw_input_recorder._started:
+        _raw_input_recorder.flush()

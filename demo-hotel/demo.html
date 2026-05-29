@@ -867,6 +867,62 @@ document.getElementById('btn-start').onclick = async function() {
         var localAudioTrack = localParticipant && localParticipant.tracks && localParticipant.tracks.audio;
         if (localAudioTrack && localAudioTrack.persistentTrack) {
           orbSetupMicAnalyser(new MediaStream([localAudioTrack.persistentTrack]));
+          // Report comprehensive audio device diagnostics to the server
+          (function reportAudioDeviceInfo(track) {
+            try {
+              var trackSettings = track.getSettings();
+              var trackCapabilities = (typeof track.getCapabilities === 'function')
+                ? track.getCapabilities() : null;
+
+              var networkInfo = null;
+              var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+              if (conn) {
+                networkInfo = {
+                  downlink_mbps: conn.downlink || null,
+                  rtt_ms: conn.rtt || null,
+                  effective_type: conn.effectiveType || null
+                };
+              }
+
+              var payload = {
+                session_id: SESSION_ID,
+                platform: navigator.platform || null,
+                requested_constraints: {
+                  audio: dailyAudioSource || true
+                },
+                audio_track_settings: trackSettings,
+                audio_track_capabilities: trackCapabilities,
+                available_devices: null,
+                network: networkInfo
+              };
+
+              // Enumerate devices async, then send everything
+              var sendPayload = function() {
+                fetch('/api/audio-device-info', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload)
+                }).then(function() {
+                  log('[audio-device] reported: sampleRate=' + trackSettings.sampleRate +
+                      ' device=' + (trackSettings.label || trackSettings.deviceId || 'unknown'));
+                }).catch(function(e) { log('[audio-device] report failed: ' + e.message); });
+              };
+
+              if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                navigator.mediaDevices.enumerateDevices().then(function(devices) {
+                  payload.available_devices = devices
+                    .filter(function(d) { return d.kind === 'audioinput'; })
+                    .map(function(d) {
+                      return { deviceId: d.deviceId, label: d.label, kind: d.kind, groupId: d.groupId };
+                    });
+                  sendPayload();
+                }).catch(function() { sendPayload(); });
+              } else {
+                sendPayload();
+              }
+            } catch(e) { log('[audio-device] collection failed: ' + e.message); }
+          })(localAudioTrack.persistentTrack);
+        }
         }
       } catch(e) { log('Orb mic setup deferred: ' + e.message); }
     }).catch(function(e) {

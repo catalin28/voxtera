@@ -208,6 +208,7 @@ from pipecat.transports.local.audio import (  # noqa: E402
 from voxtera.audio import (  # noqa: E402
     AudioLevelMonitor,
     BotActiveUserFrameSuppressor,
+    HighShelfPreEmphasis,
     PlaybackLeakageGuard,
     RNNoiseDenoiser,
     TranscriptionNoiseFilter,
@@ -474,13 +475,12 @@ def build_pipeline(
         @transport.event_handler("on_app_message")
         async def _on_app_message(transport, message, sender):
             logger.info("[daily] app-message from {}: {}", sender, message)
-            # DEBUG: check input transport state
-            inp = transport.input()
-            logger.info(
-                "[daily] input._next={} input._started={}",
-                inp._next,
-                inp._FrameProcessor__started if hasattr(inp, "_FrameProcessor__started") else "N/A",
-            )
+            # Handle device-kind: enable spectral pre-emphasis for Bluetooth
+            if isinstance(message, dict) and message.get("type") == "voxtera-device-kind":
+                device_kind = message.get("device_kind", "")
+                logger.info("[daily] device_kind reported: {}", device_kind)
+                if pre_emphasis_ref is not None:
+                    pre_emphasis_ref.set_enabled(device_kind == "bluetooth")
 
         # On-demand spawn handshake: when this bot was spawned by the launcher
         # (``serve.py`` /api/start-session), it knows its ``VOXTERA_SESSION_ID``
@@ -622,6 +622,26 @@ def build_pipeline(
                     logger.debug(
                         "[daily] force_exit: Gladia session cleanup failed (non-fatal): {}",
                         _exc,
+                    )
+                # Best-effort call-record flush: write the WAV and stamp
+                # ended_at before os._exit kills the process. flush_audio
+                # is async but stop_recording's core (memoryview concat +
+                # wave.open) is synchronous — run it on a throwaway loop.
+                try:
+                    import asyncio as _aio
+
+                    from voxtera import call_record as _cr
+
+                    _loop = _aio.new_event_loop()
+                    _loop.run_until_complete(_cr.flush_audio())
+                    _loop.run_until_complete(_cr.flush_raw_input())
+                    _loop.close()
+                    _cr.finalize()
+                    logger.info("[daily] force_exit: call record flushed")
+                except Exception as _exc2:  # noqa: BLE001
+                    logger.debug(
+                        "[daily] force_exit: call record flush failed (non-fatal): {}",
+                        _exc2,
                     )
                 os._exit(0)
 
@@ -887,6 +907,13 @@ def build_pipeline(
     # Build the pipeline list. In text-only mode the mic-side processors
     # (audio level monitor, VAD, STT) are skipped entirely.
     processors: list = [transport.input()]
+    # Raw input recorder: captures exactly what the browser sends, before any
+    # processing. Written to logs/calls/<session_id>/input_raw.wav on shutdown.
+    if settings.call_recording_enabled and settings.call_recording_audio and mic_enabled:
+        from voxtera.call_record import RawInputRecorder
+
+        processors.append(RawInputRecorder(sample_rate=16000))
+        logger.info("[call-record] raw input recorder attached to pipeline")
     # --- Diagnostic probes ---
     _probing = True
     if _probing:
@@ -897,7 +924,15 @@ def build_pipeline(
     leakage_guard_ref = None
     user_frame_suppressor_ref = None
     interruption_resumer_ref = None
+    # Spectral pre-emphasis for Bluetooth devices — disabled by default,
+    # enabled at runtime when browser reports device_kind == "bluetooth".
+    pre_emphasis_ref: HighShelfPreEmphasis | None = None
     if mic_enabled:
+        pre_emphasis_ref = HighShelfPreEmphasis(sample_rate=16000, gain_db=5.0, frequency=2000.0)
+        processors.append(pre_emphasis_ref)
+        if _probing:
+            processors.append(PipelineProbe("after_pre_emphasis"))
+
         if settings.rnnoise_enabled:
             if _RNNoise is None:
                 logger.warning(

@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import signal
 import sys
+import threading
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -237,10 +238,41 @@ async def run_bot(settings: Settings) -> None:
     # graceful shutdown through the finally block (flush audio + finalize)
     # rather than an abrupt process death that loses the recording.
     loop = asyncio.get_running_loop()
+    _sigterm_received = False
+    _shutdown_timer: threading.Timer | None = None
+
+    def _force_flush_and_exit() -> None:
+        import asyncio as _aio
+        import os as _os2
+
+        try:
+            _loop = _aio.new_event_loop()
+            _loop.run_until_complete(call_record.flush_audio())
+            _loop.run_until_complete(call_record.flush_raw_input())
+            _loop.close()
+            call_record.finalize()
+            logger.info("[shutdown] force flush completed — exiting")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[shutdown] force flush failed: {}", exc)
+        _os2._exit(0)
 
     def _handle_sigterm() -> None:
-        logger.info("[shutdown] SIGTERM received — requesting graceful stop")
+        nonlocal _sigterm_received, _shutdown_timer
+        if _sigterm_received:
+            # Second SIGTERM — force flush and exit immediately.
+            logger.warning("[shutdown] second SIGTERM — forcing flush + exit")
+            if _shutdown_timer:
+                _shutdown_timer.cancel()
+            threading.Thread(target=_force_flush_and_exit, daemon=True).start()
+            return
+        _sigterm_received = True
+        logger.info("[shutdown] SIGTERM received — requesting graceful stop (5s watchdog)")
         asyncio.ensure_future(task.queue_frame(EndFrame()))
+        # Watchdog: if pipeline doesn't shut down in 5s, force flush and exit.
+        # EndFrame often gets stuck in LLM/TTS processors.
+        _shutdown_timer = threading.Timer(5.0, _force_flush_and_exit)
+        _shutdown_timer.daemon = True
+        _shutdown_timer.start()
 
     loop.add_signal_handler(signal.SIGTERM, _handle_sigterm)
 
@@ -250,6 +282,9 @@ async def run_bot(settings: Settings) -> None:
         logger.exception("Runner raised an unhandled exception")
         raise
     finally:
+        # Cancel the watchdog — we made it to the finally block normally.
+        if _shutdown_timer is not None:
+            _shutdown_timer.cancel()
         if keyboard_task is not None and not keyboard_task.done():
             keyboard_task.cancel()
         if action_runtime is not None and listener_task is not None:
@@ -280,6 +315,11 @@ async def run_bot(settings: Settings) -> None:
             await call_record.flush_audio()
         except Exception:  # noqa: BLE001
             logger.warning("[shutdown] flush_audio failed")
+        # Flush raw browser input recording.
+        try:
+            await call_record.flush_raw_input()
+        except Exception:  # noqa: BLE001
+            logger.warning("[shutdown] flush_raw_input failed")
         # Always stamp the end time and write the final record.json.
         call_record.finalize()
 

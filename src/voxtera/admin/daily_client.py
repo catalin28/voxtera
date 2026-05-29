@@ -308,3 +308,50 @@ def list_rooms(*, api_key: str, prefix: str = "vox-") -> list[str]:
         if name.startswith(prefix):
             rooms.append(name)
     return rooms
+
+
+def list_rooms_with_presence(
+    *, api_key: str, domain: str, prefix: str = "vox-"
+) -> list[dict[str, Any]]:
+    """Return vox-* rooms with participant counts.
+
+    Combines ``GET /v1/rooms`` (room metadata incl. created_at) with
+    ``GET /v1/presence`` (live participant list) to produce a unified
+    snapshot suitable for the admin rooms page.
+    """
+    if not api_key:
+        raise DailyAPIError("DAILY_API_KEY is not set")
+
+    # Fetch rooms
+    rooms_payload = _request_json(
+        f"{_DAILY_REST_BASE}/rooms?limit=100",
+        api_key=api_key,
+    )
+
+    # Fetch presence (all rooms at once)
+    presence_payload = _request_json(f"{_DAILY_REST_BASE}/presence", api_key=api_key)
+
+    results: list[dict[str, Any]] = []
+    for room in rooms_payload.get("data", []):
+        name = room.get("name", "")
+        if not name.startswith(prefix):
+            continue
+        participants_raw = presence_payload.get(name) or []
+        results.append(
+            {
+                "room_name": name,
+                "room_url": f"https://{domain}/{name}",
+                "created_at": room.get("created_at", ""),
+                "participant_count": len(participants_raw),
+                "participants": [
+                    {
+                        "id": str(p.get("id", "")),
+                        "user_name": str(p.get("user_name") or p.get("userName") or ""),
+                        "joined_at": str(p.get("joined_at") or p.get("joinedAt") or ""),
+                        "duration_secs": int(p.get("duration") or 0),
+                    }
+                    for p in participants_raw
+                ],
+            }
+        )
+    return results

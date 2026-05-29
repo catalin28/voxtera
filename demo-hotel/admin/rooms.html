@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voxtera — Room Monitor</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0f0f1a;
+    --bg-2: #1a1a2e;
+    --bg-3: #25253d;
+    --border: #2a2a40;
+    --gold: #c9a84c;
+    --gold-dim: #a08030;
+    --text: #e8e8f0;
+    --text-dim: #aaa;
+    --green: #4caf50;
+    --red: #ef5350;
+    --blue: #4a7cb8;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; }
+
+  header { background: var(--bg-2); border-bottom: 1px solid var(--gold-dim); padding: 16px 24px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  header .logo { font-size: 22px; color: var(--gold); font-weight: 600; }
+  header .grow { flex: 1; }
+  header .controls { display: flex; gap: 8px; align-items: center; }
+  .last-refresh { font-size: 12px; color: var(--text-dim); }
+  .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-right: 6px; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+
+  main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+
+  /* Token gate */
+  #token-gate { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 24px; max-width: 480px; margin: 60px auto; }
+  #token-gate h2 { margin: 0 0 12px; color: var(--gold); font-size: 18px; }
+  #token-gate p { color: var(--text-dim); font-size: 14px; line-height: 1.5; margin: 0 0 16px; }
+  #token-gate input { width: 100%; padding: 10px 12px; background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: ui-monospace, monospace; font-size: 14px; }
+  #token-gate input:focus { outline: none; border-color: var(--gold); }
+  #token-gate .err { color: #ff8787; font-size: 13px; margin-top: 12px; min-height: 18px; }
+
+  /* Buttons */
+  button { border: none; border-radius: 6px; padding: 8px 14px; font-weight: 500; cursor: pointer; font-size: 13px; transition: opacity 0.15s; }
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--gold); color: #111; }
+  .btn-secondary { background: var(--bg-3); color: var(--text); border: 1px solid var(--border); }
+  .btn-join { background: var(--green); color: white; padding: 6px 12px; }
+  .btn-leave { background: var(--red); color: white; padding: 6px 12px; }
+
+  select, input { background: var(--bg-3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+  select:focus, input:focus { outline: none; border-color: var(--gold); }
+
+  /* Filters */
+  .filters { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+  .filters label { font-size: 13px; color: var(--text-dim); }
+  .filters input[type="datetime-local"] { width: 200px; }
+  .filters input[type="number"] { width: 80px; }
+
+  /* Summary */
+  .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .card { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; }
+  .card .label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .card .value { font-size: 28px; font-weight: 600; color: var(--gold); margin-top: 6px; }
+
+  /* Table */
+  .table-wrap { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .table-wrap h3 { margin: 0; padding: 14px 18px; border-bottom: 1px solid var(--border); font-size: 15px; color: var(--text); }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: var(--bg-3); padding: 10px 14px; text-align: left; font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  tr:last-child td { border-bottom: none; }
+  td.empty { text-align: center; padding: 40px 14px; color: var(--text-dim); font-style: italic; }
+  td.room-id { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-dim); }
+
+  .hidden { display: none !important; }
+
+  /* Listening panel */
+  #listen-panel { margin-top: 20px; padding: 18px; background: var(--bg-2); border: 1px solid var(--green); border-radius: 8px; }
+  #listen-panel h3 { margin: 0 0 12px; font-size: 15px; color: var(--green); }
+  #listen-panel .info { font-size: 13px; color: var(--text-dim); margin-bottom: 12px; }
+  #listen-panel .status { font-size: 13px; color: var(--text); margin-top: 8px; }
+  .mic-muted { display: inline-block; background: var(--red); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- Token gate -->
+<div id="token-gate">
+  <h2>Room Monitor</h2>
+  <p>Enter the admin token to view active Daily rooms and listen to conversations.</p>
+  <input id="token-input" type="password" placeholder="VOXTERA_ADMIN_TOKEN" autocomplete="off" />
+  <div class="err" id="token-err"></div>
+  <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+    <button class="btn-primary" id="token-submit">Sign in</button>
+  </div>
+</div>
+
+<!-- Main app -->
+<div id="app" class="hidden">
+  <header>
+    <div class="logo">Room Monitor</div>
+    <div class="grow"></div>
+    <div class="controls">
+      <span class="last-refresh"><span class="pulse"></span><span id="hdr-last">never</span></span>
+      <select id="interval">
+        <option value="3000">3s</option>
+        <option value="5000" selected>5s</option>
+        <option value="10000">10s</option>
+        <option value="0">Paused</option>
+      </select>
+      <button class="btn-secondary" id="btn-refresh">Refresh now</button>
+      <button class="btn-secondary" id="btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Filters -->
+    <div class="filters">
+      <label>From:</label>
+      <input type="datetime-local" id="filter-from" />
+      <label>To:</label>
+      <input type="datetime-local" id="filter-to" />
+      <label>Min participants:</label>
+      <input type="number" id="filter-min-p" min="0" value="0" />
+      <label>Max participants:</label>
+      <input type="number" id="filter-max-p" min="0" value="" placeholder="∞" />
+      <button class="btn-secondary" id="btn-clear-filters">Clear</button>
+    </div>
+
+    <!-- Summary -->
+    <div class="summary">
+      <div class="card">
+        <div class="label">Total rooms</div>
+        <div class="value" id="card-rooms">—</div>
+      </div>
+      <div class="card">
+        <div class="label">Rooms with guests</div>
+        <div class="value" id="card-active">—</div>
+      </div>
+      <div class="card">
+        <div class="label">Total participants</div>
+        <div class="value" id="card-participants">—</div>
+      </div>
+    </div>
+
+    <!-- Room table -->
+    <div class="table-wrap">
+      <h3>Active Rooms (vox-*)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Room ID</th>
+            <th>Created</th>
+            <th>Participants</th>
+            <th style="text-align: right;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="rooms-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Listen panel (shown when joined) -->
+    <div id="listen-panel" class="hidden">
+      <h3>🎧 Listening to room: <span id="listen-room-name">—</span></h3>
+      <div class="info">
+        You are connected with <span class="mic-muted">MIC MUTED</span> — you can hear the conversation but cannot speak.
+      </div>
+      <div class="status" id="listen-status">Connecting...</div>
+      <div style="margin-top: 12px;">
+        <button class="btn-leave" id="btn-leave">Leave room</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Daily client SDK -->
+<script src="https://unpkg.com/@daily-co/daily-js"></script>
+
+<script>
+let token = '';
+let refreshTimer = null;
+let allRooms = [];
+let callFrame = null;  // Daily call object for listening
+
+// ─── Token gate ───────────────────────────────────────────────────
+const stored = sessionStorage.getItem('voxtera_admin_token');
+if (stored) tryAuth(stored);
+
+document.getElementById('token-submit').addEventListener('click', () => {
+  const v = document.getElementById('token-input').value.trim();
+  if (v) tryAuth(v);
+});
+document.getElementById('token-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('token-submit').click();
+});
+
+async function tryAuth(t) {
+  try {
+    const r = await fetch('/api/admin/verify', { headers: { 'X-Admin-Token': t } });
+    if (r.ok) {
+      token = t;
+      sessionStorage.setItem('voxtera_admin_token', t);
+      document.getElementById('token-gate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      startPolling();
+    } else {
+      document.getElementById('token-err').textContent = 'Invalid token.';
+    }
+  } catch {
+    document.getElementById('token-err').textContent = 'Cannot reach server.';
+  }
+}
+
+document.getElementById('btn-logout').addEventListener('click', () => {
+  sessionStorage.removeItem('voxtera_admin_token');
+  location.reload();
+});
+
+// ─── Polling ──────────────────────────────────────────────────────
+function startPolling() {
+  fetchRooms();
+  scheduleRefresh();
+}
+
+document.getElementById('interval').addEventListener('change', scheduleRefresh);
+document.getElementById('btn-refresh').addEventListener('click', fetchRooms);
+
+function scheduleRefresh() {
+  clearInterval(refreshTimer);
+  const ms = parseInt(document.getElementById('interval').value);
+  if (ms > 0) refreshTimer = setInterval(fetchRooms, ms);
+}
+
+async function fetchRooms() {
+  try {
+    const r = await fetch('/api/admin/rooms', { headers: { 'X-Admin-Token': token } });
+    if (!r.ok) return;
+    const data = await r.json();
+    allRooms = data.rooms || [];
+    document.getElementById('hdr-last').textContent = new Date().toLocaleTimeString();
+    renderTable();
+  } catch (e) {
+    console.error('fetch rooms failed', e);
+  }
+}
+
+// ─── Filters ──────────────────────────────────────────────────────
+document.getElementById('btn-clear-filters').addEventListener('click', () => {
+  document.getElementById('filter-from').value = '';
+  document.getElementById('filter-to').value = '';
+  document.getElementById('filter-min-p').value = '0';
+  document.getElementById('filter-max-p').value = '';
+  renderTable();
+});
+['filter-from', 'filter-to', 'filter-min-p', 'filter-max-p'].forEach(id => {
+  document.getElementById(id).addEventListener('change', renderTable);
+});
+
+function getFiltered() {
+  const from = document.getElementById('filter-from').value;
+  const to = document.getElementById('filter-to').value;
+  const minP = parseInt(document.getElementById('filter-min-p').value) || 0;
+  const maxPVal = document.getElementById('filter-max-p').value;
+  const maxP = maxPVal ? parseInt(maxPVal) : Infinity;
+
+  return allRooms.filter(room => {
+    // Filter by participant count
+    if (room.participant_count < minP) return false;
+    if (room.participant_count > maxP) return false;
+
+    // Filter by date
+    if (from && room.created_at) {
+      const roomDate = new Date(room.created_at);
+      if (roomDate < new Date(from)) return false;
+    }
+    if (to && room.created_at) {
+      const roomDate = new Date(room.created_at);
+      if (roomDate > new Date(to)) return false;
+    }
+    return true;
+  });
+}
+
+// ─── Render ───────────────────────────────────────────────────────
+function renderTable() {
+  const filtered = getFiltered();
+  const tbody = document.getElementById('rooms-body');
+
+  // Summary
+  document.getElementById('card-rooms').textContent = filtered.length;
+  document.getElementById('card-active').textContent = filtered.filter(r => r.participant_count > 0).length;
+  document.getElementById('card-participants').textContent = filtered.reduce((s, r) => s + r.participant_count, 0);
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td class="empty" colspan="4">No rooms match filters</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(room => {
+    const created = room.created_at
+      ? new Date(room.created_at).toLocaleString()
+      : '—';
+    const isListening = callFrame && callFrame._roomUrl === room.room_url;
+    const actionBtn = isListening
+      ? `<button class="btn-leave" onclick="leaveRoom()">Leave</button>`
+      : `<button class="btn-join" onclick="joinRoom('${room.room_url}', '${room.room_name}')">Listen</button>`;
+    return `<tr>
+      <td class="room-id">${room.room_name}</td>
+      <td>${created}</td>
+      <td>${room.participant_count}</td>
+      <td style="text-align: right;">${actionBtn}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── Join / Leave Daily room ──────────────────────────────────────
+async function joinRoom(roomUrl, roomName) {
+  // Leave any existing room first
+  if (callFrame) {
+    await leaveRoom();
+  }
+
+  const panel = document.getElementById('listen-panel');
+  panel.classList.remove('hidden');
+  document.getElementById('listen-room-name').textContent = roomName;
+  document.getElementById('listen-status').textContent = 'Connecting...';
+
+  callFrame = DailyIframe.createCallObject({
+    audioSource: false,   // mic OFF
+    videoSource: false,   // camera OFF
+  });
+
+  // Store room URL for comparison
+  callFrame._roomUrl = roomUrl;
+
+  callFrame.on('joined-meeting', () => {
+    document.getElementById('listen-status').textContent = '✓ Connected — listening to conversation';
+    renderTable();
+  });
+
+  callFrame.on('left-meeting', () => {
+    document.getElementById('listen-status').textContent = 'Disconnected';
+    panel.classList.add('hidden');
+    callFrame = null;
+    renderTable();
+  });
+
+  callFrame.on('error', (e) => {
+    document.getElementById('listen-status').textContent = `Error: ${e.errorMsg || 'connection failed'}`;
+  });
+
+  try {
+    await callFrame.join({
+      url: roomUrl,
+      userName: 'Admin (listening)',
+      startAudioOff: true,
+      startVideoOff: true,
+    });
+    // Ensure mic is muted after join
+    callFrame.setLocalAudio(false);
+    callFrame.setLocalVideo(false);
+  } catch (e) {
+    document.getElementById('listen-status').textContent = `Failed: ${e.message || e}`;
+  }
+}
+
+async function leaveRoom() {
+  if (callFrame) {
+    try {
+      await callFrame.leave();
+      await callFrame.destroy();
+    } catch {}
+    callFrame = null;
+  }
+  document.getElementById('listen-panel').classList.add('hidden');
+  renderTable();
+}
+
+document.getElementById('btn-leave').addEventListener('click', leaveRoom);
+</script>
+</body>
+</html>

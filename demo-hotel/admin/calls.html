@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voxtera — Call Records</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0f0f1a;
+    --bg-2: #1a1a2e;
+    --bg-3: #25253d;
+    --border: #2a2a40;
+    --gold: #c9a84c;
+    --gold-dim: #a08030;
+    --text: #e8e8f0;
+    --text-dim: #aaa;
+    --green: #4caf50;
+    --red: #ef5350;
+    --blue: #4a9cb8;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; }
+
+  header { background: var(--bg-2); border-bottom: 1px solid var(--gold-dim); padding: 16px 24px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  header .logo { font-size: 22px; color: var(--gold); font-weight: 600; }
+  header .grow { flex: 1; }
+  header .controls { display: flex; gap: 8px; align-items: center; }
+
+  main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+  /* Token gate */
+  #token-gate { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 24px; max-width: 480px; margin: 60px auto; }
+  #token-gate h2 { margin: 0 0 12px; color: var(--gold); font-size: 18px; }
+  #token-gate p { color: var(--text-dim); font-size: 14px; line-height: 1.5; margin: 0 0 16px; }
+  #token-gate input { width: 100%; padding: 10px 12px; background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: ui-monospace, monospace; font-size: 14px; }
+  #token-gate input:focus { outline: none; border-color: var(--gold); }
+  #token-gate .err { color: #ff8787; font-size: 13px; margin-top: 12px; min-height: 18px; }
+
+  /* Buttons */
+  button { border: none; border-radius: 6px; padding: 8px 14px; font-weight: 500; cursor: pointer; font-size: 13px; transition: opacity 0.15s; }
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--gold); color: #111; }
+  .btn-secondary { background: var(--bg-3); color: var(--text); border: 1px solid var(--border); }
+
+  select, input { background: var(--bg-3); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+  select:focus, input:focus { outline: none; border-color: var(--gold); }
+
+  /* Filters */
+  .filters { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+  .filters label { font-size: 13px; color: var(--text-dim); }
+
+  /* Summary cards */
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .card { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; }
+  .card .label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .card .value { font-size: 28px; font-weight: 600; color: var(--gold); margin-top: 6px; }
+
+  /* Layout: list + detail */
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  /* Call list */
+  .call-list-wrap { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; max-height: 70vh; display: flex; flex-direction: column; }
+  .call-list-wrap h3 { margin: 0; padding: 14px 18px; border-bottom: 1px solid var(--border); font-size: 15px; color: var(--text); flex-shrink: 0; }
+  .call-list { overflow-y: auto; flex: 1; }
+  .call-item { padding: 12px 18px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+  .call-item:hover { background: var(--bg-3); }
+  .call-item.active { background: var(--bg-3); border-left: 3px solid var(--gold); }
+  .call-item .top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .call-item .session-id { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-dim); }
+  .call-item .date { font-size: 13px; color: var(--text); font-weight: 500; }
+  .call-item .meta { font-size: 12px; color: var(--text-dim); display: flex; gap: 12px; flex-wrap: wrap; }
+  .call-item .meta .tag { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 11px; }
+  .call-item .meta .lang { color: var(--blue); }
+
+  /* Detail panel */
+  .detail-wrap { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; max-height: 70vh; display: flex; flex-direction: column; }
+  .detail-wrap h3 { margin: 0; padding: 14px 18px; border-bottom: 1px solid var(--border); font-size: 15px; color: var(--text); flex-shrink: 0; }
+  .detail-content { overflow-y: auto; flex: 1; padding: 18px; }
+  .detail-placeholder { padding: 40px; text-align: center; color: var(--text-dim); font-style: italic; }
+
+  /* Call metadata */
+  .call-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; font-size: 13px; }
+  .call-meta dt { color: var(--text-dim); }
+  .call-meta dd { margin: 0; color: var(--text); font-weight: 500; }
+
+  /* Turns */
+  .turns { display: flex; flex-direction: column; gap: 10px; }
+  .turn { padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.5; max-width: 90%; }
+  .turn.user { background: var(--bg-3); border: 1px solid var(--border); align-self: flex-start; }
+  .turn.bot { background: #1a2a3a; border: 1px solid #2a4a6a; align-self: flex-end; }
+  .turn .turn-header { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; display: flex; gap: 8px; }
+  .turn .turn-header .latency { color: var(--gold); }
+  .turn .turn-text { color: var(--text); }
+
+  .hidden { display: none !important; }
+  .empty-msg { text-align: center; padding: 40px; color: var(--text-dim); font-style: italic; }
+
+  /* Audio players */
+  .audio-section { margin-bottom: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .audio-player-block { background: var(--bg-3); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .audio-label { font-size: 13px; color: var(--text); margin-bottom: 8px; font-weight: 500; }
+  .audio-player-block audio { border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<!-- Token gate -->
+<div id="token-gate">
+  <h2>Call Records</h2>
+  <p>Enter the admin token to browse voice call transcripts and metrics.</p>
+  <input id="token-input" type="password" placeholder="VOXTERA_ADMIN_TOKEN" autocomplete="off" />
+  <div class="err" id="token-err"></div>
+  <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+    <button class="btn-primary" id="token-submit">Sign in</button>
+  </div>
+</div>
+
+<!-- Main app -->
+<div id="app" class="hidden">
+  <header>
+    <div class="logo">Call Records</div>
+    <div class="grow"></div>
+    <div class="controls">
+      <button class="btn-secondary" id="btn-refresh">Refresh</button>
+      <button class="btn-secondary" id="btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Filters -->
+    <div class="filters">
+      <label>From:</label>
+      <input type="date" id="filter-from" />
+      <label>To:</label>
+      <input type="date" id="filter-to" />
+      <label>Language:</label>
+      <select id="filter-lang">
+        <option value="">All</option>
+      </select>
+      <label>STT:</label>
+      <select id="filter-stt">
+        <option value="">All</option>
+      </select>
+      <label>Min turns:</label>
+      <input type="number" id="filter-min-turns" min="0" value="0" style="width:70px" />
+      <button class="btn-secondary" id="btn-clear-filters">Clear</button>
+    </div>
+
+    <!-- Summary -->
+    <div class="summary">
+      <div class="card">
+        <div class="label">Total calls</div>
+        <div class="value" id="card-total">—</div>
+      </div>
+      <div class="card">
+        <div class="label">Total turns</div>
+        <div class="value" id="card-turns">—</div>
+      </div>
+      <div class="card">
+        <div class="label">Avg duration</div>
+        <div class="value" id="card-duration">—</div>
+      </div>
+      <div class="card">
+        <div class="label">With audio</div>
+        <div class="value" id="card-audio">—</div>
+      </div>
+    </div>
+
+    <!-- List + Detail -->
+    <div class="layout">
+      <div class="call-list-wrap">
+        <h3>Sessions <span id="shown-count" style="color:var(--text-dim); font-weight:400; font-size:13px;"></span></h3>
+        <div class="call-list" id="call-list">
+          <div class="empty-msg">Loading...</div>
+        </div>
+      </div>
+
+      <div class="detail-wrap">
+        <h3>Conversation</h3>
+        <div class="detail-content" id="detail-content">
+          <div class="detail-placeholder">Select a call to view its transcript</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+let token = '';
+let allCalls = [];
+let selectedId = null;
+
+// ─── Token gate ───────────────────────────────────────────────────
+const stored = sessionStorage.getItem('voxtera_admin_token');
+if (stored) tryAuth(stored);
+
+document.getElementById('token-submit').addEventListener('click', () => {
+  const v = document.getElementById('token-input').value.trim();
+  if (v) tryAuth(v);
+});
+document.getElementById('token-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('token-submit').click();
+});
+
+async function tryAuth(t) {
+  try {
+    const r = await fetch('/api/admin/verify', { headers: { 'X-Admin-Token': t } });
+    if (r.ok) {
+      token = t;
+      sessionStorage.setItem('voxtera_admin_token', t);
+      document.getElementById('token-gate').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      loadCalls();
+    } else {
+      document.getElementById('token-err').textContent = 'Invalid token.';
+    }
+  } catch {
+    document.getElementById('token-err').textContent = 'Cannot reach server.';
+  }
+}
+
+document.getElementById('btn-logout').addEventListener('click', () => {
+  sessionStorage.removeItem('voxtera_admin_token');
+  location.reload();
+});
+
+document.getElementById('btn-refresh').addEventListener('click', loadCalls);
+
+// ─── Load calls ───────────────────────────────────────────────────
+async function loadCalls() {
+  try {
+    const r = await fetch('/api/admin/calls', { headers: { 'X-Admin-Token': token } });
+    if (!r.ok) return;
+    const data = await r.json();
+    allCalls = data.calls || [];
+    populateFilterOptions();
+    renderList();
+  } catch (e) {
+    console.error('Failed to load calls', e);
+  }
+}
+
+function populateFilterOptions() {
+  const langs = new Set();
+  const stts = new Set();
+  allCalls.forEach(c => {
+    (c.languages || []).forEach(l => langs.add(l));
+    if (c.providers && c.providers.stt) stts.add(c.providers.stt);
+  });
+
+  const langSel = document.getElementById('filter-lang');
+  langSel.innerHTML = '<option value="">All</option>';
+  [...langs].sort().forEach(l => {
+    langSel.innerHTML += `<option value="${l}">${l}</option>`;
+  });
+
+  const sttSel = document.getElementById('filter-stt');
+  sttSel.innerHTML = '<option value="">All</option>';
+  [...stts].sort().forEach(s => {
+    sttSel.innerHTML += `<option value="${s}">${s}</option>`;
+  });
+}
+
+// ─── Filters ──────────────────────────────────────────────────────
+document.getElementById('btn-clear-filters').addEventListener('click', () => {
+  document.getElementById('filter-from').value = '';
+  document.getElementById('filter-to').value = '';
+  document.getElementById('filter-lang').value = '';
+  document.getElementById('filter-stt').value = '';
+  document.getElementById('filter-min-turns').value = '0';
+  renderList();
+});
+['filter-from', 'filter-to', 'filter-lang', 'filter-stt', 'filter-min-turns'].forEach(id => {
+  document.getElementById(id).addEventListener('change', renderList);
+});
+
+function getFiltered() {
+  const from = document.getElementById('filter-from').value;
+  const to = document.getElementById('filter-to').value;
+  const lang = document.getElementById('filter-lang').value;
+  const stt = document.getElementById('filter-stt').value;
+  const minTurns = parseInt(document.getElementById('filter-min-turns').value) || 0;
+
+  return allCalls.filter(c => {
+    if (c.turn_count < minTurns) return false;
+    if (lang && !(c.languages || []).includes(lang)) return false;
+    if (stt && (!c.providers || c.providers.stt !== stt)) return false;
+
+    const date = (c.started_at || '').slice(0, 10);
+    if (from && date < from) return false;
+    if (to && date > to) return false;
+    return true;
+  });
+}
+
+// ─── Render list ──────────────────────────────────────────────────
+function renderList() {
+  const filtered = getFiltered();
+  const listEl = document.getElementById('call-list');
+
+  // Summary
+  document.getElementById('card-total').textContent = filtered.length;
+  document.getElementById('card-turns').textContent = filtered.reduce((s, c) => s + (c.turn_count || 0), 0);
+  const durations = filtered.filter(c => c.duration_secs).map(c => c.duration_secs);
+  const avgDur = durations.length ? (durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
+  document.getElementById('card-duration').textContent = avgDur ? formatDuration(avgDur) : '—';
+  document.getElementById('card-audio').textContent = filtered.filter(c => c.has_audio).length;
+  document.getElementById('shown-count').textContent = `(${filtered.length})`;
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = '<div class="empty-msg">No calls match filters</div>';
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(c => {
+    const date = c.started_at ? new Date(c.started_at).toLocaleString() : '—';
+    const dur = c.duration_secs ? formatDuration(c.duration_secs) : '—';
+    const langs = (c.languages || []).join(', ') || '—';
+    const active = c.session_id === selectedId ? 'active' : '';
+    return `<div class="call-item ${active}" data-id="${c.session_id}">
+      <div class="top-row">
+        <span class="date">${date}</span>
+        <span class="session-id">${c.session_id.slice(0, 12)}…</span>
+      </div>
+      <div class="meta">
+        <span>${c.turn_count} turns</span>
+        <span>${dur}</span>
+        <span class="tag">${c.providers?.stt || '?'}</span>
+        <span class="lang">${langs}</span>
+        ${c.has_audio ? '<span>🎵</span>' : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Attach click handlers
+  listEl.querySelectorAll('.call-item').forEach(el => {
+    el.addEventListener('click', () => loadDetail(el.dataset.id));
+  });
+}
+
+function formatDuration(secs) {
+  if (secs < 60) return `${Math.round(secs)}s`;
+  const m = Math.floor(secs / 60);
+  const s = Math.round(secs % 60);
+  return `${m}m ${s}s`;
+}
+
+// ─── Detail view ──────────────────────────────────────────────────
+async function loadDetail(sessionId) {
+  selectedId = sessionId;
+  // Re-render list to highlight active
+  renderList();
+
+  const detail = document.getElementById('detail-content');
+  detail.innerHTML = '<div class="detail-placeholder">Loading...</div>';
+
+  try {
+    const r = await fetch(`/api/admin/call/${sessionId}`, { headers: { 'X-Admin-Token': token } });
+    if (!r.ok) {
+      detail.innerHTML = '<div class="detail-placeholder">Failed to load call</div>';
+      return;
+    }
+    const record = await r.json();
+    renderDetail(record);
+  } catch (e) {
+    detail.innerHTML = `<div class="detail-placeholder">Error: ${e.message}</div>`;
+  }
+}
+
+function renderDetail(record) {
+  const detail = document.getElementById('detail-content');
+  const started = record.started_at ? new Date(record.started_at).toLocaleString() : '—';
+  const ended = record.ended_at ? new Date(record.ended_at).toLocaleString() : 'in progress';
+  const dur = record.duration_secs ? formatDuration(record.duration_secs) : '—';
+  const m = record.metrics || {};
+
+  let html = `<dl class="call-meta">
+    <dt>Session</dt><dd>${record.session_id}</dd>
+    <dt>Hotel</dt><dd>${record.hotel_id || '—'}</dd>
+    <dt>Started</dt><dd>${started}</dd>
+    <dt>Ended</dt><dd>${ended}</dd>
+    <dt>Duration</dt><dd>${dur}</dd>
+    <dt>STT</dt><dd>${record.providers?.stt || '—'}</dd>
+    <dt>TTS</dt><dd>${record.providers?.tts || '—'}</dd>
+    <dt>LLM</dt><dd>${record.providers?.llm || '—'}</dd>
+    <dt>Languages</dt><dd>${(record.languages || []).join(', ') || '—'}</dd>
+    <dt>User turns</dt><dd>${m.user_turns ?? '—'}</dd>
+    <dt>Bot turns</dt><dd>${m.bot_turns ?? '—'}</dd>
+    <dt>Interruptions</dt><dd>${m.interruptions ?? '—'}</dd>
+    <dt>Bot chars</dt><dd>${m.bot_character_total ?? '—'}</dd>
+    <dt>LLM tokens (in/out)</dt><dd>${m.llm_prompt_tokens ?? 0} / ${m.llm_completion_tokens ?? 0}</dd>
+  </dl>`;
+
+  // Audio players
+  const audioFiles = record.audio_files || [];
+  if (audioFiles.length > 0) {
+    html += '<div class="audio-section">';
+    audioFiles.forEach(af => {
+      const url = `/api/admin/call/${record.session_id}/audio/${af.file}?token=${encodeURIComponent(token)}`;
+      const label = af.file === 'recording.wav' ? '🎵 Full Recording (stereo)' :
+                    af.file === 'input_raw.wav' ? '🎤 Raw Input (browser mic)' : af.file;
+      const size = af.size_bytes ? `(${(af.size_bytes / 1024 / 1024).toFixed(1)} MB)` : '';
+      html += `<div class="audio-player-block">
+        <div class="audio-label">${label} ${size}</div>
+        <audio controls preload="none" style="width:100%;">
+          <source src="${url}" type="audio/wav">
+        </audio>
+      </div>`;
+    });
+    html += '</div>';
+  } else if (record.audio) {
+    html += `<div style="margin-bottom:16px; font-size:13px; color:var(--blue);">🎵 Audio: ${record.audio.file} (${formatDuration(record.audio.duration_secs)}, ${record.audio.layout})</div>`;
+  }
+
+  const turns = record.turns || [];
+  if (turns.length === 0) {
+    html += '<div class="empty-msg">No turns recorded</div>';
+  } else {
+    html += '<div class="turns">';
+    turns.forEach(t => {
+      const role = t.role === 'bot' ? 'bot' : 'user';
+      const time = t.timestamp ? new Date(t.timestamp).toLocaleTimeString() : '';
+      const latency = t.latency_ms ? `${Math.round(t.latency_ms)}ms` : '';
+      html += `<div class="turn ${role}">
+        <div class="turn-header">
+          <span>${role === 'bot' ? '🤖' : '👤'} ${time}</span>
+          ${latency ? `<span class="latency">${latency}</span>` : ''}
+          ${t.language ? `<span>[${t.language}]</span>` : ''}
+        </div>
+        <div class="turn-text">${escapeHtml(t.text || '')}</div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  detail.innerHTML = html;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>

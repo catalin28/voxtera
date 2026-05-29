@@ -64,6 +64,7 @@ from voxtera.admin import (  # noqa: E402
     eject_participants,
     list_room_participants,
     list_rooms,
+    list_rooms_with_presence,
 )
 from voxtera.lang_config import (  # noqa: E402
     LANG_CONFIG,
@@ -1479,6 +1480,18 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_config_get()
         if self.path == "/api/admin/sessions":
             return self._handle_admin_sessions()
+        if self.path == "/api/admin/rooms":
+            return self._handle_admin_rooms()
+        if self.path.startswith("/api/admin/calls"):
+            return self._handle_admin_calls()
+        if "/audio/" in self.path and self.path.startswith("/api/admin/call/"):
+            # /api/admin/call/<session_id>/audio/<filename>
+            parts = self.path[len("/api/admin/call/") :].split("/audio/", 1)
+            if len(parts) == 2:
+                return self._handle_admin_call_audio(parts[0], parts[1])
+        if self.path.startswith("/api/admin/call/"):
+            session_id = self.path[len("/api/admin/call/") :]
+            return self._handle_admin_call_detail(session_id)
         if self.path.startswith("/api/admin/visitors"):
             return self._handle_admin_visitors()
         if self.path.startswith("/api/admin/ip-lookup"):
@@ -1564,6 +1577,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_demo_validate_code()
         if self.path == "/api/demo/check-allowance":
             return self._handle_demo_check_allowance()
+        if self.path == "/api/audio-device-info":
+            return self._handle_audio_device_info()
         self.send_error(404)
         return None
 
@@ -2130,6 +2145,177 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                     "session_count": 1 if non_bot else 0,
                 },
             )
+
+    # ------------------------------------------------------------------
+    # /api/admin/rooms — list all vox-* rooms with participant counts
+    # ------------------------------------------------------------------
+
+    def _handle_admin_rooms(self) -> None:
+        """GET /api/admin/rooms — all vox-* rooms with live participant counts."""
+        ok, _ = self._admin_auth()
+        if not ok:
+            return
+
+        if not _DAILY_API_KEY or not _DAILY_DOMAIN:
+            self._send_json(503, {"error": "daily_not_configured"})
+            return
+
+        try:
+            rooms = list_rooms_with_presence(
+                api_key=_DAILY_API_KEY,
+                domain=_DAILY_DOMAIN,
+                prefix="vox-",
+            )
+        except DailyAPIError as exc:
+            self._send_json(
+                502,
+                {"error": "daily_api_error", "detail": str(exc), "status": exc.status},
+            )
+            return
+
+        self._send_json(
+            200,
+            {
+                "domain": _DAILY_DOMAIN,
+                "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),
+                "rooms": rooms,
+                "room_count": len(rooms),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # /api/admin/calls — browse call records from logs/calls/
+    # ------------------------------------------------------------------
+
+    def _handle_admin_calls(self) -> None:
+        """GET /api/admin/calls — list all call records (summary view)."""
+        ok, _ = self._admin_auth()
+        if not ok:
+            return
+
+        calls_dir = Path(__file__).resolve().parent.parent / "logs" / "calls"
+        if not calls_dir.exists():
+            self._send_json(200, {"calls": [], "total": 0})
+            return
+
+        results = []
+        for session_dir in sorted(calls_dir.iterdir(), reverse=True):
+            if not session_dir.is_dir():
+                continue
+            record_file = session_dir / "record.json"
+            if not record_file.exists():
+                continue
+            try:
+                record = json.loads(record_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+
+            results.append(
+                {
+                    "session_id": record.get("session_id", session_dir.name),
+                    "hotel_id": record.get("hotel_id", ""),
+                    "started_at": record.get("started_at", ""),
+                    "ended_at": record.get("ended_at"),
+                    "duration_secs": record.get("duration_secs"),
+                    "transport_mode": record.get("transport_mode", ""),
+                    "providers": record.get("providers", {}),
+                    "languages": record.get("languages", []),
+                    "metrics": record.get("metrics", {}),
+                    "has_audio": record.get("audio") is not None,
+                    "turn_count": len(record.get("turns", [])),
+                }
+            )
+
+        # Sort by started_at descending
+        results.sort(key=lambda r: r.get("started_at", ""), reverse=True)
+        self._send_json(200, {"calls": results, "total": len(results)})
+
+    def _handle_admin_call_detail(self, session_id: str) -> None:
+        """GET /api/admin/call/<session_id> — full call record with turns."""
+        ok, _ = self._admin_auth()
+        if not ok:
+            return
+
+        # Security: prevent path traversal
+        if "/" in session_id or "\\" in session_id or ".." in session_id:
+            self._send_json(400, {"error": "invalid session_id"})
+            return
+
+        calls_dir = Path(__file__).resolve().parent.parent / "logs" / "calls"
+        record_file = calls_dir / session_id / "record.json"
+
+        if not record_file.exists():
+            self._send_json(404, {"error": "call not found"})
+            return
+
+        try:
+            record = json.loads(record_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            self._send_json(500, {"error": f"failed to read record: {exc}"})
+            return
+
+        # Enrich with available audio files on disk
+        session_dir = calls_dir / session_id
+        audio_files = []
+        for fname in ("recording.wav", "input_raw.wav"):
+            fpath = session_dir / fname
+            if fpath.exists():
+                audio_files.append({"file": fname, "size_bytes": fpath.stat().st_size})
+        record["audio_files"] = audio_files
+
+        self._send_json(200, record)
+
+    def _handle_admin_call_audio(self, session_id: str, filename: str) -> None:
+        """GET /api/admin/call/<session_id>/audio/<filename> — serve a WAV file.
+
+        Accepts auth via X-Admin-Token header OR ?token= query param
+        (needed because <audio> elements cannot set custom headers).
+        """
+        # Check header first, then query param
+        from urllib.parse import parse_qs, urlparse
+
+        provided = self.headers.get("X-Admin-Token", "")
+        if not provided:
+            qs = parse_qs(urlparse(self.path).query)
+            provided = (qs.get("token") or [""])[0]
+        if not _ADMIN_TOKEN or provided != _ADMIN_TOKEN:
+            self._send_json(401, {"error": "unauthorized"})
+            return
+
+        # Strip query string from filename if present
+        if "?" in filename:
+            filename = filename.split("?")[0]
+
+        # Security: prevent path traversal
+        if "/" in session_id or "\\" in session_id or ".." in session_id:
+            self._send_json(400, {"error": "invalid session_id"})
+            return
+        if "/" in filename or "\\" in filename or ".." in filename:
+            self._send_json(400, {"error": "invalid filename"})
+            return
+        # Only allow known audio filenames
+        allowed = {"recording.wav", "input_raw.wav"}
+        if filename not in allowed:
+            self._send_json(403, {"error": "file not allowed"})
+            return
+
+        calls_dir = Path(__file__).resolve().parent.parent / "logs" / "calls"
+        audio_path = calls_dir / session_id / filename
+
+        if not audio_path.exists():
+            self._send_json(404, {"error": "audio file not found"})
+            return
+
+        try:
+            data = audio_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Disposition", f'inline; filename="{filename}"')
+            self.end_headers()
+            self.wfile.write(data)
+        except OSError as exc:
+            self._send_json(500, {"error": f"failed to read audio: {exc}"})
 
     # ------------------------------------------------------------------
     # /api/admin/eject — kick one or more participants
@@ -2805,6 +2991,48 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         used = _demo_anon_count(client_ip)
         remaining = max(0, _DEMO_FREE_MESSAGES - used)
         self._send_json(200, {"remaining": remaining, "limit": _DEMO_FREE_MESSAGES})
+
+    def _handle_audio_device_info(self) -> None:
+        """POST /api/audio-device-info — save client audio track settings.
+
+        Expects JSON with session_id and various audio diagnostic fields.
+        Writes to logs/calls/<session_id>/audio_device.json.
+        """
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length <= 0 or content_length > 8192:
+            self._send_json(400, {"error": "invalid_body"})
+            return
+        try:
+            body = json.loads(self.rfile.read(content_length))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self._send_json(400, {"error": "invalid_json"})
+            return
+        session_id = body.get("session_id")
+        if not session_id:
+            self._send_json(400, {"error": "missing session_id"})
+            return
+        # Sanitise session_id to prevent path traversal
+        safe_id = session_id.replace("/", "").replace("..", "").replace("\\", "")
+        if not safe_id or safe_id != session_id:
+            self._send_json(400, {"error": "invalid session_id"})
+            return
+        calls_dir = Path(__file__).resolve().parent.parent / "logs" / "calls"
+        session_dir = calls_dir / safe_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+        out_path = session_dir / "audio_device.json"
+        payload = {
+            "timestamp": datetime.now(tz=UTC).isoformat(),
+            "session_id": safe_id,
+            "user_agent": self.headers.get("User-Agent", ""),
+            "platform": body.get("platform"),
+            "requested_constraints": body.get("requested_constraints"),
+            "audio_track_settings": body.get("audio_track_settings"),
+            "audio_track_capabilities": body.get("audio_track_capabilities"),
+            "available_devices": body.get("available_devices"),
+            "network": body.get("network"),
+        }
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+        self._send_json(200, {"ok": True})
 
     def _handle_inquiry(self) -> None:
         """POST /api/inquiry — receive discovery form submissions.
@@ -3745,7 +3973,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 messages.append({"role": "tool", "tool_call_id": tcd["id"], "content": result})
             try:
                 t0_llm2 = _time.monotonic()
-                r2 = client.chat.completions.create(  # noqa: F821
+                r2 = oai_client.chat.completions.create(
                     model=model, max_tokens=150, messages=messages, stream=False
                 )
                 print(f"[timing] llm_tool_followup={(_time.monotonic() - t0_llm2) * 1000:.0f}ms")
