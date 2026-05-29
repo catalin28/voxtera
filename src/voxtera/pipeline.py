@@ -48,6 +48,7 @@ from pipecat.frames.frames import (
     LLMTextFrame,
     OutputAudioRawFrame,
     TranscriptionFrame,
+    TTSSpeakFrame,
     TTSStartedFrame,
     TTSStoppedFrame,
     VADUserStartedSpeakingFrame,
@@ -195,11 +196,92 @@ class PipelineProbe(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+class PstnIdleWatcher(FrameProcessor):
+    """Detects prolonged caller silence on PSTN calls and triggers hangup.
+
+    Inserted after VAD so it sees VADUserStartedSpeakingFrame.  A background
+    asyncio task checks whether speech has occurred within `idle_timeout` secs.
+    On first timeout it queues a TTS prompt ("Are you still there?").  If a
+    second, shorter timeout elapses with no speech, it queues an EndFrame.
+    """
+
+    def __init__(
+        self,
+        idle_timeout: float = 45.0,
+        followup_timeout: float = 15.0,
+    ) -> None:
+        super().__init__()
+        self._idle_timeout = idle_timeout
+        self._followup_timeout = followup_timeout
+        self._last_speech_ts: float = 0.0  # monotonic; 0 = never spoken
+        self._watchdog_task: asyncio.Task | None = None
+        self._task_ref: object | None = None  # set to PipelineTask externally
+        self._stopped = False
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        if isinstance(frame, VADUserStartedSpeakingFrame):
+            self._last_speech_ts = _time.monotonic()
+        await self.push_frame(frame, direction)
+
+    def start_watchdog(self, pipeline_task) -> None:
+        """Call once the pipeline task exists and dial-in is connected."""
+        self._task_ref = pipeline_task
+        self._last_speech_ts = _time.monotonic()  # grace period from connect
+        self._watchdog_task = asyncio.create_task(self._watch_loop())
+
+    async def _watch_loop(self) -> None:
+        try:
+            while not self._stopped:
+                await asyncio.sleep(2.0)
+                elapsed = _time.monotonic() - self._last_speech_ts
+                if elapsed >= self._idle_timeout:
+                    logger.info(
+                        "[pstn-idle] no speech for {:.0f}s — prompting caller",
+                        elapsed,
+                    )
+                    await self._task_ref.queue_frame(
+                        TTSSpeakFrame(text="Are you still there?")
+                    )
+                    # Wait for followup speech
+                    await self._wait_for_speech_or_timeout(self._followup_timeout)
+                    if _time.monotonic() - self._last_speech_ts >= self._followup_timeout:
+                        logger.info("[pstn-idle] no response after prompt — ending call")
+                        await self._task_ref.queue_frame(TTSSpeakFrame(text="Goodbye."))
+                        await asyncio.sleep(1.5)
+                        await self._task_ref.queue_frame(EndFrame())
+                        return
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.opt(exception=True).warning("[pstn-idle] watchdog error")
+
+    async def _wait_for_speech_or_timeout(self, timeout: float) -> None:
+        """Sleep in short increments, returning early if speech is detected."""
+        deadline = _time.monotonic() + timeout
+        while _time.monotonic() < deadline:
+            await asyncio.sleep(1.0)
+            if self._last_speech_ts > deadline - timeout:
+                # Speech happened after we started waiting
+                if _time.monotonic() - self._last_speech_ts < 2.0:
+                    return
+
+    def stop(self) -> None:
+        self._stopped = True
+        if self._watchdog_task and not self._watchdog_task.done():
+            self._watchdog_task.cancel()
+
+
 try:
-    from pipecat.transports.daily.transport import DailyParams, DailyTransport
+    from pipecat.transports.daily.transport import (
+        DailyDialinSettings,
+        DailyParams,
+        DailyTransport,
+    )
 except Exception:  # daily-python not available on Windows
     DailyParams = None  # type: ignore[assignment,misc]
     DailyTransport = None  # type: ignore[assignment,misc]
+    DailyDialinSettings = None  # type: ignore[assignment,misc]
 from pipecat.transports.local.audio import (  # noqa: E402
     LocalAudioTransport,
     LocalAudioTransportParams,
@@ -442,25 +524,43 @@ def build_pipeline(
             _preimport_thread.join(timeout=5.0)
 
         _t0 = _time.perf_counter()
+
+        # PSTN dial-in: if the bot was spawned for a phone call, pass the
+        # call routing info so Pipecat calls pinlessCallUpdate automatically
+        # when the 'dialin-ready' event fires.
+        _dialin_call_id = os.environ.get("DIALIN_CALL_ID", "")
+        _dialin_call_domain = os.environ.get("DIALIN_CALL_DOMAIN", "")
+        _dialin_settings = None
+        if _dialin_call_id and _dialin_call_domain and DailyDialinSettings is not None:
+            _dialin_settings = DailyDialinSettings(
+                call_id=_dialin_call_id,
+                call_domain=_dialin_call_domain,
+            )
+            logger.info(
+                "[daily] PSTN dial-in mode: call_id={}, call_domain={}",
+                _dialin_call_id[:12] + "...",
+                _dialin_call_domain[:12] + "...",
+            )
+
+        _is_pstn = _dialin_settings is not None
+        # PSTN calls use 8 kHz (narrowband telephony). WebRTC browser calls
+        # use 16 kHz in / 48 kHz out for full-quality audio.
+        _audio_in_rate = 8000 if _is_pstn else 16000
+        _audio_out_rate = 8000 if _is_pstn else 48000
+
         transport = DailyTransport(
             room_url,
             None,
             settings.bot_name,
             DailyParams(
                 api_key=settings.daily_api_key,
+                dialin_settings=_dialin_settings,
                 audio_in_enabled=mic_enabled,
-                audio_in_sample_rate=16000,
+                audio_in_sample_rate=_audio_in_rate,
                 audio_in_channels=1,
                 audio_in_passthrough=True,
                 audio_out_enabled=True,
-                # 48 kHz = WebRTC native. The OpenAI TTS service is pinned
-                # to 24 kHz at construction (see ``voxtera/tts.py``), and
-                # Pipecat's BaseOutputTransport resampler upsamples 24 → 48
-                # before this transport hands audio to daily-python. Setting
-                # this to 24 kHz instead gives chipmunk playback in browsers
-                # because daily-python's WebRTC layer doesn't always
-                # negotiate non-native rates correctly.
-                audio_out_sample_rate=48000,
+                audio_out_sample_rate=_audio_out_rate,
                 audio_out_channels=1,
                 camera_out_enabled=False,
                 microphone_out_enabled=True,
@@ -648,6 +748,59 @@ def build_pipeline(
             t = threading.Timer(5.0, _force_exit)
             t.daemon = True
             t.start()
+
+        # PSTN dial-in event handlers: log connection events and terminate
+        # cleanly on stop/error so the process exits and the launcher frees
+        # the session slot.
+        if _is_pstn:
+            _pstn_webhook_ts = float(os.environ.get("PSTN_WEBHOOK_TS", "0"))
+
+            @transport.event_handler("on_dialin_ready")
+            async def _on_dialin_ready(transport, sip_endpoint):
+                _ready_elapsed = _time.time() - _pstn_webhook_ts if _pstn_webhook_ts else 0
+                logger.info(
+                    "[pstn] dial-in ready: sip_endpoint={} (bot_startup={:.1f}s)",
+                    sip_endpoint,
+                    _ready_elapsed,
+                )
+
+            @transport.event_handler("on_dialin_connected")
+            async def _on_dialin_connected(transport, data):
+                _hold_time = _time.time() - _pstn_webhook_ts if _pstn_webhook_ts else 0
+                logger.info(
+                    "[pstn] dial-in connected — hold_time={:.1f}s data={}",
+                    _hold_time,
+                    data,
+                )
+                # Short delay to let codec negotiation settle before greeting
+                await asyncio.sleep(0.5)
+                # Greet the PSTN caller (no browser to send voxtera-ready)
+                _greeting_lang, _greeting_text = resolve_greeting(
+                    settings.greeting_language
+                )
+                logger.info(
+                    "[pstn] greeting caller (lang={}) — {} chars",
+                    _greeting_lang,
+                    len(_greeting_text),
+                )
+                await task.queue_frame(TTSSpeakFrame(text=_greeting_text))
+                # Start idle silence watchdog now that the caller is live
+                _pstn_idle_watcher.start_watchdog(task)
+
+            @transport.event_handler("on_dialin_stopped")
+            async def _on_dialin_stopped(transport, data):
+                logger.info("[pstn] dial-in stopped: {}", data)
+                _pstn_idle_watcher.stop()
+                await task.queue_frame(EndFrame())
+
+            @transport.event_handler("on_dialin_warning")
+            async def _on_dialin_warning(transport, data):
+                logger.warning("[pstn] dial-in warning: {}", data)
+
+            @transport.event_handler("on_dialin_error")
+            async def _on_dialin_error(transport, data):
+                logger.error("[pstn] dial-in error: {}", data)
+                await task.queue_frame(EndFrame())
 
         # Health monitor: exits the process when the room is empty for too
         # long, preventing transport degradation from idle WebRTC sessions.
@@ -958,6 +1111,20 @@ def build_pipeline(
                 processors.append(PipelineProbe("after_vad"))
             if health_monitor is not None:
                 processors.append(ActivityNotifier(health_monitor))
+            # PSTN idle silence detection: ends call if caller is silent too long
+            if _is_pstn:
+                _idle_timeout = float(os.environ.get("PSTN_IDLE_TIMEOUT_SECS", "45"))
+                _followup_timeout = float(os.environ.get("PSTN_IDLE_FOLLOWUP_SECS", "15"))
+                _pstn_idle_watcher = PstnIdleWatcher(
+                    idle_timeout=_idle_timeout,
+                    followup_timeout=_followup_timeout,
+                )
+                processors.append(_pstn_idle_watcher)
+                logger.info(
+                    "[pstn-idle] watcher enabled: idle={}s followup={}s",
+                    _idle_timeout,
+                    _followup_timeout,
+                )
         if stt_router is not None:
             # Daily mode: parallel STT branches gated by the router. Each
             # branch is [input_gate, stt, noise_filter, output_gate]; only

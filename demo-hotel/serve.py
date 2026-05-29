@@ -111,6 +111,21 @@ _DAILY_ROOM_MAX_PARTICIPANTS: int = int(os.environ.get("DAILY_ROOM_MAX_PARTICIPA
 _MAX_CONCURRENT_SESSIONS: int = int(os.environ.get("DAILY_MAX_CONCURRENT_SESSIONS", "50"))
 _SESSION_TIMEOUT_SECS: int = int(os.environ.get("VOXTERA_SESSION_TIMEOUT_SECS", "180"))
 
+# ---------------------------------------------------------------------------
+# PSTN Telephony config
+# ---------------------------------------------------------------------------
+_PSTN_ENABLED: bool = os.environ.get("PSTN_ENABLED", "false").lower() in ("1", "true", "yes")
+_PSTN_MODE: str = os.environ.get("PSTN_MODE", "pinless")
+_PSTN_PHONE_NUMBER: str = os.environ.get("PSTN_PHONE_NUMBER", "")
+_PSTN_MAX_DURATION_MIN: int = int(os.environ.get("PSTN_MAX_DURATION_MIN", "4"))
+_PSTN_WEBHOOK_HMAC: str = os.environ.get("PSTN_WEBHOOK_HMAC", "")
+_PSTN_MAX_CONCURRENT: int = int(os.environ.get("PSTN_MAX_CONCURRENT_CALLS", "10"))
+# Per-number rate limit: max calls per number within the sliding window.
+_PSTN_RATE_LIMIT_PER_NUMBER: int = int(os.environ.get("PSTN_RATE_LIMIT_PER_NUMBER", "3"))
+_PSTN_RATE_LIMIT_WINDOW_SECS: int = int(os.environ.get("PSTN_RATE_LIMIT_WINDOW_SECS", "300"))
+# In-memory rate limit tracker: {phone_number: [timestamp, ...]}
+_pstn_call_log: dict[str, list[float]] = {}
+
 # Tiny per-process cache so two browsers polling at 3 s don't double the load
 # on Daily REST. ``_PRESENCE_CACHE_TTL_SECS`` is short enough to stay live
 # but long enough to absorb the 1 s polling burst of two operators looking
@@ -618,6 +633,31 @@ def _cleanup_orphaned_rooms() -> None:
             print(f"[startup] failed to delete {room_name}: {exc}")
 
 
+def _log_pstn_call(
+    session_id: str,
+    caller_number: str,
+    called_number: str,
+    call_id: str,
+    room_name: str,
+) -> None:
+    """Write a PSTN call record to logs/calls/<session_id>/pstn_call.json."""
+    calls_dir = Path(__file__).resolve().parent.parent / "logs" / "calls"
+    session_dir = calls_dir / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "timestamp": datetime.now(tz=UTC).isoformat(),
+        "type": "pstn_inbound",
+        "session_id": session_id,
+        "caller_number": caller_number,
+        "called_number": called_number,
+        "call_id": call_id,
+        "room_name": room_name,
+        "max_duration_min": _PSTN_MAX_DURATION_MIN,
+    }
+    out_path = session_dir / "pstn_call.json"
+    out_path.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n")
+
+
 def _spawn_bot(
     session_id: str,
     callback_url: str,
@@ -625,6 +665,8 @@ def _spawn_bot(
     llm_model: str | None = None,
     room_name: str | None = None,
     stt_provider: str | None = None,
+    dialin_call_id: str | None = None,
+    dialin_call_domain: str | None = None,
 ) -> subprocess.Popen:
     """Spawn ``python -m voxtera.bot`` as a subprocess for this session.
 
@@ -643,6 +685,14 @@ def _spawn_bot(
         env["DAILY_ROOM_NAME"] = room_name
     if stt_provider:
         env["STT_PROVIDER"] = stt_provider
+    if dialin_call_id:
+        env["DIALIN_CALL_ID"] = dialin_call_id
+    if dialin_call_domain:
+        env["DIALIN_CALL_DOMAIN"] = dialin_call_domain
+    if dialin_call_id:
+        # Timestamp when webhook received the call — used by the bot to
+        # compute hold time (caller waiting for bot to be ready).
+        env["PSTN_WEBHOOK_TS"] = f"{time.time():.3f}"
 
     proc = subprocess.Popen(
         [sys.executable, "-m", "voxtera.bot"],
@@ -1579,6 +1629,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_demo_check_allowance()
         if self.path == "/api/audio-device-info":
             return self._handle_audio_device_info()
+        if self.path == "/pstn/webhook":
+            return self._handle_pstn_webhook()
         self.send_error(404)
         return None
 
@@ -3034,6 +3086,265 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
         self._send_json(200, {"ok": True})
 
+    # ------------------------------------------------------------------
+    # PSTN Telephony — pinless dial-in webhook
+    # ------------------------------------------------------------------
+
+    def _handle_pstn_webhook(self) -> None:
+        """POST /pstn/webhook — Daily calls this when a PSTN call arrives.
+
+        Daily's pinless dial-in flow:
+        1. Caller dials our number → Daily places them on hold (music plays).
+        2. Daily POSTs here with {From, To, callId, callDomain}.
+        3. We create a VCI-prefixed room, spawn a bot into it.
+        4. Bot joins, Pipecat fires 'dialin-ready', auto-calls pinlessCallUpdate.
+        5. Daily patches the held call into the room → conversation starts.
+        """
+        if not _PSTN_ENABLED:
+            self._send_json(503, {"error": "pstn_disabled"})
+            return
+
+        if not _DAILY_API_KEY:
+            self._send_json(503, {"error": "daily_api_key_missing"})
+            return
+
+        # --- Read and validate body ---
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length <= 0 or content_length > 4096:
+            self._send_json(400, {"error": "invalid_body"})
+            return
+        try:
+            raw_body = self.rfile.read(content_length)
+            body = json.loads(raw_body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self._send_json(400, {"error": "invalid_json"})
+            return
+
+        # --- HMAC signature verification ---
+        if _PSTN_WEBHOOK_HMAC:
+            sig_header = self.headers.get("X-Pinless-Signature", "")
+            ts_header = self.headers.get("X-Pinless-Timestamp", "")
+            if not sig_header or not ts_header:
+                print("[pstn] webhook rejected: missing HMAC headers")
+                self._send_json(401, {"error": "missing_signature"})
+                return
+            sign_payload = ts_header + "." + raw_body.decode("utf-8")
+            secret = base64.b64decode(_PSTN_WEBHOOK_HMAC)
+            computed = base64.b64encode(
+                hmac.new(secret, sign_payload.encode(), hashlib.sha256).digest()
+            ).decode()
+            if not hmac.compare_digest(computed, sig_header):
+                print("[pstn] webhook rejected: invalid HMAC signature")
+                self._send_json(401, {"error": "invalid_signature"})
+                return
+
+        # --- Handle test probe (Daily sends {To: ...} to verify endpoint) ---
+        if "callId" not in body:
+            print(f"[pstn] received test probe from Daily: {body}")
+            self._send_json(200, {"ok": True})
+            return
+
+        call_id = body.get("callId", "")
+        call_domain = body.get("callDomain", "")
+        caller_number = body.get("From", "unknown")
+        called_number = body.get("To", "")
+
+        print(
+            f"[pstn] incoming call: from={caller_number} to={called_number} "
+            f"callId={call_id[:12]}..."
+        )
+
+        # --- Rate limit: per-number call frequency ---
+        _now_ts = time.time()
+        _window_start = _now_ts - _PSTN_RATE_LIMIT_WINDOW_SECS
+        # Prune expired entries for this number
+        _pstn_call_log.setdefault(caller_number, [])
+        _pstn_call_log[caller_number] = [
+            ts for ts in _pstn_call_log[caller_number] if ts > _window_start
+        ]
+        if len(_pstn_call_log[caller_number]) >= _PSTN_RATE_LIMIT_PER_NUMBER:
+            print(
+                f"[pstn] rejected: caller {caller_number} exceeded rate limit "
+                f"({_PSTN_RATE_LIMIT_PER_NUMBER} calls / {_PSTN_RATE_LIMIT_WINDOW_SECS}s)"
+            )
+            self._send_json(429, {"error": "rate_limit_exceeded"})
+            return
+        _pstn_call_log[caller_number].append(_now_ts)
+
+        # --- Rate limit: max concurrent PSTN calls ---
+        pstn_sessions = [
+            sid
+            for sid, sess in REGISTRY._sessions.items()
+            if sess.get("pstn_call")
+        ]
+        if len(pstn_sessions) >= _PSTN_MAX_CONCURRENT:
+            print(f"[pstn] rejected: max concurrent calls ({_PSTN_MAX_CONCURRENT}) reached")
+            self._send_json(503, {"error": "max_concurrent_calls"})
+            return
+
+        # --- Create VCI-prefixed room ---
+        now = datetime.now(tz=UTC)
+        random_suffix = uuid.uuid4().hex[:4]
+        room_name = f"VCI-{now.strftime('%Y%m%d')}-{now.strftime('%H%M%S')}-{random_suffix}"
+
+        try:
+            room_info = create_room(
+                api_key=_DAILY_API_KEY,
+                room_name=room_name,
+                expiry_secs=(_PSTN_MAX_DURATION_MIN + 1) * 60,
+                max_participants=2,
+                sip_mode="dial-in",
+            )
+            print(f"[pstn] created room {room_name} (sip_mode=dial-in)")
+        except DailyAPIError as exc:
+            print(f"[pstn] room creation failed: {exc}")
+            self._send_json(502, {"error": f"room_creation_failed: {exc}"})
+            return
+
+        # --- Spawn bot with dialin settings ---
+        session_id = uuid.uuid4().hex
+        callback_url = f"{LAUNCHER_BASE_URL}/api/bot-event"
+
+        try:
+            q = REGISTRY.start(session_id)
+        except BotSessionBusyError as exc:
+            print(f"[pstn] session registry busy: {exc}")
+            self._send_json(503, {"error": "server_busy"})
+            return
+
+        # Mark as a PSTN call in the registry
+        with REGISTRY._lock:
+            sess = REGISTRY._sessions.get(session_id)
+            if sess is not None:
+                sess["pstn_call"] = True
+                sess["caller_number"] = caller_number
+                sess["call_id"] = call_id
+
+        REGISTRY.attach_room_name(session_id, room_name)
+
+        # Allocate tune port
+        with REGISTRY._lock:
+            used_ports = {
+                s.get("tune_port") for s in REGISTRY._sessions.values() if s.get("tune_port")
+            }
+            tune_port = next(
+                p for p in range(_DEFAULT_BOT_PORT, _DEFAULT_BOT_PORT + 200) if p not in used_ports
+            )
+            sess = REGISTRY._sessions.get(session_id)
+            if sess is not None:
+                sess["tune_port"] = tune_port
+
+        try:
+            proc = _spawn_bot(
+                session_id,
+                callback_url,
+                tune_port,
+                room_name=room_name,
+                dialin_call_id=call_id,
+                dialin_call_domain=call_domain,
+            )
+        except Exception as exc:
+            print(f"[pstn] spawn failed: {exc}")
+            REGISTRY.reap(session_id)
+            self._send_json(500, {"error": f"spawn_failed: {exc}"})
+            return
+
+        REGISTRY.attach_process(session_id, proc)
+        _start_reaper_thread(session_id, proc)
+
+        # --- Duration enforcer (same pattern as web sessions) ---
+        _max_secs = _PSTN_MAX_DURATION_MIN * 60
+        _warn_secs = max(_max_secs - 30, 5)
+        _warn_text = (
+            "Just to let you know, we have about 30 seconds left. "
+            "Is there anything else I can help with?"
+        )
+
+        def _pstn_warn(sid: str) -> None:
+            _tp = _get_bot_tune_port(sid)
+            if _tp is None:
+                return
+            try:
+                payload_bytes = json.dumps({"text": _warn_text}).encode()
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{_tp}/speak",
+                    data=payload_bytes,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with contextlib.suppress(Exception):
+                    urllib.request.urlopen(req, timeout=3)
+                print(f"[pstn] sent duration warning (session={sid[:8]})")
+            except Exception as exc:
+                print(f"[pstn] warn failed: {exc}")
+
+        def _pstn_kill(sid: str) -> None:
+            print(f"[pstn] session {sid[:8]} hit {_max_secs}s limit — force-ending")
+            with REGISTRY._lock:
+                _proc = REGISTRY._sessions.get(sid, {}).get("process")
+            if _proc is not None and _proc.poll() is None:
+                with contextlib.suppress(Exception):
+                    _proc.terminate()
+            if _DAILY_API_KEY and room_name:
+                with contextlib.suppress(Exception):
+                    participants = list_room_participants(
+                        api_key=_DAILY_API_KEY, room_name=room_name
+                    )
+                    ids = [p.id for p in participants if p.id]
+                    if ids:
+                        eject_participants(
+                            api_key=_DAILY_API_KEY,
+                            room_name=room_name,
+                            participant_ids=ids,
+                        )
+            REGISTRY.reap(sid)
+
+        _wd_warn = threading.Timer(_warn_secs, _pstn_warn, args=[session_id])
+        _wd_warn.daemon = True
+        _wd_warn.start()
+
+        _wd = threading.Timer(_max_secs, _pstn_kill, args=[session_id])
+        _wd.daemon = True
+        _wd.start()
+
+        REGISTRY.attach_watchdog(session_id, _wd)
+        REGISTRY.attach_watchdog_warn(session_id, _wd_warn)
+
+        # --- Log the call ---
+        _log_pstn_call(session_id, caller_number, called_number, call_id, room_name)
+
+        # --- Wait for bot ready (same pattern as /api/start-session) ---
+        try:
+            event = q.get(timeout=_SPAWN_TIMEOUT_SECS)
+        except _queue.Empty:
+            print(f"[pstn] bot timed out for session {session_id[:8]} — killing")
+            with contextlib.suppress(Exception):
+                proc.kill()
+            self._send_json(504, {"error": "bot_startup_timeout"})
+            return
+
+        event_type = event.get("type")
+        if event_type == "_reaped":
+            rc = proc.returncode
+            print(f"[pstn] bot exited before ready (rc={rc}) for call {call_id[:12]}")
+            self._send_json(500, {"error": f"bot_exited_before_ready (rc={rc})"})
+            return
+
+        if event_type != "ready":
+            print(f"[pstn] unexpected first event: {event_type}")
+            with contextlib.suppress(Exception):
+                proc.kill()
+            self._send_json(500, {"error": f"unexpected_event: {event_type}"})
+            return
+
+        # Bot is in the room and dialin-ready has fired → Pipecat already
+        # called pinlessCallUpdate. The caller is now patched in.
+        print(
+            f"[pstn] call connected: caller={caller_number} room={room_name} "
+            f"session={session_id[:8]}"
+        )
+        self._send_json(200, {"room_name": room_name, "session_id": session_id})
+
     def _handle_inquiry(self) -> None:
         """POST /api/inquiry — receive discovery form submissions.
 
@@ -4176,7 +4487,7 @@ if __name__ == "__main__":
             cmdline_str = " ".join(cmdline)
             if any(pat in cmdline_str for pat in _STALE_PATTERNS):
                 try:
-                    proc.send_signal(signal.SIGKILL)
+                    proc.kill()
                     _killed.append(proc.info["pid"])
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass

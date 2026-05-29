@@ -223,6 +223,7 @@ def create_room(
     room_name: str,
     expiry_secs: int = 600,
     max_participants: int = 2,
+    sip_mode: str | None = None,
 ) -> dict[str, Any]:
     """Create an ephemeral Daily room for one session.
 
@@ -232,6 +233,10 @@ def create_room(
 
     - 2 = bot + guest (default, private call)
     - 3+ = bot + guest + supervisor(s) for quality-monitoring use-cases
+
+    ``sip_mode`` — when set to ``"dial-in"``, configures the room for PSTN
+    dial-in. Daily requires ``sip`` properties on the room for the
+    ``pinlessCallUpdate`` forwarding to work.
     """
     import time
 
@@ -248,13 +253,23 @@ def create_room(
             "max_participants": max_participants,
         },
     }
+
+    # PSTN dial-in rooms need SIP properties for pinlessCallUpdate to work.
+    if sip_mode == "dial-in":
+        body["properties"]["sip"] = {
+            "display_name": room_name,
+            "video": False,
+            "sip_mode": "dial-in",
+            "num_endpoints": 1,
+        }
+
     result = _request_json(
         f"{_DAILY_REST_BASE}/rooms",
         api_key=api_key,
         method="POST",
         body=body,
     )
-    logger.info("[daily] created room {} (max_participants={})", room_name, max_participants)
+    logger.info("[daily] created room {} (max_participants={}, sip_mode={})", room_name, max_participants, sip_mode)
     return result
 
 
