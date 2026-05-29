@@ -197,6 +197,11 @@ class Settings:
     # additionally captured as a stereo WAV (recording.wav — guest left, bot
     # right). Set False to keep transcripts + metadata without storing audio.
     call_recording_audio: bool = True
+    # Diagnostic: when True, tap a WAV at each pre-gate mic stage
+    # (stage_*.wav) so the audio can be compared stage-by-stage to find
+    # which processor is breaking it. Off by default — only enable when
+    # debugging audio dropouts, as it writes several extra WAVs per call.
+    stage_audio_debug: bool = False
 
 
 def _require(name: str) -> str:
@@ -336,6 +341,8 @@ def load_settings() -> Settings:
         not in ("0", "false", "no"),
         call_recording_audio=os.environ.get("CALL_RECORD_AUDIO", "true").lower()
         not in ("0", "false", "no"),
+        stage_audio_debug=os.environ.get("STAGE_AUDIO_DEBUG", "false").lower()
+        in ("1", "true", "yes"),
         stt_thresholds_path=os.environ.get("STT_THRESHOLDS_PATH", "config/stt_thresholds.json")
         or None,
     )
