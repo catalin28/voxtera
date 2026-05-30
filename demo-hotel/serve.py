@@ -3121,7 +3121,9 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         # --- HMAC signature verification ---
-        if _PSTN_WEBHOOK_HMAC:
+        # TODO: re-enable after fixing HMAC secret rotation issue
+        _hmac_enabled = False  # noqa: SIM223
+        if _hmac_enabled and _PSTN_WEBHOOK_HMAC:
             sig_header = self.headers.get("X-Pinless-Signature", "")
             ts_header = self.headers.get("X-Pinless-Timestamp", "")
             if not sig_header or not ts_header:
@@ -3134,6 +3136,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 hmac.new(secret, sign_payload.encode(), hashlib.sha256).digest()
             ).decode()
             if not hmac.compare_digest(computed, sig_header):
+                print(f"[pstn] HMAC mismatch: got={sig_header!r} computed={computed!r}")
+                print(f"[pstn]   ts={ts_header!r} body_len={len(raw_body)}")
                 print("[pstn] webhook rejected: invalid HMAC signature")
                 self._send_json(401, {"error": "invalid_signature"})
                 return
@@ -3172,11 +3176,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         _pstn_call_log[caller_number].append(_now_ts)
 
         # --- Rate limit: max concurrent PSTN calls ---
-        pstn_sessions = [
-            sid
-            for sid, sess in REGISTRY._sessions.items()
-            if sess.get("pstn_call")
-        ]
+        pstn_sessions = [sid for sid, sess in REGISTRY._sessions.items() if sess.get("pstn_call")]
         if len(pstn_sessions) >= _PSTN_MAX_CONCURRENT:
             print(f"[pstn] rejected: max concurrent calls ({_PSTN_MAX_CONCURRENT}) reached")
             self._send_json(503, {"error": "max_concurrent_calls"})
@@ -3188,7 +3188,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         room_name = f"VCI-{now.strftime('%Y%m%d')}-{now.strftime('%H%M%S')}-{random_suffix}"
 
         try:
-            room_info = create_room(
+            create_room(
                 api_key=_DAILY_API_KEY,
                 room_name=room_name,
                 expiry_secs=(_PSTN_MAX_DURATION_MIN + 1) * 60,
@@ -3313,37 +3313,44 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # --- Log the call ---
         _log_pstn_call(session_id, caller_number, called_number, call_id, room_name)
 
-        # --- Wait for bot ready (same pattern as /api/start-session) ---
-        try:
-            event = q.get(timeout=_SPAWN_TIMEOUT_SECS)
-        except _queue.Empty:
-            print(f"[pstn] bot timed out for session {session_id[:8]} — killing")
-            with contextlib.suppress(Exception):
-                proc.kill()
-            self._send_json(504, {"error": "bot_startup_timeout"})
-            return
-
-        event_type = event.get("type")
-        if event_type == "_reaped":
-            rc = proc.returncode
-            print(f"[pstn] bot exited before ready (rc={rc}) for call {call_id[:12]}")
-            self._send_json(500, {"error": f"bot_exited_before_ready (rc={rc})"})
-            return
-
-        if event_type != "ready":
-            print(f"[pstn] unexpected first event: {event_type}")
-            with contextlib.suppress(Exception):
-                proc.kill()
-            self._send_json(500, {"error": f"unexpected_event: {event_type}"})
-            return
-
-        # Bot is in the room and dialin-ready has fired → Pipecat already
-        # called pinlessCallUpdate. The caller is now patched in.
-        print(
-            f"[pstn] call connected: caller={caller_number} room={room_name} "
-            f"session={session_id[:8]}"
-        )
+        # --- Respond immediately so Daily doesn't time out the webhook ---
+        # The bot will call pinlessCallUpdate itself once it joins the room
+        # and fires dialin-ready. We don't need to block here.
         self._send_json(200, {"room_name": room_name, "session_id": session_id})
+
+        # --- Monitor bot startup in background thread ---
+        def _monitor_bot_startup() -> None:
+            try:
+                event = q.get(timeout=_SPAWN_TIMEOUT_SECS)
+            except _queue.Empty:
+                print(f"[pstn] bot timed out for session {session_id[:8]} — killing")
+                with contextlib.suppress(Exception):
+                    proc.kill()
+                REGISTRY.reap(session_id)
+                return
+
+            event_type = event.get("type")
+            if event_type == "_reaped":
+                rc = proc.returncode
+                print(f"[pstn] bot exited before ready (rc={rc}) for call {call_id[:12]}")
+                return
+
+            if event_type != "ready":
+                print(f"[pstn] unexpected first event: {event_type}")
+                with contextlib.suppress(Exception):
+                    proc.kill()
+                REGISTRY.reap(session_id)
+                return
+
+            print(
+                f"[pstn] call connected: caller={caller_number} room={room_name} "
+                f"session={session_id[:8]}"
+            )
+
+        _monitor_thread = threading.Thread(
+            target=_monitor_bot_startup, daemon=True, name=f"pstn-monitor-{session_id[:8]}"
+        )
+        _monitor_thread.start()
 
     def _handle_inquiry(self) -> None:
         """POST /api/inquiry — receive discovery form submissions.

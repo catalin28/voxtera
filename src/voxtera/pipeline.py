@@ -240,9 +240,7 @@ class PstnIdleWatcher(FrameProcessor):
                         "[pstn-idle] no speech for {:.0f}s — prompting caller",
                         elapsed,
                     )
-                    await self._task_ref.queue_frame(
-                        TTSSpeakFrame(text="Are you still there?")
-                    )
+                    await self._task_ref.queue_frame(TTSSpeakFrame(text="Are you still there?"))
                     # Wait for followup speech
                     await self._wait_for_speech_or_timeout(self._followup_timeout)
                     if _time.monotonic() - self._last_speech_ts >= self._followup_timeout:
@@ -261,10 +259,12 @@ class PstnIdleWatcher(FrameProcessor):
         deadline = _time.monotonic() + timeout
         while _time.monotonic() < deadline:
             await asyncio.sleep(1.0)
-            if self._last_speech_ts > deadline - timeout:
-                # Speech happened after we started waiting
-                if _time.monotonic() - self._last_speech_ts < 2.0:
-                    return
+            if (
+                self._last_speech_ts > deadline - timeout
+                and _time.monotonic() - self._last_speech_ts < 2.0
+            ):
+                # Speech happened after we started waiting and is recent
+                return
 
     def stop(self) -> None:
         self._stopped = True
@@ -543,9 +543,10 @@ def build_pipeline(
             )
 
         _is_pstn = _dialin_settings is not None
-        # PSTN calls use 8 kHz (narrowband telephony). WebRTC browser calls
-        # use 16 kHz in / 48 kHz out for full-quality audio.
-        _audio_in_rate = 8000 if _is_pstn else 16000
+        # Daily's media server resamples PSTN 8kHz to the requested rate,
+        # so we always request 16kHz in (matching Silero VAD & STT expectations).
+        # Output is 8kHz for PSTN (telephony) or 48kHz for browser WebRTC.
+        _audio_in_rate = 16000
         _audio_out_rate = 8000 if _is_pstn else 48000
 
         transport = DailyTransport(
@@ -775,9 +776,7 @@ def build_pipeline(
                 # Short delay to let codec negotiation settle before greeting
                 await asyncio.sleep(0.5)
                 # Greet the PSTN caller (no browser to send voxtera-ready)
-                _greeting_lang, _greeting_text = resolve_greeting(
-                    settings.greeting_language
-                )
+                _greeting_lang, _greeting_text = resolve_greeting(settings.greeting_language)
                 logger.info(
                     "[pstn] greeting caller (lang={}) — {} chars",
                     _greeting_lang,
