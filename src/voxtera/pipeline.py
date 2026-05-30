@@ -68,6 +68,9 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+from pipecat.turns.user_stop.speech_timeout_user_turn_stop_strategy import (
+    SpeechTimeoutUserTurnStopStrategy,
+)
 from pipecat.turns.user_turn_strategies import (
     UserTurnStrategies,
     default_user_turn_start_strategies,
@@ -1021,24 +1024,39 @@ def build_pipeline(
     #    this single value is the entire source of the ~3s stt->llm p95
     #    spikes — turns where the model mispredicts "incomplete" wait out the
     #    full window. settings.smart_turn_stop_secs (default 2.0) caps it.
+    #
+    # For PSTN calls we skip SmartTurn entirely and use a simple speech
+    # timeout strategy instead. Phone callers speak in complete sentences;
+    # the ONNX model adds 400-1400ms of deliberation per turn with no benefit
+    # on narrow-band telephony audio. SpeechTimeoutUserTurnStopStrategy waits
+    # user_speech_timeout (0.4s) after VAD silence before triggering — fast
+    # and predictable.
     _t0 = _time.perf_counter()
-    _smart_turn = LocalSmartTurnAnalyzerV3(
-        cpu_count=settings.smart_turn_cpu_count,
-        params=SmartTurnParams(stop_secs=settings.smart_turn_stop_secs),
-    )
-    logger.info("[startup] SmartTurn ONNX took {:.0f}ms", (_time.perf_counter() - _t0) * 1000)
+    if _is_pstn:
+        _user_turn_stop = [SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.4)]
+        logger.info(
+            "[turn-detector] PSTN mode — using SpeechTimeoutUserTurnStopStrategy "
+            "(user_speech_timeout=0.4s, no SmartTurn)"
+        )
+    else:
+        _smart_turn = LocalSmartTurnAnalyzerV3(
+            cpu_count=settings.smart_turn_cpu_count,
+            params=SmartTurnParams(stop_secs=settings.smart_turn_stop_secs),
+        )
+        _user_turn_stop = [TurnAnalyzerUserTurnStopStrategy(turn_analyzer=_smart_turn)]
+        logger.info(
+            "[turn-detector] LocalSmartTurnAnalyzerV3 cpu_count={} stop_secs={}",
+            settings.smart_turn_cpu_count,
+            settings.smart_turn_stop_secs,
+        )
+    logger.info("[startup] Turn detector took {:.0f}ms", (_time.perf_counter() - _t0) * 1000)
     _user_turn_strategies = UserTurnStrategies(
         start=default_user_turn_start_strategies(),
-        stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=_smart_turn)],
+        stop=_user_turn_stop,
     )
     context_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(user_turn_strategies=_user_turn_strategies),
-    )
-    logger.info(
-        "[turn-detector] LocalSmartTurnAnalyzerV3 cpu_count={} stop_secs={}",
-        settings.smart_turn_cpu_count,
-        settings.smart_turn_stop_secs,
     )
 
     if action_runtime is not None:
