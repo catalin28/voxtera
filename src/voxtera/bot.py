@@ -249,6 +249,7 @@ async def run_bot(settings: Settings) -> None:
             _loop = _aio.new_event_loop()
             _loop.run_until_complete(call_record.flush_audio())
             _loop.run_until_complete(call_record.flush_raw_input())
+            _loop.run_until_complete(call_record.flush_stage_recorders())
             _loop.close()
             call_record.finalize()
             logger.info("[shutdown] force flush completed — exiting")
@@ -320,6 +321,11 @@ async def run_bot(settings: Settings) -> None:
             await call_record.flush_raw_input()
         except Exception:  # noqa: BLE001
             logger.warning("[shutdown] flush_raw_input failed")
+        # Flush per-stage diagnostic recordings (no-op unless STAGE_AUDIO_DEBUG).
+        try:
+            await call_record.flush_stage_recorders()
+        except Exception:  # noqa: BLE001
+            logger.warning("[shutdown] flush_stage_recorders failed")
         # Always stamp the end time and write the final record.json.
         call_record.finalize()
 

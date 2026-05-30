@@ -94,6 +94,28 @@
   }
   .nav-links a.nav-cta:hover{background:var(--rust);border-color:var(--rust);color:#fff;}
 
+  /* Hamburger button — hidden on desktop */
+  .nav-burger{
+    display:none;
+    flex-direction:column;
+    gap:4px;
+    background:none;
+    border:none;
+    cursor:pointer;
+    padding:6px;
+  }
+  .nav-burger span{
+    display:block;
+    width:22px;
+    height:2px;
+    background:var(--ink);
+    border-radius:2px;
+    transition:transform .3s, opacity .3s;
+  }
+  .nav-burger.active span:nth-child(1){transform:translateY(6px) rotate(45deg);}
+  .nav-burger.active span:nth-child(2){opacity:0;}
+  .nav-burger.active span:nth-child(3){transform:translateY(-6px) rotate(-45deg);}
+
   /* ============ HERO ============ */
   .hero{
     padding:10rem 2.5rem 5rem;
@@ -775,9 +797,31 @@
     .faq-grid{grid-template-columns:1fr;}
   }
   @media (max-width:640px){
-    nav{padding:1rem 1.2rem;}
-    .nav-links{gap:1rem;}
-    .nav-links a:not(.nav-cta):not(.active){display:none;}
+    nav{padding:1rem 1.2rem;flex-wrap:wrap;}
+    .nav-burger{display:flex;}
+    .nav-links{
+      display:none;
+      flex-direction:column;
+      width:100%;
+      gap:0;
+      padding-top:1rem;
+      border-top:1px solid var(--line);
+      margin-top:1rem;
+    }
+    .nav-links.open{display:flex;}
+    .nav-links a{
+      display:block !important;
+      padding:0.8rem 0;
+      border-bottom:1px solid var(--line);
+      font-size:0.82rem;
+    }
+    .nav-links .i18n-picker{padding:0.8rem 0;}
+    .nav-links .nav-cta{
+      margin-top:0.6rem;
+      text-align:center;
+      width:100%;
+      display:block;
+    }
     .hero{padding:7rem 1.2rem 3rem;}
     .bridge,.roi,.uc,.integration,.rollout,.pricing,.faq,.form-section{
       padding:5rem 1.2rem;
@@ -808,7 +852,7 @@
     </span>
     Voxtera<sup>™</sup>
   </a>
-  <div class="nav-links">
+  <div class="nav-links" id="nav-links">
     <a href="voxtera.html" data-i18n="nav.home">Home</a>
     <a href="voxtera-hotels.html" data-i18n="nav.for_hotels">For hotels</a>
     <a href="voxtera-cloudbeds.html" class="active" data-i18n="cb.nav_link">Cloudbeds</a>
@@ -817,6 +861,9 @@
     <div class="i18n-picker" id="lang-picker"></div>
     <a href="#form" class="nav-cta" data-i18n="cb.nav_cta">Talk to us →</a>
   </div>
+  <button class="nav-burger" id="nav-burger" aria-label="Menu" aria-expanded="false">
+    <span></span><span></span><span></span>
+  </button>
 </nav>
 
 <!-- ============ HERO ============ -->
@@ -1476,6 +1523,27 @@
     <span data-i18n="footer.legal">Privacy · Terms · GDPR · DPA</span>
   </div>
 </footer>
+
+<script>
+  // Mobile hamburger menu toggle
+  (function(){
+    const burger = document.getElementById('nav-burger');
+    const links = document.getElementById('nav-links');
+    if(!burger || !links) return;
+    burger.addEventListener('click', () => {
+      const open = links.classList.toggle('open');
+      burger.classList.toggle('active', open);
+      burger.setAttribute('aria-expanded', open);
+    });
+    links.querySelectorAll('a').forEach(a => {
+      a.addEventListener('click', () => {
+        links.classList.remove('open');
+        burger.classList.remove('active');
+        burger.setAttribute('aria-expanded', 'false');
+      });
+    });
+  })();
+</script>
 
 <script>
   // Scroll reveal

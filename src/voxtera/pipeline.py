@@ -736,6 +736,7 @@ def build_pipeline(
                     _loop = _aio.new_event_loop()
                     _loop.run_until_complete(_cr.flush_audio())
                     _loop.run_until_complete(_cr.flush_raw_input())
+                    _loop.run_until_complete(_cr.flush_stage_recorders())
                     _loop.close()
                     _cr.finalize()
                     logger.info("[daily] force_exit: call record flushed")
@@ -1066,6 +1067,20 @@ def build_pipeline(
 
         processors.append(RawInputRecorder(sample_rate=16000))
         logger.info("[call-record] raw input recorder attached to pipeline")
+
+    # Per-stage audio taps (diagnostic). When STAGE_AUDIO_DEBUG is on, drop a
+    # StageRecorder after each pre-gate mic stage so every stage writes a
+    # full-length, time-aligned stage_<label>.wav. Comparing them pinpoints
+    # which processor introduces silence/dropouts. The helper appends a tap
+    # only when enabled and mic-side processors exist.
+    _stage_tap = None
+    if settings.stage_audio_debug and mic_enabled:
+        from voxtera.call_record import StageRecorder
+
+        def _stage_tap(label: str) -> None:  # noqa: F811
+            processors.append(StageRecorder(label, sample_rate=16000))
+
+        logger.info("[stage-record] per-stage audio taps ENABLED (STAGE_AUDIO_DEBUG)")
     # --- Diagnostic probes ---
     _probing = True
     if _probing:
@@ -1084,6 +1099,8 @@ def build_pipeline(
         processors.append(pre_emphasis_ref)
         if _probing:
             processors.append(PipelineProbe("after_pre_emphasis"))
+        if _stage_tap:
+            _stage_tap("1_pre_emphasis")
 
         if settings.rnnoise_enabled:
             if _RNNoise is None:
@@ -1095,15 +1112,21 @@ def build_pipeline(
                 processors.append(rnnoise_denoiser_ref)
                 if _probing:
                     processors.append(PipelineProbe("after_rnnoise"))
+                if _stage_tap:
+                    _stage_tap("2_rnnoise")
                 logger.info("[rnnoise] enabled")
 
         leakage_guard_ref = PlaybackLeakageGuard(allow_interruptions=settings.allow_interruptions)
         processors.append(leakage_guard_ref)
         if _probing:
             processors.append(PipelineProbe("after_leakage_guard"))
+        if _stage_tap:
+            _stage_tap("3_leakage_guard")
         processors.append(AudioLevelMonitor())
         if _probing:
             processors.append(PipelineProbe("after_audio_monitor"))
+        if _stage_tap:
+            _stage_tap("4_audio_monitor")
         if vad_processor:
             processors.append(vad_processor)
             if _probing:

@@ -618,3 +618,82 @@ async def flush_raw_input() -> None:
     """Force-write the raw input buffer to disk. Non-fatal if not started."""
     if _raw_input_recorder is not None and _raw_input_recorder._started:
         _raw_input_recorder.flush()
+
+
+# ---------------------------------------------------------------------- #
+# Per-stage audio taps (diagnostic).                                      #
+# ---------------------------------------------------------------------- #
+
+# Registry of every StageRecorder built this process, so the shutdown /
+# force-exit path can flush them all in one call (mirrors how
+# flush_raw_input handles the single raw recorder).
+_stage_recorders: list[StageRecorder] = []
+
+
+class StageRecorder(FrameProcessor):
+    """Tap the InputAudioRawFrame stream at one pipeline stage.
+
+    A generalised :class:`RawInputRecorder`: drop one of these after any
+    processor in the mic-side chain and it buffers every audio frame it sees,
+    writing it to ``stage_<label>.wav`` in the call's log folder on shutdown.
+
+    The point is diagnostic A/B comparison. The pre-gate stages
+    (pre-emphasis → RNNoise → leakage-guard → audio-monitor) all *pass every
+    frame through* — the leakage guard zeroes frames rather than dropping
+    them — so every stage's WAV is the same length and overlays sample-for-
+    sample on the same clock. Compare them and the first stage whose WAV
+    shows a silence gap that the previous stage did not is the stage that
+    introduced the break.
+
+    Do NOT rely on this downstream of the STT gate: the gate *drops* frames
+    rather than zeroing them, so its recording would be shorter and no longer
+    time-aligned with the pre-gate stages.
+    """
+
+    def __init__(self, label: str, sample_rate: int = 16000) -> None:
+        super().__init__()
+        self._label = label
+        self._sample_rate = sample_rate
+        self._chunks: list[bytes] = []
+        self._started = False
+        _stage_recorders.append(self)
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        if isinstance(frame, InputAudioRawFrame):
+            self._started = True
+            self._chunks.append(frame.audio)
+        elif isinstance(frame, StartFrame):
+            self._started = True
+        elif isinstance(frame, EndFrame | CancelFrame):
+            self._write_wav()
+        await self.push_frame(frame, direction)
+
+    def _write_wav(self) -> None:
+        """Write buffered audio to stage_<label>.wav. Safe to call repeatedly."""
+        if not self._chunks:
+            logger.debug("[stage-record:{}] no audio chunks to write", self._label)
+            return
+        call_dir = get_call_dir()
+        if call_dir is None:
+            logger.warning("[stage-record:{}] call not initialised — skipping", self._label)
+            return
+        try:
+            pcm = b"".join(self._chunks)
+            wav_path = call_dir / f"stage_{self._label}.wav"
+            duration = write_wav(wav_path, pcm, sample_rate=self._sample_rate, num_channels=1)
+            logger.info("[stage-record:{}] saved: {} ({:.1f}s)", self._label, wav_path, duration)
+            self._chunks.clear()
+        except (OSError, wave.Error) as exc:
+            logger.error("[stage-record:{}] failed to write WAV: {}", self._label, exc)
+
+    def flush(self) -> None:
+        """Synchronous flush — call from force-exit or finally blocks."""
+        self._write_wav()
+
+
+async def flush_stage_recorders() -> None:
+    """Force-write every stage recorder's buffer. Non-fatal if none started."""
+    for rec in _stage_recorders:
+        if rec._started:
+            rec.flush()
