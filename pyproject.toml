@@ -21,6 +21,7 @@ dependencies = [
     "sentence-transformers>=3.0",
     "pyrnnoise>=0.4.3",
     "psutil>=5.9",
+    "aiomysql>=0.2.0",
 ]
 
 [project.urls]
