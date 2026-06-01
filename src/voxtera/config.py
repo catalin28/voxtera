@@ -40,6 +40,15 @@ class Settings:
     # RMS per chunk. 0.02 is a generous floor that still rejects pure silence.
     vad_min_volume: float = 0.02
     vad_confidence: float = 0.5
+    # PSTN-specific silence window for Silero VAD stop detection. Defaults to
+    # the general VAD_STOP_SECS value when PSTN_VAD_STOP_SECS is unset so
+    # existing deployments keep their current behavior until explicitly tuned.
+    pstn_vad_stop_secs: float = 0.3
+    # PSTN-specific turn-stop delay after VAD has decided the caller is silent.
+    # This feeds SpeechTimeoutUserTurnStopStrategy and is intentionally a
+    # separate knob from VAD_STOP_SECS so telephony can be tuned without
+    # changing browser-mic behavior.
+    pstn_user_speech_timeout: float = 0.4
     # SmartTurn ONNX end-of-turn model thread count. This stage dominates the
     # STT→LLM latency gap, and the thread count is the main lever on it: too
     # few threads and inference is slow, more threads than the box has cores
@@ -250,6 +259,34 @@ def _auto_smart_turn_cpu_count() -> int:
     return min(4, cores - 1)
 
 
+def _parse_gladia_languages(raw: str | None) -> tuple[str, ...]:
+    """Normalize the configured Gladia language set.
+
+    Empty / open-detect markers return ``()`` so Gladia stays in its broad
+    auto-detect mode. Non-empty lists are lowercased, stripped, and
+    de-duplicated in first-seen order so constrained deployments can A/B test
+    language sets without noisy config mistakes.
+    """
+    if raw is None:
+        return ()
+
+    normalized = raw.strip().lower()
+    if normalized in {"", "auto", "all", "open", "*"}:
+        return ()
+
+    seen: set[str] = set()
+    languages: list[str] = []
+    for code in raw.split(","):
+        cleaned = code.strip().lower()
+        if not cleaned or cleaned in {"auto", "all", "open", "*"}:
+            continue
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        languages.append(cleaned)
+    return tuple(languages)
+
+
 def load_settings() -> Settings:
     """Load settings from `os.environ`.
 
@@ -262,16 +299,23 @@ def load_settings() -> Settings:
     else:
         idle_timeout_secs = float(idle_timeout_raw)
 
+    vad_stop_secs_raw = os.environ.get("VAD_STOP_SECS", "0.3")
+    gladia_languages_raw = os.environ.get("GLADIA_LANGUAGES") or os.environ.get(
+        "GLADIA_CODE_SWITCH_LANGUAGES", ""
+    )
+
     return Settings(
         anthropic_api_key=_require("ANTHROPIC_API_KEY"),
         openai_api_key=_require("OPENAI_API_KEY"),
         log_level=os.environ.get("LOG_LEVEL", "INFO"),
         bot_name=os.environ.get("BOT_NAME", "Voxtera"),
         default_tts_voice=os.environ.get("DEFAULT_TTS_VOICE", "nova"),
-        vad_stop_secs=float(os.environ.get("VAD_STOP_SECS", "0.3")),
+        vad_stop_secs=float(vad_stop_secs_raw),
         vad_start_secs=float(os.environ.get("VAD_START_SECS", "0.2")),
         vad_min_volume=float(os.environ.get("VAD_MIN_VOLUME", "0.02")),
         vad_confidence=float(os.environ.get("VAD_CONFIDENCE", "0.5")),
+        pstn_vad_stop_secs=float(os.environ.get("PSTN_VAD_STOP_SECS", vad_stop_secs_raw)),
+        pstn_user_speech_timeout=float(os.environ.get("PSTN_USER_SPEECH_TIMEOUT", "0.4")),
         # SmartTurn thread count — auto-detected from the server's core count
         # at startup (see _auto_smart_turn_cpu_count). SMART_TURN_CPU_COUNT
         # still works as an explicit override, but leaving it unset is
@@ -306,14 +350,7 @@ def load_settings() -> Settings:
         # Accept the new name first; fall back to the legacy
         # GLADIA_CODE_SWITCH_LANGUAGES so already-deployed .env files keep
         # working until they're rotated.
-        gladia_languages=tuple(
-            code.strip().lower()
-            for code in (
-                os.environ.get("GLADIA_LANGUAGES")
-                or os.environ.get("GLADIA_CODE_SWITCH_LANGUAGES", "")
-            ).split(",")
-            if code.strip()
-        ),
+        gladia_languages=_parse_gladia_languages(gladia_languages_raw),
         gladia_code_switching=os.environ.get("GLADIA_CODE_SWITCHING", "false").lower()
         in ("1", "true", "yes"),
         google_application_credentials=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),

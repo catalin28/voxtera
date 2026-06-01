@@ -24,13 +24,21 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 
 from loguru import logger
-from pipecat.frames.frames import Frame, LLMContextFrame
+from pipecat.frames.frames import Frame, LLMContextFrame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+
+try:
+    from pipecat.transports.daily.transport import DailyInputTransportMessageFrame
+except Exception:  # pragma: no cover - Daily transport is optional in tests.
+    DailyInputTransportMessageFrame = None  # type: ignore[assignment,misc]
 
 from voxtera.conversation_logger import log_rag_context
 from voxtera.rag.retriever import Retriever
+from voxtera.trace import emit as _trace_emit
+from voxtera.trace import tracker as _trace_tracker
 
 _RAG_PREAMBLE = (
     "Here are relevant excerpts from the hotel's information. Use them when "
@@ -38,6 +46,37 @@ _RAG_PREAMBLE = (
     "question. If they don't answer that question, ignore them. Do not "
     "answer earlier questions unless the user asks again."
 )
+
+
+class CurrentTurnLanguageTracker(FrameProcessor):
+    """Tracks the latest spoken language hint for the current live turn.
+
+    Voice turns carry their detected language on ``TranscriptionFrame``.
+    Typed turns do not, so a browser text message clears the hint to avoid
+    leaking the last spoken language into a typed RAG lookup.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._current_language: str | None = None
+
+    @property
+    def current_language(self) -> str | None:
+        return self._current_language
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, TranscriptionFrame) and direction == FrameDirection.DOWNSTREAM:
+            self._current_language = getattr(frame, "language", None)
+        elif DailyInputTransportMessageFrame is not None and isinstance(
+            frame, DailyInputTransportMessageFrame
+        ):
+            msg = frame.message
+            if isinstance(msg, dict) and msg.get("type") == "voxtera-user-text":
+                self._current_language = None
+
+        await self.push_frame(frame, direction)
 
 
 class RAGContextInjector(FrameProcessor):
@@ -49,11 +88,13 @@ class RAGContextInjector(FrameProcessor):
         *,
         hotel_id: str,
         retrieval_timeout_ms: int = 5000,
+        language_getter: Callable[[], str | None] | None = None,
     ) -> None:
         super().__init__()
         self._retriever = retriever
         self._hotel_id = hotel_id
         self._timeout = retrieval_timeout_ms / 1000.0  # convert to seconds
+        self._language_getter = language_getter
 
     # ------------------------------------------------------------------
 
@@ -101,22 +142,46 @@ class RAGContextInjector(FrameProcessor):
             return
 
         user_text = content
+        language = self._language_getter() if self._language_getter is not None else None
 
         t0 = time.monotonic()
         try:
             results = await asyncio.wait_for(
-                self._retriever.retrieve(hotel_id=self._hotel_id, query=user_text),
+                self._retriever.retrieve(
+                    hotel_id=self._hotel_id,
+                    query=user_text,
+                    language=language,
+                ),
                 timeout=self._timeout,
             )
         except TimeoutError:
-            elapsed_ms = (time.monotonic() - t0) * 1000
+            elapsed_ms = round((time.monotonic() - t0) * 1000)
+            _trace_emit(
+                "stage",
+                source="voxtera",
+                turn_id=_trace_tracker().current(),
+                data={"stage": "rag_retrieve", "duration_ms": elapsed_ms},
+            )
             logger.warning("[rag] retrieval timed out after {:.0f}ms", elapsed_ms)
             return
         except Exception:
+            elapsed_ms = round((time.monotonic() - t0) * 1000)
+            _trace_emit(
+                "stage",
+                source="voxtera",
+                turn_id=_trace_tracker().current(),
+                data={"stage": "rag_retrieve", "duration_ms": elapsed_ms},
+            )
             logger.opt(exception=True).error("[rag] retrieval failed")
             return
 
-        elapsed_ms = (time.monotonic() - t0) * 1000
+        elapsed_ms = round((time.monotonic() - t0) * 1000)
+        _trace_emit(
+            "stage",
+            source="voxtera",
+            turn_id=_trace_tracker().current(),
+            data={"stage": "rag_retrieve", "duration_ms": elapsed_ms},
+        )
         logger.info("[rag] retrieved {} chunks in {:.0f}ms", len(results), elapsed_ms)
 
         # Structured log for audit / evaluation.

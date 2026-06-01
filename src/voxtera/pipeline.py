@@ -893,16 +893,25 @@ def build_pipeline(
     _t0 = _time.perf_counter()
     vad_processor = None
     if mic_enabled and needs_vad:
+        _vad_stop_secs = settings.pstn_vad_stop_secs if _is_pstn else settings.vad_stop_secs
         vad_processor = VADProcessor(
             vad_analyzer=SileroVADAnalyzer(
                 sample_rate=16000,
                 params=VADParams(
-                    stop_secs=settings.vad_stop_secs,
+                    stop_secs=_vad_stop_secs,
                     start_secs=settings.vad_start_secs,
                     min_volume=settings.vad_min_volume,
                     confidence=settings.vad_confidence,
                 ),
             )
+        )
+        logger.info(
+            "[vad] stop_secs={} start_secs={} min_volume={} confidence={} transport={}",
+            _vad_stop_secs,
+            settings.vad_start_secs,
+            settings.vad_min_volume,
+            settings.vad_confidence,
+            "pstn" if _is_pstn else settings.transport_mode,
         )
     if mic_enabled and not needs_vad:
         logger.info("[vad] external VAD skipped (STT provides its own)")
@@ -1033,10 +1042,13 @@ def build_pipeline(
     # and predictable.
     _t0 = _time.perf_counter()
     if _is_pstn:
-        _user_turn_stop = [SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.4)]
+        _user_turn_stop = [
+            SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=settings.pstn_user_speech_timeout)
+        ]
         logger.info(
             "[turn-detector] PSTN mode — using SpeechTimeoutUserTurnStopStrategy "
-            "(user_speech_timeout=0.4s, no SmartTurn)"
+            "(user_speech_timeout={}s, no SmartTurn)",
+            settings.pstn_user_speech_timeout,
         )
     else:
         _smart_turn = LocalSmartTurnAnalyzerV3(
@@ -1274,7 +1286,33 @@ def build_pipeline(
             settings.interruption_resume_enabled,
             settings.interruption_resume_window_secs,
         )
+    ctx_user_stage_state = None
+    if mic_enabled:
+        from voxtera.observability import (
+            ContextUserStageEndTimer,
+            ContextUserStageStartTimer,
+            _ContextUserStageState,
+        )
+
+        ctx_user_stage_state = _ContextUserStageState()
+        processors.append(ContextUserStageStartTimer("voxtera", state=ctx_user_stage_state))
+        if _probing:
+            processors.append(PipelineProbe("after_ctx_user_stage_start"))
+    rag_language_tracker = None
+    if settings.rag_enabled:
+        from voxtera.rag.injector import CurrentTurnLanguageTracker
+
+        rag_language_tracker = CurrentTurnLanguageTracker()
+        processors.append(rag_language_tracker)
+        if _probing:
+            processors.append(PipelineProbe("after_rag_language_tracker"))
     processors.append(context_aggregator.user())
+    if ctx_user_stage_state is not None:
+        from voxtera.observability import ContextUserStageEndTimer
+
+        processors.append(ContextUserStageEndTimer("voxtera", state=ctx_user_stage_state))
+        if _probing:
+            processors.append(PipelineProbe("after_ctx_user_stage_end"))
     if _probing:
         processors.append(PipelineProbe("after_ctx_user"))
     processors.append(LLMRunGuard())
@@ -1303,7 +1341,14 @@ def build_pipeline(
         store.init_schema()
         retriever = Retriever(store, top_k=settings.rag_top_k, min_score=settings.rag_min_score)
         _rag_retriever = retriever  # expose to _on_joined closure for warmup
-        rag_injector = RAGContextInjector(retriever, hotel_id=settings.hotel_id)
+        language_getter = None
+        if rag_language_tracker is not None:
+            language_getter = lambda: rag_language_tracker.current_language
+        rag_injector = RAGContextInjector(
+            retriever,
+            hotel_id=settings.hotel_id,
+            language_getter=language_getter,
+        )
         logger.info(
             "[rag] retriever top_k={} min_score={}",
             settings.rag_top_k,

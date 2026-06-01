@@ -103,3 +103,43 @@ def test_load_settings_daily_config(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.daily_api_key == "daily-test-key"
     assert settings.daily_domain == "voxtera.daily.co"
     assert settings.daily_room_name == "voxtera-demo"
+
+
+def test_load_settings_pstn_stt_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    from voxtera.config import load_settings
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
+    monkeypatch.setenv("VAD_STOP_SECS", "0.35")
+
+    settings = load_settings()
+
+    assert settings.vad_stop_secs == 0.35
+    assert settings.pstn_vad_stop_secs == 0.35
+    assert settings.pstn_user_speech_timeout == 0.4
+
+    monkeypatch.setenv("PSTN_VAD_STOP_SECS", "0.25")
+    monkeypatch.setenv("PSTN_USER_SPEECH_TIMEOUT", "0.3")
+
+    settings = load_settings()
+
+    assert settings.pstn_vad_stop_secs == 0.25
+    assert settings.pstn_user_speech_timeout == 0.3
+
+
+def test_load_settings_gladia_languages_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
+    from voxtera.config import load_settings
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
+    monkeypatch.setenv("GLADIA_LANGUAGES", " FR, en, fr , ES ")
+
+    settings = load_settings()
+
+    assert settings.gladia_languages == ("fr", "en", "es")
+
+    monkeypatch.setenv("GLADIA_LANGUAGES", "auto")
+
+    settings = load_settings()
+
+    assert settings.gladia_languages == ()

@@ -27,6 +27,7 @@ from pipecat.frames.frames import (
     InterruptionFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
+    LLMMessagesAppendFrame,
     LLMTextFrame,
     MetricsFrame,
     TranscriptionFrame,
@@ -64,6 +65,90 @@ from voxtera.tts import (
     TTS_MODEL_ELEVENLABS,
     TTS_MODEL_GOOGLE,
 )
+
+
+class _ContextUserStageState:
+    """Shared state for timing the user context aggregator only.
+
+    The aggregator consumes ``TranscriptionFrame`` and emits an
+    ``LLMMessagesAppendFrame`` with the same user text. We match those two
+    points to isolate the aggregator's own work without being confused by
+    adjacent processors that may also emit append frames (for example,
+    ``InterruptionResumer`` injecting a resume note).
+    """
+
+    def __init__(self) -> None:
+        self.pending_text: str | None = None
+        self.started_at: float | None = None
+        self.turn_id: str | None = None
+
+    def clear(self) -> None:
+        self.pending_text = None
+        self.started_at = None
+        self.turn_id = None
+
+
+class ContextUserStageStartTimer(FrameProcessor):
+    """Marks the start of the ``ctx_user`` stage on finalized transcripts."""
+
+    def __init__(
+        self, label: str = "voxtera", *, state: _ContextUserStageState | None = None
+    ) -> None:
+        super().__init__()
+        self._label = label
+        self._state = state or _ContextUserStageState()
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, TranscriptionFrame) and direction == FrameDirection.DOWNSTREAM:
+            text = (frame.text or "").strip()
+            if text:
+                self._state.pending_text = text
+                self._state.started_at = time.monotonic()
+                self._state.turn_id = _trace_tracker().current()
+
+        await self.push_frame(frame, direction)
+
+
+class ContextUserStageEndTimer(FrameProcessor):
+    """Emits the ``ctx_user`` stage when the aggregator appends the user text."""
+
+    def __init__(self, label: str = "voxtera", *, state: _ContextUserStageState) -> None:
+        super().__init__()
+        self._label = label
+        self._state = state
+
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if (
+            isinstance(frame, LLMMessagesAppendFrame)
+            and direction == FrameDirection.DOWNSTREAM
+            and self._state.pending_text is not None
+            and self._state.started_at is not None
+        ):
+            messages = getattr(frame, "messages", None) or []
+            pending = self._state.pending_text
+            matched = any(
+                isinstance(msg, dict)
+                and msg.get("role") == "user"
+                and isinstance(msg.get("content"), str)
+                and msg.get("content", "").strip() == pending
+                for msg in messages
+            )
+            if matched:
+                duration_ms = round((time.monotonic() - self._state.started_at) * 1000)
+                _trace_emit(
+                    "stage",
+                    source=self._label,
+                    turn_id=self._state.turn_id,
+                    data={"stage": "ctx_user", "duration_ms": duration_ms},
+                )
+                self._state.clear()
+
+        await self.push_frame(frame, direction)
+
 
 # Per-provider STT/TTS model identifiers, built from the canonical constants
 # in voxtera.stt and voxtera.tts so the trace stream's session_providers
@@ -476,6 +561,7 @@ class TranscriptStageTimer(FrameProcessor):
                 # ``stt`` duration: VADUserStoppedSpeakingFrame → TranscriptionFrame.
                 # ``user_stopped`` was stamped by PipelineTracer.
                 stt_ms = tracker.measure_ms_from("user_stopped")
+                post_provider_ms = tracker.measure_ms_from("stt_provider_final")
                 # Stamp the transcript anchor regardless — PipelineTracer reads
                 # it on LLMFullResponseStartFrame to compute ``stt_to_llm``.
                 tracker.stamp("transcript")
@@ -485,6 +571,13 @@ class TranscriptStageTimer(FrameProcessor):
                         source=self._label,
                         turn_id=tracker.current(),
                         data={"stage": "stt", "duration_ms": stt_ms},
+                    )
+                if post_provider_ms is not None:
+                    _trace_emit(
+                        "stage",
+                        source=self._label,
+                        turn_id=tracker.current(),
+                        data={"stage": "stt_post_provider", "duration_ms": post_provider_ms},
                     )
                 _trace_emit(
                     "lifecycle",

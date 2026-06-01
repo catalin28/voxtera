@@ -186,6 +186,40 @@ class TestRetrieveFiltering:
         assert len(result) == 1
         assert result[0].text == "es"
 
+    @pytest.mark.asyncio
+    async def test_language_falls_back_to_english(self) -> None:
+        """When the requested language is missing, English chunks are used."""
+        vec = _unit_vec(0)
+        store = _store_with_chunks(
+            [
+                {"text": "english fallback", "embedding": vec, "chunk_index": 0, "language": "en"},
+            ]
+        )
+        retriever = Retriever(store)
+
+        with patch("voxtera.rag.retriever.embed", _mock_embed(vec)):
+            result = await retriever.retrieve(hotel_id="h1", query="q", language="es")
+
+        assert len(result) == 1
+        assert result[0].text == "english fallback"
+
+    @pytest.mark.asyncio
+    async def test_language_falls_back_to_all_languages(self) -> None:
+        """If the requested language and English miss, the all-language scope is used."""
+        vec = _unit_vec(0)
+        store = _store_with_chunks(
+            [
+                {"text": "french fallback", "embedding": vec, "chunk_index": 0, "language": "fr"},
+            ]
+        )
+        retriever = Retriever(store)
+
+        with patch("voxtera.rag.retriever.embed", _mock_embed(vec)):
+            result = await retriever.retrieve(hotel_id="h1", query="q", language="es")
+
+        assert len(result) == 1
+        assert result[0].text == "french fallback"
+
 
 class TestRetrieveErrorHandling:
     """Embedding API failures degrade gracefully."""

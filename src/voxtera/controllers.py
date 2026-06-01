@@ -58,6 +58,8 @@ from voxtera.prompts.fillers import FILLERS
 from voxtera.prompts.greetings import DEFAULT_LANGUAGE, daypart_for_timezone
 from voxtera.routing import STTRouter, TTSRouter
 from voxtera.stt import _VALID_STT_LANGUAGES, _google_languages_for_selection
+from voxtera.trace import emit as _trace_emit
+from voxtera.trace import tracker as _trace_tracker
 from voxtera.tts import (
     TTS_GOOGLE_DEFAULT_VOICE,
     _voices_for_tts_provider,
@@ -126,6 +128,7 @@ class LLMRunGuard(FrameProcessor):
             return
 
         if isinstance(frame, LLMRunFrame):
+            started_at = time.monotonic()
             now = time.monotonic()
 
             # Refractory window: suppress rapid run storms from noisy VAD churn
@@ -148,6 +151,15 @@ class LLMRunGuard(FrameProcessor):
             # Consume one run per append to avoid duplicate runs from noisy turns.
             self._last_user_append_at = None
             self._last_run_sent_at = now
+            _trace_emit(
+                "stage",
+                source="voxtera",
+                turn_id=_trace_tracker().current(),
+                data={
+                    "stage": "llm_run_guard",
+                    "duration_ms": round((time.monotonic() - started_at) * 1000),
+                },
+            )
             await self.push_frame(frame, direction)
             return
 

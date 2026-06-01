@@ -10,6 +10,8 @@ UI_SERVICE_NAME="${UI_SERVICE_NAME:-voxtera-demo-ui}"
 REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-/etc/voxtera/voxtera.env}"
 HOTEL_ID="${HOTEL_ID:-demo}"
 CONTENT_DIR="${CONTENT_DIR:-/opt/voxtera/app/demo-hotel}"
+PSTN_WEBHOOK_URL="${PSTN_WEBHOOK_URL:-https://voxtera.io/pstn/webhook}"
+CONFIGURE_PINLESS_DIALIN="${CONFIGURE_PINLESS_DIALIN:-true}"
 
 INGEST_RAG="true"
 SKIP_SYNC="false"
@@ -129,15 +131,51 @@ fi
 
 if [[ -f .env ]]; then
   echo "==> Deploying .env to ${HOST}:${REMOTE_ENV_FILE}"
+  REMOTE_PSTN_HMAC_VERIFY=$(ssh "${HOST}" "grep '^PSTN_HMAC_VERIFY=' '${REMOTE_ENV_FILE}' 2>/dev/null || true")
   ssh "${HOST}" "mkdir -p '$(dirname "${REMOTE_ENV_FILE}")'"
   scp .env "${HOST}:${REMOTE_ENV_FILE}"
   # Rewrite any relative path values that need to be absolute on the server.
   # GOOGLE_APPLICATION_CREDENTIALS is relative locally (project root) but
   # serve.py runs from demo-hotel/, so it must be absolute on the server.
   ssh "${HOST}" "sed -i 's|GOOGLE_APPLICATION_CREDENTIALS=\.secrets/|GOOGLE_APPLICATION_CREDENTIALS=${REMOTE_APP_DIR}/.secrets/|g' '${REMOTE_ENV_FILE}'"
+  if ! grep -q '^PSTN_HMAC_VERIFY=' .env && [[ -n "${REMOTE_PSTN_HMAC_VERIFY}" ]]; then
+    echo "==> Preserving remote PSTN_HMAC_VERIFY override"
+    ssh "${HOST}" "printf '\n%s\n' '${REMOTE_PSTN_HMAC_VERIFY}' >> '${REMOTE_ENV_FILE}'"
+  fi
   ssh "${HOST}" "chown root:'${REMOTE_USER}' '${REMOTE_ENV_FILE}' && chmod 640 '${REMOTE_ENV_FILE}'"
 else
   echo "==> No local .env found, skipping env file deploy"
+fi
+
+if [[ "$CONFIGURE_PINLESS_DIALIN" == "true" ]]; then
+  if [[ ! -f .env ]]; then
+    echo "Error: .env is required to configure Daily pinless dial-in." >&2
+    exit 1
+  fi
+
+  echo "==> Configuring Daily pinless dial-in"
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+
+  if [[ -z "${DAILY_API_KEY:-}" || -z "${PSTN_PHONE_NUMBER:-}" || -z "${PSTN_WEBHOOK_HMAC:-}" ]]; then
+    echo "Error: DAILY_API_KEY, PSTN_PHONE_NUMBER, and PSTN_WEBHOOK_HMAC must be set in .env" >&2
+    exit 1
+  fi
+
+  PINLESS_PAYLOAD=$(printf '{"properties":{"pinless_dialin":[{"phone_number":"%s","room_creation_api":"%s","name_prefix":"VCI","hmac":"%s"}]}}' \
+    "$PSTN_PHONE_NUMBER" "$PSTN_WEBHOOK_URL" "$PSTN_WEBHOOK_HMAC")
+  PINLESS_RESPONSE=$(curl -fsS -X POST https://api.daily.co/v1/ \
+    -H "Authorization: Bearer ${DAILY_API_KEY}" \
+    -H 'Content-Type: application/json' \
+    --data "$PINLESS_PAYLOAD")
+
+  if command -v jq >/dev/null 2>&1; then
+    echo "$PINLESS_RESPONSE" | jq '{pinless_dialin:(.config.pinless_dialin // null)}'
+  else
+    echo "$PINLESS_RESPONSE"
+  fi
 fi
 
 echo "==> Installing/updating dependencies"

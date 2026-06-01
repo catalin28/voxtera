@@ -63,6 +63,54 @@ STT_MODEL_ELEVENLABS = "scribe_v2_realtime"
 STT_MODEL_GOOGLE = "latest_long"
 
 
+def _emit_gladia_final_metrics(
+    *,
+    now: float,
+    first_audio_at: float | None,
+    user_stopped_at: float | None,
+) -> tuple[int | None, int | None]:
+    """Emit fine-grained trace metrics when Gladia produces a final transcript."""
+    audio_to_final_ms = int((now - first_audio_at) * 1000) if first_audio_at is not None else None
+    stopped_to_final_ms = (
+        int((now - user_stopped_at) * 1000) if user_stopped_at is not None else None
+    )
+
+    try:
+        from voxtera.trace import emit as _trace_emit
+        from voxtera.trace import tracker as _trace_tracker
+
+        tracker = _trace_tracker()
+        tracker.stamp("stt_provider_final", value=now)
+        if audio_to_final_ms is not None:
+            _trace_emit(
+                "stage",
+                source="stt.gladia",
+                turn_id=tracker.current(),
+                data={"stage": "stt_first_audio_to_final", "duration_ms": audio_to_final_ms},
+            )
+        if stopped_to_final_ms is not None:
+            _trace_emit(
+                "stage",
+                source="stt.gladia",
+                turn_id=tracker.current(),
+                data={"stage": "stt_provider_tail", "duration_ms": stopped_to_final_ms},
+            )
+        _trace_emit(
+            "lifecycle",
+            source="stt.gladia",
+            turn_id=tracker.current(),
+            data={
+                "event": "gladia_transcript_latency",
+                "first_audio_to_final_ms": audio_to_final_ms,
+                "user_stopped_to_final_ms": stopped_to_final_ms,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001 — diagnostic only
+        logger.debug("[stt] gladia latency trace-emit failed: {}", exc)
+
+    return audio_to_final_ms, stopped_to_final_ms
+
+
 class _MultilingualWhisperSTT(OpenAISTTService):
     """Whisper STT with language auto-detection (omits the language param).
 
@@ -698,7 +746,9 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
         #                         stopped speaking; the more meaningful number
         #                         for "how long did Gladia take to answer"
         #
-        # Both anchors use perf_counter (monotonic, ns precision). Reset on
+        # Both anchors use time.monotonic so they are compatible with the
+        # shared TurnTracker anchors used elsewhere in the trace pipeline.
+        # Reset on
         # each new VAD-start so every utterance is measured independently.
         _t_first_audio: float | None = None
         _t_user_stopped: float | None = None
@@ -709,14 +759,14 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
             # and VAD-stop, so this is the wall-clock instant Gladia first
             # sees voiced audio for this turn.
             if isinstance(frame, VADUserStartedSpeakingFrame):
-                self._t_first_audio = time.perf_counter()
+                self._t_first_audio = time.monotonic()
                 self._t_user_stopped = None
             elif isinstance(frame, VADUserStoppedSpeakingFrame):
                 # Only stamp the FIRST stop frame of the turn. VAD events can
                 # echo through multiple pipeline branches; we want the earliest
                 # one we see (== when Gladia last received audio).
                 if self._t_user_stopped is None:
-                    self._t_user_stopped = time.perf_counter()
+                    self._t_user_stopped = time.monotonic()
             await super().process_frame(frame, direction)
 
         async def push_frame(
@@ -732,16 +782,11 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
                 and direction == FrameDirection.DOWNSTREAM
                 and getattr(frame, "text", "")
             ):
-                now = time.perf_counter()
-                audio_to_final_ms = (
-                    int((now - self._t_first_audio) * 1000)
-                    if self._t_first_audio is not None
-                    else None
-                )
-                stopped_to_final_ms = (
-                    int((now - self._t_user_stopped) * 1000)
-                    if self._t_user_stopped is not None
-                    else None
+                now = time.monotonic()
+                audio_to_final_ms, stopped_to_final_ms = _emit_gladia_final_metrics(
+                    now=now,
+                    first_audio_at=self._t_first_audio,
+                    user_stopped_at=self._t_user_stopped,
                 )
                 logger.info(
                     "[stt] gladia latency: first_audio→final={}ms "
@@ -750,25 +795,6 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
                     stopped_to_final_ms,
                     frame.text[:80],
                 )
-                # Mirror into the trace bus so the dashboard / exported trace
-                # JSON carries the same numbers. Best-effort: failure to emit
-                # must never block the transcript from flowing downstream.
-                try:
-                    from voxtera.trace import emit as _trace_emit
-                    from voxtera.trace import tracker as _trace_tracker
-
-                    _trace_emit(
-                        "lifecycle",
-                        source="stt.gladia",
-                        turn_id=_trace_tracker().current(),
-                        data={
-                            "event": "gladia_transcript_latency",
-                            "first_audio_to_final_ms": audio_to_final_ms,
-                            "user_stopped_to_final_ms": stopped_to_final_ms,
-                        },
-                    )
-                except Exception as exc:  # noqa: BLE001 — diagnostic only
-                    logger.debug("[stt] gladia latency trace-emit failed: {}", exc)
                 # Reset so a stray late transcript on the same utterance
                 # doesn't double-count against stale anchors.
                 self._t_first_audio = None
@@ -915,6 +941,12 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
         code_switching = True
     logger.info("[stt] gladia lang_config took {:.0f}ms", (time.perf_counter() - _t_lang) * 1000)
 
+    if languages and len(languages) > 15:
+        logger.warning(
+            "[stt] gladia constrained language set has {} entries; consider a narrower hotel-specific set",
+            len(languages),
+        )
+
     if code_switching and len(languages) < 2:
         # Silently degrade rather than ship a config that produces no
         # transcripts. Gladia accepts but doesn't honor code_switching=True
@@ -931,6 +963,10 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
         language_config = LanguageConfig(
             languages=languages,
             code_switching=code_switching,
+        )
+        logger.info(
+            "[stt] gladia constrained language mode active ({} languages)",
+            len(languages),
         )
         mode_desc = f"detect-within={languages}" + (" + code-switching" if code_switching else "")
     else:

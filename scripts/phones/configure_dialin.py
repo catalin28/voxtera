@@ -16,8 +16,9 @@ Requires DAILY_API_KEY and PSTN_PHONE_NUMBER in the environment (loaded from .en
 from __future__ import annotations
 
 import argparse
-import json
+import base64
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -51,7 +52,26 @@ _load_dotenv()
 
 API_KEY = os.environ.get("DAILY_API_KEY", "")
 PHONE_NUMBER = os.environ.get("PSTN_PHONE_NUMBER", "")
+EXISTING_HMAC = os.environ.get("PSTN_WEBHOOK_HMAC", "")
 DAILY_API = "https://api.daily.co/v1"
+
+
+def _get_or_create_secret() -> str:
+    """Return a stable base64-encoded HMAC secret.
+
+    If ``PSTN_WEBHOOK_HMAC`` is already set in the environment we reuse it so
+    re-running setup (e.g. to change the webhook URL) does NOT rotate the
+    secret out from under the running server. Otherwise we generate a fresh
+    256-bit secret and base64-encode it (Daily requires the secret to be
+    base64-encoded).
+
+    This is the fix for the rotation bug: previously setup passed no ``hmac``
+    field, so Daily minted a brand-new secret on every call — invalidating the
+    value saved in ``.env`` and breaking webhook verification.
+    """
+    if EXISTING_HMAC:
+        return EXISTING_HMAC
+    return base64.b64encode(secrets.token_bytes(32)).decode()
 
 
 def _headers() -> dict:
@@ -91,10 +111,15 @@ def cmd_setup(args: argparse.Namespace) -> None:
         print("ERROR: PSTN_PHONE_NUMBER not set in .env", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Configuring pinless dial-in:")
+    # Pin our own secret so Daily doesn't rotate it on every reconfigure.
+    hmac_secret = _get_or_create_secret()
+    reused = bool(EXISTING_HMAC)
+
+    print("Configuring pinless dial-in:")
     print(f"  Phone number: {PHONE_NUMBER}")
     print(f"  Webhook URL:  {webhook_url}")
-    print(f"  Room prefix:  VCI")
+    print("  Room prefix:  VCI")
+    print(f"  HMAC secret:  {'reused from .env' if reused else 'newly generated'}")
     print()
 
     payload = {
@@ -104,6 +129,9 @@ def cmd_setup(args: argparse.Namespace) -> None:
                     "phone_number": PHONE_NUMBER,
                     "room_creation_api": webhook_url,
                     "name_prefix": "VCI",
+                    # Pass our own secret explicitly. Without this, Daily mints
+                    # a new HMAC on every setup call (rotation bug).
+                    "hmac": hmac_secret,
                 }
             ]
         }
@@ -128,19 +156,25 @@ def cmd_setup(args: argparse.Namespace) -> None:
     if pinless:
         entry = pinless[0]
         print(f"  SIP URI: {entry.get('sip_uri', 'N/A')}")
-        print(f"  HMAC:    {entry.get('hmac', 'N/A')}")
         print()
-        hmac_val = entry.get("hmac", "")
-        if hmac_val:
-            print("IMPORTANT: Save this HMAC secret in your .env as PSTN_WEBHOOK_HMAC")
-            print(f"  PSTN_WEBHOOK_HMAC={hmac_val}")
-            print()
-            # Offer to append to .env
-            answer = input("Append PSTN_WEBHOOK_HMAC to .env? [Y/n] ").strip().lower()
-            if answer in ("", "y", "yes"):
-                with open(_ENV_FILE, "a", encoding="utf-8") as f:
-                    f.write(f"\nPSTN_WEBHOOK_HMAC={hmac_val}\n")
-                print("  → Appended to .env")
+
+    # Daily echoes back the hmac we sent; fall back to the one we generated.
+    hmac_val = (pinless[0].get("hmac") if pinless else "") or hmac_secret
+
+    if reused:
+        print("HMAC secret unchanged — your existing PSTN_WEBHOOK_HMAC in .env is")
+        print("still valid. Nothing to update. Just restart the server.")
+        return
+
+    print("IMPORTANT: Save this HMAC secret in your .env as PSTN_WEBHOOK_HMAC")
+    print(f"  PSTN_WEBHOOK_HMAC={hmac_val}")
+    print()
+    # Offer to append to .env
+    answer = input("Append PSTN_WEBHOOK_HMAC to .env? [Y/n] ").strip().lower()
+    if answer in ("", "y", "yes"):
+        with open(_ENV_FILE, "a", encoding="utf-8") as f:
+            f.write(f"\nPSTN_WEBHOOK_HMAC={hmac_val}\n")
+        print("  → Appended to .env")
 
 
 def cmd_remove(args: argparse.Namespace) -> None:

@@ -29,6 +29,7 @@ Idempotent: never injects twice into the same user message.
 
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -40,6 +41,9 @@ try:
     from pipecat.transports.daily.transport import DailyInputTransportMessageFrame
 except Exception:  # daily-python not available on Windows
     DailyInputTransportMessageFrame = None  # type: ignore[assignment,misc]
+
+from voxtera.trace import emit as _trace_emit
+from voxtera.trace import tracker as _trace_tracker
 
 # Opening marker of the injected note — also the idempotency guard.
 _TIME_NOTE_PREFIX = "[Time check —"
@@ -71,11 +75,21 @@ class TimeContextInjector(FrameProcessor):
 
         # Inject the current time into the latest user message.
         if isinstance(frame, LLMContextFrame) and direction == FrameDirection.DOWNSTREAM:
+            started_at = time.monotonic()
             try:
                 self._inject_time(frame)
             except Exception:
                 # Time context is a nice-to-have; never break the voice loop.
                 logger.opt(exception=True).error("[time-context] injection failed")
+            _trace_emit(
+                "stage",
+                source="voxtera",
+                turn_id=_trace_tracker().current(),
+                data={
+                    "stage": "time_context",
+                    "duration_ms": round((time.monotonic() - started_at) * 1000),
+                },
+            )
 
         await self.push_frame(frame, direction)
 

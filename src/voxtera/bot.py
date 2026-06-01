@@ -43,6 +43,7 @@ from dotenv import load_dotenv
 from loguru import logger
 from pipecat.frames.frames import (
     EndFrame,
+    InterruptionFrame,
     LLMMessagesAppendFrame,
     LLMRunFrame,
     TTSSpeakFrame,
@@ -222,7 +223,9 @@ async def run_bot(settings: Settings) -> None:
             # announce session timeout via the bot's TTS before disconnecting.
             def _speak_via_pipeline(text: str) -> None:
                 asyncio.get_event_loop().call_soon_threadsafe(
-                    lambda: asyncio.ensure_future(task.queue_frame(TTSSpeakFrame(text=text)))
+                    lambda: asyncio.ensure_future(
+                        task.queue_frames([InterruptionFrame(), TTSSpeakFrame(text=text)])
+                    )
                 )
 
             tune_server.register_speak_callback(_speak_via_pipeline)

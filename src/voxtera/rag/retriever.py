@@ -107,11 +107,108 @@ class Retriever:
         # Collapse internal whitespace.
         return " ".join(normalized.split())
 
+    @staticmethod
+    def _normalize_language(language: str | None) -> str | None:
+        """Collapse language hints to the primary lowercase subtag.
+
+        Retrieval chunks are currently keyed by short language codes such as
+        ``en`` and ``es``. When upstream passes a BCP-47 tag like ``en-US`` or
+        a mixed-case variant, normalize it so retrieval and caching stay stable.
+        """
+        if language is None:
+            return None
+        normalized = language.strip().lower().replace("_", "-")
+        if not normalized:
+            return None
+        return normalized.split("-", 1)[0]
+
+    def _language_fallback_chain(self, language: str | None) -> list[str | None]:
+        """Return the ordered retrieval scopes for a language-constrained query."""
+        normalized = self._normalize_language(language)
+        if normalized is None:
+            return [None]
+        search_languages: list[str | None] = [normalized]
+        if normalized != "en":
+            search_languages.append("en")
+        search_languages.append(None)
+        return search_languages
+
+    def _remember_result(
+        self, key: tuple[str, str | None, str], results: list[RetrievedChunk]
+    ) -> None:
+        """Insert a result cache entry while preserving LRU ordering."""
+        self._result_cache[key] = results
+        self._result_cache.move_to_end(key)
+        while len(self._result_cache) > self._result_cache_max:
+            self._result_cache.popitem(last=False)
+
+    async def _get_candidates(
+        self, *, hotel_id: str, language: str | None
+    ) -> tuple[list, np.ndarray] | None:
+        """Load and cache the candidate chunk matrix for one retrieval scope."""
+        cache_key = (hotel_id, language)
+        cached = self._chunk_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        candidates = await asyncio.to_thread(
+            self._store.fetch_for_hotel, hotel_id=hotel_id, language=language
+        )
+        if not candidates:
+            logger.debug("No chunks for hotel_id={!r}, language={!r}", hotel_id, language)
+            return None
+
+        matrix = np.array([c.embedding for c in candidates], dtype=np.float32)
+        norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1.0, norms)
+        matrix /= norms
+        self._chunk_cache[cache_key] = (candidates, matrix)
+        return self._chunk_cache[cache_key]
+
+    def _score_candidates(
+        self,
+        *,
+        candidates: list,
+        matrix: np.ndarray,
+        query_vec: np.ndarray,
+        hotel_id: str,
+    ) -> list[RetrievedChunk]:
+        """Score one candidate matrix against a pre-computed query embedding."""
+        scores = matrix @ query_vec  # shape (n_candidates,)
+        # Clamp to [0, 1] before filtering — negative values from floating-point
+        # noise should not leak through a min_score of 0.0.
+        clamped = np.clip(scores, 0.0, 1.0)
+
+        # Build scored pairs, filter, sort, and cap.
+        scored = [
+            RetrievedChunk(
+                text=c.text,
+                score=float(s),
+                doc_id=c.doc_id,
+                category=c.category,
+            )
+            for c, s in zip(candidates, clamped, strict=True)
+            if float(s) >= self._min_score
+        ]
+        scored.sort(key=lambda r: r.score, reverse=True)
+
+        results = scored[: self._top_k]
+        logger.debug(
+            "Retrieved {}/{} chunks (top_k={}, min_score={}) for hotel_id={!r}",
+            len(results),
+            len(candidates),
+            self._top_k,
+            self._min_score,
+            hotel_id,
+        )
+        return results
+
     async def warmup(self, *, hotel_id: str, language: str | None = None) -> None:
         """Pre-load and cache the chunk matrix so the first query is instant.
 
         Call this as a fire-and-forget task after the bot joins the room.
         """
+        language = self._normalize_language(language)
         cache_key = (hotel_id, language)
         if cache_key in self._chunk_cache:
             return
@@ -165,14 +262,22 @@ class Retriever:
         if not query.strip():
             return []
 
-        # Result-cache lookup — covers ~80% of repeated questions in a session
-        # AND every pre-warmed query. Skips embedding + similarity entirely.
         normalized = self._normalize_query(query)
-        result_key = (hotel_id, language, normalized)
-        cached = self._result_cache.get(result_key)
-        if cached is not None:
-            # Touch the entry so LRU ordering reflects recent access.
+        language = self._normalize_language(language)
+        requested_key = (hotel_id, language, normalized)
+        search_languages = self._language_fallback_chain(language)
+
+        # Result-cache lookup — covers repeated questions in a session and any
+        # pre-warmed queries. Try the requested language first, then fallback
+        # scopes so English-only stores can still serve multilingual callers.
+        for scope in search_languages:
+            result_key = (hotel_id, scope, normalized)
+            cached = self._result_cache.get(result_key)
+            if cached is None:
+                continue
             self._result_cache.move_to_end(result_key)
+            if result_key != requested_key:
+                self._remember_result(requested_key, cached)
             logger.debug(
                 "[rag] result cache HIT for query={!r} (returning {} chunks)",
                 normalized[:60],
@@ -180,76 +285,49 @@ class Retriever:
             )
             return cached
 
-        cache_key = (hotel_id, language)
-        if cache_key not in self._chunk_cache:
-            # Cache miss (first query before warmup completed, or new language).
-            # Load from SQLite and populate cache.
-            candidates = await asyncio.to_thread(
-                self._store.fetch_for_hotel, hotel_id=hotel_id, language=language
+        query_vec: np.ndarray | None = None
+        for scope in search_languages:
+            cached_candidates = await self._get_candidates(hotel_id=hotel_id, language=scope)
+            if cached_candidates is None:
+                continue
+
+            candidates, matrix = cached_candidates
+
+            if query_vec is None:
+                try:
+                    query_vectors = await embed([query])
+                except Exception:
+                    logger.opt(exception=True).warning("Embedding API error — returning no results")
+                    return []
+
+                if not query_vectors:
+                    logger.warning("Embedding service returned no vectors for query")
+                    return []
+
+                query_vec = np.array(query_vectors[0], dtype=np.float32)
+                query_norm = np.linalg.norm(query_vec)
+                if query_norm == 0:
+                    return []
+                query_vec /= query_norm
+
+            results = self._score_candidates(
+                candidates=candidates,
+                matrix=matrix,
+                query_vec=query_vec,
+                hotel_id=hotel_id,
             )
-            if not candidates:
-                logger.debug("No chunks for hotel_id={!r}, language={!r}", hotel_id, language)
-                return []
-            matrix = np.array([c.embedding for c in candidates], dtype=np.float32)
-            norms = np.linalg.norm(matrix, axis=1, keepdims=True)
-            norms = np.where(norms == 0, 1.0, norms)
-            matrix /= norms
-            self._chunk_cache[cache_key] = (candidates, matrix)
+            result_key = (hotel_id, scope, normalized)
+            self._remember_result(result_key, results)
+            if results:
+                if result_key != requested_key:
+                    logger.debug(
+                        "[rag] fallback language {!r} resolved query={!r} via {!r}",
+                        language,
+                        normalized[:60],
+                        scope,
+                    )
+                    self._remember_result(requested_key, results)
+                return results
 
-        candidates, matrix = self._chunk_cache[cache_key]
-        if not candidates:
-            return []
-
-        try:
-            query_vectors = await embed([query])
-        except Exception:
-            logger.opt(exception=True).warning("Embedding API error — returning no results")
-            return []
-
-        if not query_vectors:
-            logger.warning("Embedding service returned no vectors for query")
-            return []
-
-        query_vec = np.array(query_vectors[0], dtype=np.float32)
-        query_norm = np.linalg.norm(query_vec)
-        if query_norm == 0:
-            return []
-        query_vec /= query_norm
-
-        scores = matrix @ query_vec  # shape (n_candidates,)
-        # Clamp to [0, 1] before filtering — negative values from floating-point
-        # noise should not leak through a min_score of 0.0.
-        clamped = np.clip(scores, 0.0, 1.0)
-
-        # Build scored pairs, filter, sort, and cap.
-        scored = [
-            RetrievedChunk(
-                text=c.text,
-                score=float(s),
-                doc_id=c.doc_id,
-                category=c.category,
-            )
-            for c, s in zip(candidates, clamped, strict=True)
-            if float(s) >= self._min_score
-        ]
-        scored.sort(key=lambda r: r.score, reverse=True)
-
-        results = scored[: self._top_k]
-        logger.debug(
-            "Retrieved {}/{} chunks (top_k={}, min_score={}) for hotel_id={!r}",
-            len(results),
-            len(candidates),
-            self._top_k,
-            self._min_score,
-            hotel_id,
-        )
-
-        # Populate the result cache for subsequent identical queries.
-        # Empty results are cached too — re-running an embedding for a query
-        # that found nothing is wasted work.
-        self._result_cache[result_key] = results
-        # LRU eviction: drop the oldest entry once we exceed the bound.
-        while len(self._result_cache) > self._result_cache_max:
-            self._result_cache.popitem(last=False)
-
-        return results
+        self._remember_result(requested_key, [])
+        return []
