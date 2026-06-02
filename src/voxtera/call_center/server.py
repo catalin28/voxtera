@@ -29,6 +29,7 @@ from aiohttp import web
 from loguru import logger
 
 from voxtera.call_center.clients import es_request, qdrant_request
+from voxtera.call_center.discovery import BroadHotelDiscovery
 from voxtera.call_center.embeddings import PREFIX_PASSAGE, PREFIX_QUERY, embed_texts
 from voxtera.call_center.index_config import ES_INDEX, build_hotel_mapping
 from voxtera.call_center.kb_config import EMBEDDING_DIM, QDRANT_COLLECTION
@@ -378,6 +379,20 @@ async def handle_kb(request: web.Request) -> web.Response:
     )
 
 
+async def handle_kb_discover(request: web.Request) -> web.Response:
+    """Phase 2b broad discovery — thin wrapper around BroadHotelDiscovery."""
+    region = request.query.get("region", "")
+    q = request.query.get("q", "")
+    category = request.query.get("category") or None
+    tags_raw = request.query.get("tags") or ""
+    tags = [t.strip() for t in tags_raw.split(",") if t.strip()] or None
+    session: aiohttp_lib.ClientSession = request.app["http_session"]
+    discovery = BroadHotelDiscovery(session=session)
+    return web.json_response(
+        await discovery.discover(region=region, query=q, activity_tags=tags, category_hint=category)
+    )
+
+
 async def handle_ui(request: web.Request) -> web.Response:
     """Serve the admin UI."""
     html_path = Path(__file__).parent / "ui.html"
@@ -422,6 +437,9 @@ def create_app() -> web.Application:
 
     # Phase 2a — scoped KB retrieval
     app.router.add_get("/call_center/api/kb", handle_kb)
+
+    # Phase 2b — broad cross-hotel discovery
+    app.router.add_get("/call_center/api/kb/discover", handle_kb_discover)
 
     return app
 
