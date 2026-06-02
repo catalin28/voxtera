@@ -29,42 +29,13 @@ from aiohttp import web
 from loguru import logger
 
 from voxtera.call_center.clients import es_request, qdrant_request
+from voxtera.call_center.embeddings import PREFIX_PASSAGE, PREFIX_QUERY, embed_texts
 from voxtera.call_center.index_config import ES_INDEX, build_hotel_mapping
+from voxtera.call_center.kb_config import EMBEDDING_DIM, QDRANT_COLLECTION
+from voxtera.call_center.kb_retriever import HotelKBRetriever
 from voxtera.call_center.resolver import HotelResolver
 
 SEED_FILE = Path(__file__).resolve().parents[3] / "data" / "seed" / "hotels.json"
-
-# Qdrant collection for knowledge chunks
-QDRANT_COLLECTION = "hotel_kb"
-
-# Embedding config
-EMBEDDING_MODEL = "intfloat/multilingual-e5-large"
-EMBEDDING_DIM = 1024
-PREFIX_PASSAGE = "passage: "
-PREFIX_QUERY = "query: "
-
-# Lazy-loaded model
-_model = None
-
-
-def _get_model():
-    global _model
-    if _model is None:
-        from sentence_transformers import SentenceTransformer
-
-        logger.info("Loading embedding model: {}", EMBEDDING_MODEL)
-        t0 = time.perf_counter()
-        _model = SentenceTransformer(EMBEDDING_MODEL)
-        logger.info("Model loaded in {:.1f}s", time.perf_counter() - t0)
-    return _model
-
-
-def _embed_texts(texts: list[str], prefix: str = PREFIX_QUERY) -> list[list[float]]:
-    """Embed texts using e5-large with the given prefix."""
-    model = _get_model()
-    prefixed = [f"{prefix}{t}" for t in texts]
-    embeddings = model.encode(prefixed, normalize_embeddings=True)
-    return embeddings.tolist()
 
 
 # --- Route Handlers ---
@@ -261,7 +232,7 @@ async def handle_qdrant_load(request: web.Request) -> web.Response:
         texts = [c["text"] for c in batch]
 
         t0 = time.perf_counter()
-        embeddings = _embed_texts(texts, prefix=PREFIX_PASSAGE)
+        embeddings = embed_texts(texts, prefix=PREFIX_PASSAGE)
         embed_ms = (time.perf_counter() - t0) * 1000
         logger.info(
             "Embedded batch {}-{} ({} chunks) in {:.0f}ms",
@@ -358,7 +329,7 @@ async def handle_qdrant_search(request: web.Request) -> web.Response:
 
     # Embed query
     t0 = time.perf_counter()
-    embeddings = _embed_texts([query_text], prefix=PREFIX_QUERY)
+    embeddings = embed_texts([query_text], prefix=PREFIX_QUERY)
     embed_ms = (time.perf_counter() - t0) * 1000
 
     # Search Qdrant
@@ -392,6 +363,18 @@ async def handle_qdrant_search(request: web.Request) -> web.Response:
                 for r in results
             ],
         }
+    )
+
+
+async def handle_kb(request: web.Request) -> web.Response:
+    """Phase 2a scoped KB retrieval — thin wrapper around HotelKBRetriever."""
+    hotel_id = request.query.get("hotel_id", "")
+    q = request.query.get("q", "")
+    category = request.query.get("category") or None
+    session: aiohttp_lib.ClientSession = request.app["http_session"]
+    retriever = HotelKBRetriever(session=session)
+    return web.json_response(
+        await retriever.retrieve(hotel_id=hotel_id, query=q, category_hint=category)
     )
 
 
@@ -436,6 +419,9 @@ def create_app() -> web.Application:
     app.router.add_get("/call_center/api/qdrant/collections", handle_qdrant_collections)
     app.router.add_get("/call_center/api/qdrant/points", handle_qdrant_points)
     app.router.add_post("/call_center/api/qdrant/search", handle_qdrant_search)
+
+    # Phase 2a — scoped KB retrieval
+    app.router.add_get("/call_center/api/kb", handle_kb)
 
     return app
 
