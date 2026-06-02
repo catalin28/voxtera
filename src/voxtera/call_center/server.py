@@ -29,11 +29,10 @@ from aiohttp import web
 from loguru import logger
 
 from voxtera.call_center.clients import es_request, qdrant_request
+from voxtera.call_center.index_config import ES_INDEX, build_hotel_mapping
+from voxtera.call_center.resolver import HotelResolver
 
 SEED_FILE = Path(__file__).resolve().parents[3] / "data" / "seed" / "hotels.json"
-
-# ES index for hotel resolution
-ES_INDEX = "hotels"
 
 # Qdrant collection for knowledge chunks
 QDRANT_COLLECTION = "hotel_kb"
@@ -66,50 +65,6 @@ def _embed_texts(texts: list[str], prefix: str = PREFIX_QUERY) -> list[list[floa
     prefixed = [f"{prefix}{t}" for t in texts]
     embeddings = model.encode(prefixed, normalize_embeddings=True)
     return embeddings.tolist()
-
-
-# --- ES Index Mapping ---
-
-ES_HOTEL_MAPPING = {
-    "settings": {
-        "analysis": {
-            "analyzer": {
-                "turkish_custom": {
-                    "type": "custom",
-                    "tokenizer": "standard",
-                    "filter": ["lowercase", "turkish_stop", "turkish_stemmer"],
-                },
-            },
-            "filter": {
-                "turkish_stop": {"type": "stop", "stopwords": "_turkish_"},
-                "turkish_stemmer": {"type": "stemmer", "language": "turkish"},
-            },
-        }
-    },
-    "mappings": {
-        "properties": {
-            "hotel_id": {"type": "keyword"},
-            "name": {
-                "type": "text",
-                "analyzer": "turkish_custom",
-                "fields": {"raw": {"type": "keyword"}},
-            },
-            "aliases": {"type": "text", "analyzer": "turkish_custom"},
-            "chain": {"type": "keyword"},
-            "city": {"type": "keyword"},
-            "district": {"type": "keyword"},
-            "region": {"type": "keyword"},
-            "country": {"type": "keyword"},
-            "price_tier": {"type": "keyword"},
-            "coordinates": {"type": "geo_point"},
-            "activity_tags": {"type": "keyword"},
-            "beachfront": {"type": "boolean"},
-            "adults_only": {"type": "boolean"},
-            "board_type": {"type": "keyword"},
-            "star_rating": {"type": "integer"},
-        }
-    },
-}
 
 
 # --- Route Handlers ---
@@ -146,7 +101,7 @@ async def handle_es_load(request: web.Request) -> web.Response:
 
     # Delete index if exists, then create with mapping
     await es_request(session, "DELETE", f"/{ES_INDEX}")
-    create_resp = await es_request(session, "PUT", f"/{ES_INDEX}", json=ES_HOTEL_MAPPING)
+    create_resp = await es_request(session, "PUT", f"/{ES_INDEX}", json=build_hotel_mapping())
     if create_resp.get("error"):
         return web.json_response(
             {"error": "Failed to create index", "detail": create_resp}, status=500
@@ -240,6 +195,17 @@ async def handle_es_search(request: web.Request) -> web.Response:
         for h in hits
     ]
     return web.json_response({"query": q, "count": len(results), "results": results})
+
+
+async def handle_resolve(request: web.Request) -> web.Response:
+    """Phase 1 hotel resolver — thin wrapper around HotelResolver for manual testing."""
+    q = request.query.get("q", "")
+    if not q:
+        return web.json_response({"error": "Missing ?q= parameter"}, status=400)
+    session: aiohttp_lib.ClientSession = request.app["http_session"]
+    resolver = HotelResolver(session=session, index_name=ES_INDEX)
+    result = await resolver.resolve(q)
+    return web.json_response(result)
 
 
 async def handle_qdrant_load(request: web.Request) -> web.Response:
@@ -463,6 +429,7 @@ def create_app() -> web.Application:
     app.router.add_post("/call_center/api/es/load", handle_es_load)
     app.router.add_get("/call_center/api/es/hotels", handle_es_hotels)
     app.router.add_get("/call_center/api/es/search", handle_es_search)
+    app.router.add_get("/call_center/api/resolve", handle_resolve)
 
     # Qdrant endpoints
     app.router.add_post("/call_center/api/qdrant/load", handle_qdrant_load)
