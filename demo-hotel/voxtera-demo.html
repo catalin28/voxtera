@@ -1260,6 +1260,9 @@
     <button class="chip" data-prompt="What are the spa opening hours?">Spa hours</button>
     <button class="chip" data-prompt="Can you recommend something to do in Paris?">Things to do</button>
   </div>
+  <div id="chat-lock-notice" role="status" aria-live="polite" style="display:none; margin:0 1rem 0.6rem; padding:0.6rem 0.9rem; border-radius:10px; background:rgba(176,84,52,0.10); color:var(--rust); font-size:0.85rem; line-height:1.35; text-align:center;">
+    🎙 Voice session in progress — chat is paused. End the call (or wait for it to finish) to type a message.
+  </div>
   <form class="input-bar" id="chat-form" autocomplete="off">
     <div class="input-row">
       <textarea
@@ -1413,6 +1416,7 @@
   const audioEl     = document.getElementById('bot-audio');
   const remoteAudioEl = document.getElementById('remote-audio');
   const stopBtn     = document.getElementById('stop-btn');
+  const chatLockNotice = document.getElementById('chat-lock-notice');
 
   // ─── state ───
   let currentLang = 'auto';
@@ -1916,6 +1920,10 @@
   // ─── core: send text to /api/chat and play audio response ───
   async function sendMessage(text) {
     if (isBusy || !text.trim()) return;
+    // Chat is disabled while a voice session is live — prevents the chat's
+    // spoken reply from leaking into the open voice mic and being
+    // re-transcribed by STT. UI is also locked via _lockChatForVoice().
+    if (inCall) return;
     // Demo gate check
     if (!_demoCanChat()) {
       _demoShowModal('code');
@@ -2076,6 +2084,7 @@
   // ─── form submit ───
   form.addEventListener('submit', e => {
     e.preventDefault();
+    if (inCall) return;
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
@@ -2425,6 +2434,7 @@
     } catch (e) { diagLog('warn', '[audio-device] collection error: ' + e.message); }
 
     inCall = true;
+    _lockChatForVoice();
     callBtn.disabled = false;
     callBtn.classList.add('in-call');
     callBtn.setAttribute('aria-label', 'End voice call');
@@ -2509,6 +2519,7 @@
     _stopCallTimer();
     _stopMicMonitor();
     inCall = false;
+    _unlockChat();
     callBtn.classList.remove('in-call');
     callBtn.setAttribute('aria-label', 'Start voice call');
     callBtn.style.transform = '';
@@ -2550,6 +2561,33 @@
       try { _dailyCallObj.destroy(); } catch (_) {}
       _dailyCallObj = null;
     }
+  }
+
+  // ─── chat lock while a voice session is active ───────────────────────
+  // A live voice call and the text chat both produce bot TTS. If both run
+  // at once, the chat's spoken reply leaks into the open voice mic and gets
+  // re-transcribed by STT (the bot "hears itself"). So we pause the chat
+  // entirely whenever a voice session is active, and restore it when the
+  // session ends — whether the user pressed End or the time limit fired
+  // (both routes go through _endVoiceCall).
+  function _lockChatForVoice() {
+    input.disabled = true;
+    sendBtn.disabled = true;
+    micBtn.disabled = true;
+    input.dataset.prevPlaceholder = input.getAttribute('placeholder') || '';
+    input.setAttribute('placeholder', 'Chat paused during the voice call — end the call to type.');
+    if (chatLockNotice) chatLockNotice.style.display = 'block';
+  }
+
+  function _unlockChat() {
+    input.disabled = false;
+    sendBtn.disabled = false;
+    micBtn.disabled = false;
+    if (input.dataset.prevPlaceholder !== undefined) {
+      input.setAttribute('placeholder', input.dataset.prevPlaceholder);
+      delete input.dataset.prevPlaceholder;
+    }
+    if (chatLockNotice) chatLockNotice.style.display = 'none';
   }
 
   // ─── call button ─────────────────────────────────────────────────────
