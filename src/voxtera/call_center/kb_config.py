@@ -16,6 +16,10 @@ DISTANCE = "Cosine"
 DEFAULT_TOP_K = 3
 DEFAULT_MIN_SCORE = 0.25
 
+# Broad-discovery defaults (Phase 2b)
+DEFAULT_MAX_HOTELS = 5
+DISCOVERY_OVERSHOOT_MULT = 6
+
 # Curated chunk categories (architecture v0.3 §6 + dev plan Phase 2f)
 CATEGORIES = (
     "overview",
