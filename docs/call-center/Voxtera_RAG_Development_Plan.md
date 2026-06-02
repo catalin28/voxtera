@@ -41,16 +41,23 @@ main
   └── develop
         ├── feat/VOX-rag-foundation        Phase 0
         ├── feat/VOX-hotel-resolver        Phase 1
-        ├── feat/VOX-rag-core              Phase 2
+        ├── feat/vox-kb-retrieval          Phase 2a — Scoped search
+        ├── feat/VOX-rag-broad             Phase 2b — Broad discovery
+        ├── feat/VOX-rag-compound          Phase 2c — Compound AND
+        ├── feat/VOX-rag-filters           Phase 2d — Budget + Geo filters
+        ├── feat/VOX-rag-dual              Phase 2e — Dual / comparison search
+        ├── feat/VOX-rag-ingest            Phase 2f — Ingestion, confidence, cache
         ├── feat/VOX-triage-decomposition  Phase 3
         ├── feat/VOX-web-search            Phase 4
         ├── feat/VOX-chat-assembly         Phase 5
         └── feat/VOX-voice-pipeline        Phase 6
 ```
 
-Each phase branch merges to `develop` before the next begins.
+Each phase (and sub-phase) branch merges to `develop` before the next begins.
 `main` receives only from `develop` at milestone releases.
 Voice pipeline (`feat/VOX-voice-pipeline`) **never starts** until Phase 5 is signed off.
+
+**Why Phase 2 is split into 2a–2f.** The original Phase 2 bundled six search modes plus ingestion, confidence handling, and caching into a single 8–10 day branch. We split it into independently-mergeable sub-phases so each retrieval mode is proven (unit tests + mock smoke + live smoke) before the next is layered on top. The total Phase 2 scope and exit criteria are unchanged — only the delivery cadence.
 
 ---
 
@@ -160,19 +167,121 @@ Given 50 test hotel mentions in realistic Turkish phrasing, resolver returns cor
 
 ---
 
-## Phase 2 — RAG Core
+## Phase 2 — RAG Core (split into 2a–2f)
 
-**Branch:** `feat/VOX-rag-core`
-**Estimated duration:** 8–10 days
+**Umbrella goal:** Qdrant retrieval working correctly across all six search modes, plus ingestion, confidence handling, and Redis caching. This is the largest phase — the quality of everything downstream depends on what is built here.
 
-### Goal
+**Umbrella exit criteria (rolls up from 2a–2f):** Given 20 test queries across all search modes, retrieval returns relevant chunks with correct confidence handling on ≥ 80% of queries. Cache hit confirmed on repeated queries. Compound AND correctly enforces both requirements.
 
-Qdrant retrieval working correctly across all search modes. This is the largest phase — the quality of everything downstream depends on what is built here.
+Each sub-phase below ships on its own branch and merges to `develop` independently. Sub-phases are ordered by dependency; 2b–2e can be reordered if needed once 2a is in.
 
-### Deliverables
+---
 
-#### Ingestion Pipeline
+### Phase 2a — Scoped Search
 
+**Branch:** `feat/vox-kb-retrieval`
+**Estimated duration:** 1–2 days
+**Depends on:** Phase 1
+
+**Goal.** Single-hotel scoped retrieval against `hotel_kb` filtered by `hotel_id`. Foundation for every other 2x sub-phase (they all reuse this module's embeddings, search-body builder, and result contract).
+
+**Deliverables.**
+- [ ] `HotelKBRetriever` class with injectable `embed_fn` / `search_fn`
+- [ ] Qdrant search body with `must: hotel_id == X` filter
+- [ ] Optional `category_hint` (additive — `{hint, "overview"}`)
+- [ ] Decision contract with enumerated `reason` strings (`empty_query`, `no_hotel_scope`, `no_match_above_threshold`, `retriever_error`)
+- [ ] Unit suite (10 tests) and mock-Qdrant smoke harness
+- [ ] Thin `GET /call_center/api/kb` endpoint on the test server
+
+**Exit criteria.** Given 10 scoped queries against the seed hotels, the retriever returns relevant chunks with zero cross-hotel leakage on 100% of cases. All 10 unit tests green; mock smoke matches Gherkin scenarios.
+
+Full design: [phase2-user-story.md](phase2-user-story.md) · [phase2-development-plan.md](phase2-development-plan.md).
+
+---
+
+### Phase 2b — Broad Discovery Search
+
+**Branch:** `feat/VOX-rag-broad`
+**Estimated duration:** 2 days
+**Depends on:** 2a
+
+**Goal.** No `hotel_id` is known. Return top 5–8 candidate **hotels** for a region + intent query (e.g. "luxury hotel with spa in Antalya").
+
+**Deliverables.**
+- [ ] `BroadHotelDiscovery` class (sibling of `HotelKBRetriever`)
+- [ ] Qdrant search with `must: region == X` (no `hotel_id` filter); optional `must: activity_tags any [...]`
+- [ ] Hit aggregation: group chunks by `hotel_id`, score each hotel = max chunk score, return top N hotels with their best-supporting chunk
+- [ ] Decision contract: `{region, query, count, hotels: [{hotel_id, score, evidence_chunk}], reason}`
+- [ ] Unit suite + mock smoke + thin `/api/kb/discover` endpoint
+
+**Exit criteria.** Given 8 broad queries, ≥ 6 return a top-3 candidate set containing the expected hotel. No region leakage (zero hotels outside the requested region).
+
+---
+
+### Phase 2c — Compound AND Search
+
+**Branch:** `feat/VOX-rag-compound`
+**Estimated duration:** 2 days
+**Depends on:** 2b
+
+**Goal.** Multi-requirement discovery ("spa + scuba", "PADI dive centre AND kids club age 6–9"). Every requirement must be satisfied by at least one chunk; each requirement is scored separately and intersected at the hotel level.
+
+**Deliverables.**
+- [ ] `CompoundAndDiscovery` class that takes `requirements: list[str]` and runs N parallel broad searches
+- [ ] Hotel-level intersection: hotel passes only if it has ≥ 1 supporting chunk for every requirement
+- [ ] Per-requirement evidence chunks attached to each surviving hotel
+- [ ] Graceful degradation: if intersection is empty, return best partial match with `reason: "partial_match_only"` and a `missing_requirements: [...]` field so the chat layer can ask a priority question
+- [ ] Unit suite + mock smoke + thin `/api/kb/compound` endpoint
+
+**Exit criteria.** Given 6 compound queries (including the canonical "luxury hotel with spa for my wife AND scuba diving for me"), all 6 either return a correctly-intersected hotel list or correctly flag `partial_match_only` with the right missing requirement.
+
+---
+
+### Phase 2d — Budget + Geo Filters
+
+**Branch:** `feat/VOX-rag-filters`
+**Estimated duration:** 1–2 days
+**Depends on:** 2b
+
+**Goal.** Metadata pre-filters applied before semantic search.
+
+**Deliverables.**
+- [ ] `price_tier` filter (`budget` / `mid` / `luxury` / `ultra_luxury`) wired into broad + compound search
+- [ ] Geo filter — coordinates + radius (km) using Qdrant `geo_radius` payload filter
+- [ ] Combined filter builder shared across 2b, 2c, 2d
+- [ ] Unit suite covers each filter in isolation and combined
+- [ ] Mock smoke + extension to existing `/api/kb/discover` query string
+
+**Exit criteria.** Given 6 filter queries ("budget hotel in Side under €80", "beachfront hotel within 5 km of Antalya centre"), all 6 return only hotels matching the metadata constraints, regardless of semantic score.
+
+---
+
+### Phase 2e — Dual / Comparison Search
+
+**Branch:** `feat/VOX-rag-dual`
+**Estimated duration:** 1 day
+**Depends on:** 2a
+
+**Goal.** Two parallel scoped queries for side-by-side hotel comparison ("Rixos vs Kaya Palazzo for families").
+
+**Deliverables.**
+- [ ] `DualScopedRetriever` that fans out two `HotelKBRetriever.retrieve()` calls in parallel
+- [ ] Aligned-by-category result shape: `{hotel_a: {...}, hotel_b: {...}, common_categories: [...]}`
+- [ ] Unit suite + mock smoke + thin `/api/kb/compare?hotel_a=...&hotel_b=...&q=...` endpoint
+
+**Exit criteria.** Given 4 comparison queries across the same category (children, dining, wellness), both hotels' chunks are returned in the same category alignment.
+
+---
+
+### Phase 2f — Ingestion, Confidence, Cache
+
+**Branch:** `feat/VOX-rag-ingest`
+**Estimated duration:** 2–3 days
+**Depends on:** 2a–2e (final consolidation)
+
+**Goal.** Production ingestion pipeline + confidence band handling + Redis cache layer. Closes out Phase 2.
+
+**Deliverables — Ingestion.**
 - [ ] Structured data parser for call center CSV/JSON format
 - [ ] Semantic chunker — splits by category, not by character count
 - [ ] Chunk categories: `overview`, `rooms`, `amenities`, `food_beverage`, `wellness`, `policies`, `children`, `activities`, `accessibility`, `location`, `atmosphere`, `packages`
@@ -181,56 +290,46 @@ Qdrant retrieval working correctly across all search modes. This is the largest 
 - [ ] Batch embedder using multilingual-e5-large
 - [ ] Qdrant upsert with idempotency — re-running ingestion updates, does not duplicate
 - [ ] Ingestion audit log — records chunk count, rejected chunks, embedding time per hotel
+- [ ] Destination KB — separate collection, filtered by country + region
 
-#### Search Modes
-
-- [ ] **Scoped search** — `hotel_id` filter + semantic query → top 3–5 chunks
-- [ ] **Broad search** — region + tag filters + semantic query → top 5–8 hotel candidates
-- [ ] **Compound AND** — multiple requirements, all must match, separate scoring
-- [ ] **Budget filter** — `price_tier` metadata filter before semantic search
-- [ ] **Geo filter** — coordinates within radius for proximity queries
-- [ ] **Dual search** — two parallel scoped queries for hotel comparisons
-- [ ] **Destination KB** — separate collection, filtered by country + region
-
-#### Confidence and Caching
-
-- [ ] Confidence threshold handling:
+**Deliverables — Confidence & cache.**
+- [ ] Confidence band handler applied to all 2a–2e retrievers:
   - ≥ 0.82 → answer directly
   - 0.65–0.81 → answer with caveat
   - 0.50–0.64 → acknowledge limited info
   - < 0.50 → do not answer, route to human
-- [ ] Redis cache layer on top of all Qdrant queries
-- [ ] Cache key strategy: `qdrant:{hotel_id}:{intent_hash}` TTL 6h
+- [ ] Redis cache layer wrapping every retriever
+- [ ] Cache key strategy: `qdrant:{mode}:{hotel_id|region}:{intent_hash}` TTL 6h
 - [ ] Pre-computed activity index in Redis: `activity:{tag}:{region}` TTL 24h
 
-### Test Queries
+**Exit criteria (= umbrella Phase 2 exit criteria).** Given 20 test queries across all 6 search modes, retrieval returns relevant chunks with correct confidence band handling on ≥ 80% of queries. Cache hit confirmed on repeated queries. Compound AND correctly enforces all requirements.
+
+### Phase 2 — Reference Test Queries (used across 2a–2f)
 
 ```
-# Scoped — hotel known
+# Scoped — 2a
 "Does Rixos Belek have a hamam?"
 "What time is check-in at Kaya Palazzo?"
 "Is the Hilton Bodrum adults-only?"
 
-# Broad — no hotel, location known
+# Broad — 2b
 "Family resort near Belek with water park"
 "Romantic boutique hotel in Istanbul"
-"Budget hotel in Side under €80"
+"Luxury hotel with spa in Antalya"
 
-# Compound AND
+# Compound AND — 2c
+"Luxury hotel with spa for my wife and scuba diving for me"
 "Resort with cenote diving AND on-site yoga"
 "Hotel with PADI dive centre AND kids club age 6-9"
 
-# Geo
-"Beachfront hotel in Antalya"
+# Budget / Geo — 2d
+"Budget hotel in Side under €80"
+"Beachfront hotel within 5 km of Antalya centre"
 "Something close to city centre in Istanbul"
 
-# Comparison
+# Comparison — 2e
 "Rixos vs Kaya Palazzo for families"
 ```
-
-### Exit Criteria
-
-Given 20 test queries across all search modes, retrieval returns relevant chunks with correct confidence handling on ≥ 80% of queries. Cache hit confirmed on repeated queries. Compound AND correctly enforces both requirements.
 
 ---
 
@@ -597,7 +696,12 @@ The following must be resolved before the indicated phase begins:
 |---|---|---|---|
 | 0 — Infrastructure | `feat/VOX-rag-foundation` | 3–4 days | Insert → embed → retrieve works |
 | 1 — Hotel Resolver | `feat/VOX-hotel-resolver` | 4–5 days | ≥ 90% resolution on Turkish mentions |
-| 2 — RAG Core | `feat/VOX-rag-core` | 8–10 days | ≥ 80% relevant retrieval, all search modes |
+| 2a — Scoped search | `feat/vox-kb-retrieval` | 1–2 days | Zero cross-hotel leakage, 10/10 scoped queries |
+| 2b — Broad discovery | `feat/VOX-rag-broad` | 2 days | ≥ 6/8 broad queries surface expected hotel |
+| 2c — Compound AND | `feat/VOX-rag-compound` | 2 days | 6/6 compound queries intersect or flag partial |
+| 2d — Budget + Geo filters | `feat/VOX-rag-filters` | 1–2 days | 6/6 filtered queries respect metadata constraints |
+| 2e — Dual / comparison | `feat/VOX-rag-dual` | 1 day | 4/4 comparison queries category-aligned |
+| 2f — Ingestion + confidence + cache | `feat/VOX-rag-ingest` | 2–3 days | ≥ 80% relevant retrieval across all modes + cache hits |
 | 3 — Triage + Decomposition | `feat/VOX-triage-decomposition` | 6–7 days | Correct routing on 30 test queries |
 | 4 — Web Search | `feat/VOX-web-search` | 5–6 days | ≥ 70% web queries answered with caveats |
 | 5 — Chat Assembly | `feat/VOX-chat-assembly` | 6–8 days | Real 10-query Turkish conversation clean |
