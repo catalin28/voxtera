@@ -495,13 +495,18 @@ def build_pipeline(
             for name, value in (
                 ("DAILY_API_KEY", settings.daily_api_key),
                 ("DAILY_DOMAIN", settings.daily_domain),
-                ("DAILY_ROOM_NAME", settings.daily_room_name),
             )
             if not value
         ]
         if missing:
             raise RuntimeError(
                 "Daily transport requires these environment variables: " + ", ".join(missing)
+            )
+        if not settings.daily_room_name:
+            raise RuntimeError(
+                "DAILY_ROOM_NAME is not set. With dynamic rooms enabled, bots are "
+                "spawned on-demand by serve.py — run 'uv run python demo-hotel/serve.py' "
+                "instead of 'make run'."
             )
 
         room_url = f"https://{settings.daily_domain}/{settings.daily_room_name}"
