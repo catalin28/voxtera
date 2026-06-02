@@ -121,6 +121,8 @@ if [[ "$SKIP_SYNC" == "false" ]]; then
     --exclude '.ruff_cache/' \
     --exclude 'logs/*.jsonl' \
     --exclude 'logs/*.db*' \
+    --exclude 'logs/calls/' \
+    --exclude 'demo-hotel/traces/' \
     --exclude '.env' \
     ./ "${HOST}:${REMOTE_APP_DIR}/"
 
