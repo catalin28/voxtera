@@ -216,6 +216,37 @@ class TestDecompositionLimits:
         assert call["category_hint"] is None
 
 
+# ---------------- Timings instrumentation (Phase 3c) ----------------
+
+class TestTimings:
+    async def test_happy_path_records_all_three_stages(self) -> None:
+        fake_compound = _FakeCompound(_ok_retrieval())
+
+        async def decompose(_u: str, _r: str) -> dict[str, Any]:
+            return {"requirements": ["spa"], "language": "en"}
+
+        async def render(_p: dict[str, Any]) -> str:
+            return "ok"
+
+        agent = ConciergeAgent(compound=fake_compound, decompose_fn=decompose, render_fn=render)
+        out = await agent.answer(utterance="spa please", region=REGION)
+        t = out["timings"]
+        assert {"decompose_ms", "retrieve_ms", "render_ms", "total_ms"} <= set(t.keys())
+        for v in t.values():
+            assert isinstance(v, float) and v >= 0.0
+        # total should be >= sum of stage timings minus rounding slop
+        assert t["total_ms"] + 1.0 >= t["decompose_ms"] + t["retrieve_ms"] + t["render_ms"]
+
+    async def test_short_circuit_records_only_total(self) -> None:
+        agent = ConciergeAgent(
+            compound=_FakeCompound(_ok_retrieval()),
+            decompose_fn=_unused, render_fn=_unused,
+        )
+        out = await agent.answer(utterance="", region=REGION)
+        assert out["timings"] == {"total_ms": pytest.approx(out["timings"]["total_ms"])}
+        assert "decompose_ms" not in out["timings"]
+
+
 # ---------------- helper ----------------
 
 async def _unused(*_args: Any, **_kwargs: Any) -> Any:
