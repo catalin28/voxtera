@@ -98,3 +98,32 @@ New module `src/voxtera/call_center/discovery.py` follows the same DI pattern as
 ## 7. Verdict
 
 Phase 2b acceptance criteria (decision contract, hotel aggregation with dedup, max-hotels cap, threshold floor, region-scope invariant, activity_tags + category_hint filters, thin server surface) are met under unit tests and mock-Qdrant integration. The class will run unchanged against live Qdrant once the collection is reachable — only the search backend swaps.
+
+## 8. Live Qdrant integration smoke (chore/VOX-rag-live-smoke, 2026-06-03)
+
+Harness: `scripts/smoke_broad_discovery_live.py`. Hits the live `hotel_kb`
+collection with the real `multilingual-e5-large` embedder. Region uses
+verbatim live-payload casing (`"Turkish Riviera"`, not lower-case).
+
+| Scenario | Hotels | Top score | Reason | Verdict |
+|----------|-------:|----------:|--------|---------|
+| region happy path | 5 | 0.814 | `None` | PASS |
+| activity_tags narrows (`diving`) | 1 | 0.767 | `None` | PASS |
+| empty region | 0 | 0.000 | `no_region_scope` | PASS |
+| empty query | 0 | 0.000 | `empty_query` | PASS |
+| junk query (E5 floor ~0.77) | 5 | 0.771 | `None` | PASS |
+| dedup aggregation | 5 | 0.809 | `None` | PASS |
+| region scope respected | 5 | 0.786 | `None` | PASS |
+| category_hint food_beverage | 5 | 0.800 | `None` | PASS |
+
+**Result: 8/8 PASS.** Dedup invariant held (no duplicate `hotel_id`); region
+invariant held (every returned hotel had `payload.region == "Turkish Riviera"`);
+category-hint invariant held (evidence chunks ⊆ `{food_beverage, overview}`);
+tag invariant held (`diving` filter returned only hotels with `"diving"` in
+`activity_tags`).
+
+**Calibration:** same finding as Phase 2a §8 — E5-large cosine range is too
+compressed for absolute thresholding to be a strong relevance filter.
+`DEFAULT_MIN_SCORE` raised from `0.25` → `0.70` (shared via `kb_config.py`).
+Region-leakage scenario remains vacuous (single-region seed corpus); the
+remaining-work item to add a second region stays open.

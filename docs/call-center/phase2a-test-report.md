@@ -96,3 +96,30 @@ Moved shared retrieval primitives out of `server.py`:
 ## 7. Verdict
 
 Phase 2a acceptance criteria (decision contract, top-K cap, threshold floor, hotel-scope invariant, category hint, thin server surface, shared embeddings/config) are met under unit tests and mock-Qdrant integration. The retriever will run unchanged against live Qdrant once the collection is reachable — only the search backend swaps.
+
+## 8. Live Qdrant integration smoke (chore/VOX-rag-live-smoke, 2026-06-03)
+
+Harness: `scripts/smoke_hotel_kb_retriever_live.py`. Hits the live `hotel_kb`
+collection (`http://138.197.142.222:6333`, 92 points, 1024-d cosine) with the
+real `multilingual-e5-large` embedder, no DI overrides.
+
+| Scenario | Hotel | Chunks | Top score | Reason | Verdict |
+|----------|-------|-------:|----------:|--------|---------|
+| scoped happy path | rixos_premium_belek | 3 | 0.822 | `None` | PASS |
+| category hint food_beverage | rixos_premium_belek | 2 | 0.773 | `None` | PASS |
+| junk query (E5 floor ~0.76) | rixos_premium_belek | 3 | 0.761 | `None` | PASS |
+| empty hotel_id | (none) | 0 | 0.000 | `no_hotel_scope` | PASS |
+| empty query rejected | rixos_premium_belek | 0 | 0.000 | `empty_query` | PASS |
+| no cross-hotel leak | maxx_royal_belek | 3 | 0.773 | `None` | PASS |
+
+**Result: 6/6 PASS.** Hotel-scope invariant held (no chunk leaked across
+`hotel_id`); category-hint invariant held (returned categories ⊆ `{hint,
+overview}`).
+
+**Calibration finding:** `multilingual-e5-large` produces a highly compressed
+cosine range (~0.74 [CLS] floor → ~0.82 strong match). Real relevant matches
+scored 0.77–0.82 and pure-nonsense queries scored 0.76–0.77 — the absolute
+threshold cannot separate signal from noise on its own. `DEFAULT_MIN_SCORE`
+raised from `0.25` → `0.70` to catch only catastrophic failures; real relevance
+filtering relies on top-K + LLM-side check on the chunk text. Relative margin
+thresholding and/or a cross-encoder reranker are tracked as future work.
