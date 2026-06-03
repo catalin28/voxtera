@@ -84,10 +84,11 @@ class TestBroadDiscoveryCore:
         assert search.calls == []  # type: ignore[attr-defined]
 
     async def test_happy_path_returns_distinct_hotels_sorted(self) -> None:
+        # Scores within RELATIVE_MARGIN (0.05) so all three hotels survive the margin trim.
         hits = [
-            _hit(0.6, hotel_id="rixos_premium_belek", idx=1),
-            _hit(0.9, hotel_id="maxx_royal_belek", idx=2),
-            _hit(0.8, hotel_id="cornelia_de_luxe", idx=3),
+            _hit(0.87, hotel_id="rixos_premium_belek", idx=1),
+            _hit(0.90, hotel_id="maxx_royal_belek", idx=2),
+            _hit(0.88, hotel_id="cornelia_de_luxe", idx=3),
         ]
         d = BroadHotelDiscovery(
             max_hotels=5, min_score=0.25,
@@ -99,7 +100,7 @@ class TestBroadDiscoveryCore:
         assert ids == [
             "maxx_royal_belek", "cornelia_de_luxe", "rixos_premium_belek",
         ]
-        assert result["top_score"] == pytest.approx(0.9)
+        assert result["top_score"] == pytest.approx(0.90)
         assert result["reason"] is None
 
     async def test_aggregation_dedupes_hotel_with_multiple_chunks(self) -> None:

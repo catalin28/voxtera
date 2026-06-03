@@ -123,3 +123,7 @@ threshold cannot separate signal from noise on its own. `DEFAULT_MIN_SCORE`
 raised from `0.25` â†’ `0.70` to catch only catastrophic failures; real relevance
 filtering relies on top-K + LLM-side check on the chunk text. Relative margin
 thresholding and/or a cross-encoder reranker are tracked as future work.
+
+## 8. Post-margin re-run (Phase 2c, )
+
+After Phase 2c landed `RELATIVE_MARGIN = 0.05`, the 2a live smoke was re-run unchanged. Result: **6/6 PASS, exit 0**. The only count change was `scoped happy path` (3 -> 2 chunks; the 3rd chunk fell outside the 0.05 margin from top 0.822). All other scenarios produced identical counts, top scores, and reasons. See [phase2c-test-report.md §4.1](phase2c-test-report.md) for the full table.

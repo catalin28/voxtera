@@ -71,14 +71,15 @@ class TestHotelKBRetrieverCore:
         assert search.calls == []  # type: ignore[attr-defined]
 
     async def test_happy_path_returns_top_k_sorted(self) -> None:
-        hits = [_hit(0.9, idx=1), _hit(0.6, idx=2), _hit(0.8, idx=3)]
+        # Scores within RELATIVE_MARGIN (0.05) of the top to reflect realistic e5 distribution.
+        hits = [_hit(0.90, idx=1), _hit(0.86, idx=2), _hit(0.88, idx=3)]
         r = HotelKBRetriever(top_k=3, min_score=0.25,
                              embed_fn=_fake_embed, search_fn=_make_search_fn(hits))
         result = await r.retrieve(hotel_id=HOTEL, query="is there a water park")
         assert result["count"] == 3
         scores = [c["score"] for c in result["chunks"]]
         assert scores == sorted(scores, reverse=True)
-        assert result["top_score"] == pytest.approx(0.9)
+        assert result["top_score"] == pytest.approx(0.90)
         assert result["reason"] is None
 
     async def test_all_below_min_score_returns_no_match(self) -> None:

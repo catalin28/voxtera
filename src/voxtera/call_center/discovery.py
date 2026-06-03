@@ -37,6 +37,7 @@ from voxtera.call_center.kb_config import (
     DEFAULT_MIN_SCORE,
     DISCOVERY_OVERSHOOT_MULT,
     QDRANT_COLLECTION,
+    RELATIVE_MARGIN,
 )
 
 EmbedFn = Callable[[str], Awaitable[list[float]] | list[float]]
@@ -58,6 +59,7 @@ class BroadHotelDiscovery:
         collection: str = QDRANT_COLLECTION,
         max_hotels: int = DEFAULT_MAX_HOTELS,
         min_score: float = DEFAULT_MIN_SCORE,
+        relative_margin: float = RELATIVE_MARGIN,
         overshoot_mult: int = DISCOVERY_OVERSHOOT_MULT,
         embed_fn: EmbedFn | None = None,
         search_fn: SearchFn | None = None,
@@ -66,6 +68,7 @@ class BroadHotelDiscovery:
         self._collection = collection
         self._max_hotels = max_hotels
         self._min_score = min_score
+        self._relative_margin = relative_margin
         self._overshoot_mult = overshoot_mult
         self._embed_fn = embed_fn
         self._search_fn = search_fn
@@ -166,7 +169,7 @@ class BroadHotelDiscovery:
 
         ordered = sorted(
             best_per_hotel.values(), key=lambda x: x["_score"], reverse=True
-        )[: self._max_hotels]
+        )
 
         if not ordered:
             return {
@@ -179,7 +182,17 @@ class BroadHotelDiscovery:
                 "reason": REASON_NO_MATCH,
             }
 
-        hotels = [self._hotel_from_entry(e) for e in ordered]
+        # Relative-margin filter: keep only hotels whose best-chunk score is
+        # within RELATIVE_MARGIN of the top hotel's score. Trim-only; top hotel
+        # always survives.
+        top_score = ordered[0]["_score"]
+        within_margin = [
+            e for e in ordered
+            if e["_score"] >= top_score - self._relative_margin
+        ]
+        capped = within_margin[: self._max_hotels]
+
+        hotels = [self._hotel_from_entry(e) for e in capped]
         return {
             "region": region,
             "query": query,

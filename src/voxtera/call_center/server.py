@@ -29,6 +29,7 @@ from aiohttp import web
 from loguru import logger
 
 from voxtera.call_center.clients import es_request, qdrant_request
+from voxtera.call_center.compound import CompoundAndDiscovery
 from voxtera.call_center.discovery import BroadHotelDiscovery
 from voxtera.call_center.embeddings import PREFIX_PASSAGE, PREFIX_QUERY, embed_texts
 from voxtera.call_center.index_config import ES_INDEX, build_hotel_mapping
@@ -393,6 +394,24 @@ async def handle_kb_discover(request: web.Request) -> web.Response:
     )
 
 
+async def handle_kb_compound(request: web.Request) -> web.Response:
+    """Phase 2c compound-AND — thin wrapper around CompoundAndDiscovery."""
+    region = request.query.get("region", "")
+    reqs_raw = request.query.get("requirements") or request.query.get("q") or ""
+    requirements = [r.strip() for r in reqs_raw.split("|") if r.strip()]
+    category = request.query.get("category") or None
+    tags_raw = request.query.get("tags") or ""
+    tags = [t.strip() for t in tags_raw.split(",") if t.strip()] or None
+    session: aiohttp_lib.ClientSession = request.app["http_session"]
+    compound = CompoundAndDiscovery(session=session)
+    return web.json_response(
+        await compound.discover(
+            region=region, requirements=requirements,
+            activity_tags=tags, category_hint=category,
+        )
+    )
+
+
 async def handle_ui(request: web.Request) -> web.Response:
     """Serve the admin UI."""
     html_path = Path(__file__).parent / "ui.html"
@@ -440,6 +459,9 @@ def create_app() -> web.Application:
 
     # Phase 2b — broad cross-hotel discovery
     app.router.add_get("/call_center/api/kb/discover", handle_kb_discover)
+
+    # Phase 2c — compound-AND multi-requirement discovery
+    app.router.add_get("/call_center/api/kb/compound", handle_kb_compound)
 
     return app
 

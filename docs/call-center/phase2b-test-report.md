@@ -127,3 +127,7 @@ compressed for absolute thresholding to be a strong relevance filter.
 `DEFAULT_MIN_SCORE` raised from `0.25` â†’ `0.70` (shared via `kb_config.py`).
 Region-leakage scenario remains vacuous (single-region seed corpus); the
 remaining-work item to add a second region stays open.
+
+## 8. Post-margin re-run (Phase 2c, )
+
+After Phase 2c landed `RELATIVE_MARGIN = 0.05`, the 2b live smoke was re-run unchanged. Result: **8/8 PASS, exit 0**. All counts, top scores, and reasons identical to the pre-margin run because the live corpus is small (11 hotels) and most queries already returned <= 5 hotels with scores tightly clustered within 0.05 of the top. See [phase2c-test-report.md §4.2](phase2c-test-report.md) for the full table.
