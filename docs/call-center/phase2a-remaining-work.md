@@ -8,7 +8,14 @@ Phase 2a unit + mock-Qdrant suites are green (see [phase2a-test-report.md](phase
 
 ## 1. Live Qdrant Integration Smoke
 
-**Status:** Deferred — credentials / network access unavailable in this session.
+**Status:** ~~Deferred~~ **DONE** (chore/VOX-rag-live-smoke, 2026-06-03).
+
+Live harness `scripts/smoke_hotel_kb_retriever_live.py` runs the 6 scenarios end-to-end
+against Qdrant at `http://138.197.142.222:6333` collection `hotel_kb` (92 points, 1024-d
+cosine) with the real `multilingual-e5-large` embedder. Result: **6/6 PASS**. See
+`phase2a-test-report.md` §8 for the score table.
+
+**Original deferral notes (preserved for history):**
 
 **Why deferred:** The mock smoke harness exercises the production retriever code path with an in-memory `search_fn`; only the network backend is swapped. A live run is needed to confirm the real Qdrant server returns identical decision shapes for the same scenarios.
 
@@ -48,11 +55,17 @@ Phase 2a unit + mock-Qdrant suites are green (see [phase2a-test-report.md](phase
 
 ## 3. Threshold Calibration on Real Embeddings
 
-**Status:** Pending — depends on item 1.
+**Status:** **DONE** (chore/VOX-rag-live-smoke, 2026-06-03).
 
-**Action:** After live smoke, sample 10–20 real hotel queries and capture the actual e5-large cosine score distribution per `(category, hotel)`. If `DEFAULT_MIN_SCORE=0.25` rejects too many true positives (or admits too many false positives), update `DEFAULT_MIN_SCORE` in `src/voxtera/call_center/kb_config.py` and document the rationale.
-
-**Exit criterion:** chosen `DEFAULT_MIN_SCORE` justified by an empirical score histogram, recorded in `phase2a-test-report.md` §6.
+**Finding:** `multilingual-e5-large` produces a highly compressed cosine range
+(~0.74 [CLS] floor → ~0.82 strong match). Real relevant matches scored
+0.77–0.82; pure-nonsense queries (`xyzzy plugh zorkmid grue`) still scored
+0.76–0.77. **Absolute thresholding cannot separate signal from noise on its
+own.** Calibrated `DEFAULT_MIN_SCORE` from 0.25 → 0.70 (catches only catastrophic
+failures – out-of-domain queries returning the bare [CLS] floor or embedding
+errors). Real relevance filtering happens via top-K + LLM-side check on chunk
+text. Future work: relative margin threshold (drop chunks scoring < top_score −
+0.05) and/or a cross-encoder reranker.
 
 ## 4. Items Explicitly Out of Phase 2a (owned by later sub-phases)
 

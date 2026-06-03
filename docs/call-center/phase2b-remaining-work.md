@@ -6,25 +6,13 @@ the team could move on to Phase 2c (compound-AND).
 
 ## 1. Live Qdrant integration smoke
 
-The mock smoke harness covers the production code path but swaps the
-vector backend. Before declaring "ship", a one-shot run against
-`http://138.197.142.222:6333` collection `hotel_kb` should be performed.
+~~Deferred.~~ **DONE** (chore/VOX-rag-live-smoke, 2026-06-03).
 
-Repro (when credentials and a populated collection are available):
-
-```powershell
-# 1. Make sure data/seed/hotels.json has been ingested into the collection
-.\.venv\Scripts\python.exe -m scripts.seed_qdrant_hotels  # (or POST /api/qdrant/load)
-
-# 2. Run a real round-trip against the same 8 scenarios via the HTTP surface
-$env:VOXTERA_KB_SMOKE_LIVE = "1"
-.\.venv\Scripts\python.exe scripts\smoke_broad_discovery_live.py  # (to be written)
-```
-
-The live harness still needs to be written; it should reuse the scenario
-table from `scripts/smoke_broad_discovery.py` and call
-`http://localhost:8085/call_center/api/kb/discover?...` instead of the
-in-process `search_fn`.
+Live harness `scripts/smoke_broad_discovery_live.py` runs 8 scenarios end-to-end
+against `http://138.197.142.222:6333` collection `hotel_kb` with real
+`multilingual-e5-large` embeddings (region = `"Turkish Riviera"` — verbatim
+case, matching live payload). Result: **8/8 PASS**. See
+`phase2b-test-report.md` §8 for the score table.
 
 ## 2. CI wiring
 
@@ -40,12 +28,11 @@ in `kb_retriever.py` / `discovery.py` early.
 
 ## 3. Threshold calibration
 
-`DEFAULT_MIN_SCORE = 0.25` is inherited from Phase 2a and re-used by Phase 2b.
-Once we have live embedding scores from `multilingual-e5-large` over the real
-corpus we should re-tune separately for `HotelKBRetriever` (per-hotel chunks)
-vs. `BroadHotelDiscovery` (cross-hotel hot ones tend to score lower because
-of region noise). Suggested workflow: dump top-50 scores for ~20 representative
-queries, plot, set threshold at the elbow.
+**DONE** (chore/VOX-rag-live-smoke, 2026-06-03). `DEFAULT_MIN_SCORE` raised
+from 0.25 → 0.70. See Phase 2a §3 for the full rationale — same finding
+applies to Broad Discovery (real region+activity narrowed matches: 0.77–0.82;
+nonsense queries: 0.77). Compressed E5 cosine range means absolute thresholding
+is a weak defense; relative margin / reranker is tracked as future work.
 
 ## 4. Multi-region seed corpus
 
