@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 import aiohttp
 from loguru import logger
@@ -57,6 +58,7 @@ class HotelResolver:
         clarify_threshold: float = 0.55,
         max_candidates: int = 3,
         search_fn: SearchFn | None = None,
+        score_norm: float = 100.0,
     ) -> None:
         self._session = session
         self._index_name = index_name
@@ -64,6 +66,7 @@ class HotelResolver:
         self._clarify_threshold = clarify_threshold
         self._max_candidates = max_candidates
         self._search_fn = search_fn
+        self._score_norm = score_norm
 
     async def resolve(self, mention_text: str) -> dict[str, Any]:
         """Resolve *mention_text* and return a stable decision payload."""
@@ -112,7 +115,16 @@ class HotelResolver:
             f"/{self._index_name}/_search",
             json={"size": size, "query": self._build_query(query)},
         )
-        return response.get("hits", {}).get("hits", [])
+        hits = response.get("hits", {}).get("hits", [])
+
+        # Normalize raw ES BM25 scores to [0, 1] using a reference constant.
+        # A perfect exact name match (boost 10) scores ~95-100; we divide by 100
+        # so thresholds (0.85 auto, 0.55 clarify) work correctly.
+        for hit in hits:
+            raw = float(hit.get("_score", 0.0))
+            hit["_score"] = min(raw / self._score_norm, 1.0)
+
+        return hits
 
     def _build_query(self, query: str) -> dict[str, Any]:
         # Field boosts reflect identity strength: name > aliases > chain > location.
@@ -162,7 +174,9 @@ class HotelResolver:
         candidates.sort(key=lambda c: c.score, reverse=True)
         return candidates
 
-    def _decide(self, candidates: list[ResolverCandidate], normalized_mention: str) -> dict[str, Any]:
+    def _decide(
+        self, candidates: list[ResolverCandidate], normalized_mention: str
+    ) -> dict[str, Any]:
         if not candidates:
             return self._result(
                 decision="no_match",
