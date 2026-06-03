@@ -18,10 +18,15 @@ DISTANCE = "Cosine"
 # cannot separate signal from noise on its own; live calibration showed real
 # matches at 0.77–0.82 and pure-junk queries at 0.76–0.77. We keep an absolute
 # floor only to catch catastrophic failures (out-of-domain / embedding errors).
-# Real relevance filtering will be handled by RELATIVE_MARGIN (lands in Phase 2c,
-# branch feat/VOX-rag-compound) + top-K + LLM-side check on chunk text.
+# Real relevance filtering uses RELATIVE_MARGIN (drop chunks whose score is more
+# than RELATIVE_MARGIN below the top match for the query) + top-K + LLM-side
+# check on chunk text. This sharpens compound-AND intersection precision.
 DEFAULT_TOP_K = 3
 DEFAULT_MIN_SCORE = 0.70
+RELATIVE_MARGIN = 0.05
+
+# Compound-AND defaults (Phase 2c)
+DEFAULT_MAX_REQUIREMENTS = 5
 
 # Broad-discovery defaults (Phase 2b)
 DEFAULT_MAX_HOTELS = 5

@@ -40,6 +40,7 @@ from voxtera.call_center.kb_config import (
     DEFAULT_MIN_SCORE,
     DEFAULT_TOP_K,
     QDRANT_COLLECTION,
+    RELATIVE_MARGIN,
 )
 
 EmbedFn = Callable[[str], Awaitable[list[float]] | list[float]]
@@ -62,6 +63,7 @@ class HotelKBRetriever:
         collection: str = QDRANT_COLLECTION,
         top_k: int = DEFAULT_TOP_K,
         min_score: float = DEFAULT_MIN_SCORE,
+        relative_margin: float = RELATIVE_MARGIN,
         embed_fn: EmbedFn | None = None,
         search_fn: SearchFn | None = None,
     ) -> None:
@@ -69,6 +71,7 @@ class HotelKBRetriever:
         self._collection = collection
         self._top_k = top_k
         self._min_score = min_score
+        self._relative_margin = relative_margin
         self._embed_fn = embed_fn
         self._search_fn = search_fn
 
@@ -144,9 +147,9 @@ class HotelKBRetriever:
         hits: list[dict[str, Any]],
     ) -> dict[str, Any]:
         scored = sorted(hits, key=lambda h: h.get("score", 0.0), reverse=True)
-        kept = [h for h in scored if h.get("score", 0.0) >= self._min_score][: self._top_k]
+        above_floor = [h for h in scored if h.get("score", 0.0) >= self._min_score]
 
-        if not kept:
+        if not above_floor:
             best_below = scored[0].get("score", 0.0) if scored else 0.0
             return {
                 "hotel_id": hotel_id,
@@ -157,6 +160,16 @@ class HotelKBRetriever:
                 "chunks": [],
                 "reason": REASON_NO_MATCH,
             }
+
+        # Relative-margin filter: keep only chunks within RELATIVE_MARGIN of the
+        # top score. The top chunk always survives (distance to itself is 0), so
+        # this trims the tail but never zeros out a non-empty result.
+        top_score = above_floor[0].get("score", 0.0)
+        within_margin = [
+            h for h in above_floor
+            if h.get("score", 0.0) >= top_score - self._relative_margin
+        ]
+        kept = within_margin[: self._top_k]
 
         chunks = [self._chunk_from_hit(h) for h in kept]
         return {
