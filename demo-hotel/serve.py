@@ -61,6 +61,7 @@ from voxtera.admin import (  # noqa: E402
     DailyAPIError,
     create_room,
     delete_room,
+    detect_daily_geo,
     eject_participants,
     list_room_participants,
     list_rooms,
@@ -2726,6 +2727,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                     room_name=room_name,
                     expiry_secs=600,
                     max_participants=_DAILY_ROOM_MAX_PARTICIPANTS,
+                    geo=detect_daily_geo(),
                 )
                 print(
                     f"[launcher] created Daily room {room_name} "
@@ -3216,7 +3218,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 status = 503 if err in ("hmac_not_configured", "hmac_misconfigured") else 401
                 x_headers = sorted(
                     header_name
-                    for header_name in self.headers.keys()
+                    for header_name in self.headers
                     if header_name.lower().startswith("x-")
                 )
                 print(
@@ -3374,7 +3376,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                     )
                     _resp = urllib.request.urlopen(_req, timeout=3)
                     print(
-                        f"[pstn] sent max-duration goodbye (session={sid[:8]}, status={_resp.status})"
+                        f"[pstn] sent max-duration goodbye"
+                        f" (session={sid[:8]}, status={_resp.status})"
                     )
                     time.sleep(2.0)  # let TTS play before disconnecting
                 except Exception as exc:
@@ -3394,7 +3397,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                         time.sleep(0.2)
                     if _proc.poll() is None:
                         print(
-                            f"[pstn] process still alive after terminate, killing (session={sid[:8]})"
+                            f"[pstn] process still alive after terminate,"
+                            f" killing (session={sid[:8]})"
                         )
                         _proc.kill()
                 except Exception as exc:

@@ -24,6 +24,7 @@ fit cleanly into ``async def``.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -41,6 +42,86 @@ _DAILY_REST_BASE: str = "https://api.daily.co/v1"
 # operator's browser hang. The request handler will surface a 504 if we hit
 # this ceiling.
 _REST_TIMEOUT_SECS: float = 5.0
+
+
+# ---------------------------------------------------------------------------
+# Daily SFU region ("geo") auto-detection
+# ---------------------------------------------------------------------------
+
+# DigitalOcean region slug → nearest Daily SFU region code. Daily has no
+# Canada region, so tor1/nyc map to us-east-1 (Virginia). Extend this table if
+# you deploy to other DO regions.
+_DO_TO_DAILY_GEO: dict[str, str] = {
+    "tor1": "us-east-1",
+    "nyc1": "us-east-1",
+    "nyc2": "us-east-1",
+    "nyc3": "us-east-1",
+    "sfo2": "us-west-2",
+    "sfo3": "us-west-2",
+    "fra1": "eu-central-1",
+    "ams2": "eu-central-1",
+    "ams3": "eu-central-1",
+    "lon1": "eu-west-2",
+    "blr1": "ap-south-1",
+    "sgp1": "ap-southeast-1",
+    "syd1": "ap-southeast-2",
+}
+
+# DigitalOcean's link-local metadata endpoint. Reachable only from inside the
+# droplet, unauthenticated, never routed to the public internet.
+_DO_METADATA_REGION_URL = "http://169.254.169.254/metadata/v1/region"
+
+# Sentinel so a cached result of ``None`` (no geo) is distinguishable from
+# "not computed yet".
+_GEO_UNSET: object = object()
+_cached_daily_geo: object = _GEO_UNSET
+
+
+def detect_daily_geo() -> str | None:
+    """Pick the Daily SFU region for this host — automatically, no config.
+
+    Resolution order (first hit wins), cached after the first call:
+
+    1. ``DAILY_GEO`` env var — optional manual override / escape hatch. You
+       never need to set it; it exists only to force a region in odd setups.
+    2. DigitalOcean metadata — read the droplet's own region slug (e.g.
+       ``fra1``) and map it to the nearest Daily region via
+       :data:`_DO_TO_DAILY_GEO`. This is what lets the same image
+       self-configure per droplet, with nothing to set or forget.
+    3. ``None`` — when neither is available (non-DO host, metadata blocked, or
+       an unmapped region). Daily then keeps its default behaviour: selecting
+       the SFU from the first participant's IP (the bot's droplet). So ``None``
+       is safe — it degrades to the prior behaviour rather than breaking.
+    """
+    global _cached_daily_geo
+    if _cached_daily_geo is not _GEO_UNSET:
+        return _cached_daily_geo  # type: ignore[return-value]
+
+    override = os.environ.get("DAILY_GEO")
+    if override:
+        logger.info("[daily] geo override via DAILY_GEO={}", override)
+        _cached_daily_geo = override
+        return override
+
+    geo: str | None = None
+    try:
+        with urlopen(_DO_METADATA_REGION_URL, timeout=1.0) as resp:
+            do_region = resp.read().decode("utf-8", errors="replace").strip()
+        geo = _DO_TO_DAILY_GEO.get(do_region)
+        if geo:
+            logger.info("[daily] auto-detected geo: DO region {} → Daily {}", do_region, geo)
+        else:
+            logger.info(
+                "[daily] DO region {!r} has no Daily mapping — letting Daily "
+                "auto-select from the bot IP",
+                do_region,
+            )
+    except Exception as exc:  # noqa: BLE001 — best-effort; any failure → None
+        logger.info("[daily] geo auto-detect unavailable ({}); Daily will auto-select", exc)
+        geo = None
+
+    _cached_daily_geo = geo
+    return geo
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +305,7 @@ def create_room(
     expiry_secs: int = 600,
     max_participants: int = 2,
     sip_mode: str | None = None,
+    geo: str | None = None,
 ) -> dict[str, Any]:
     """Create an ephemeral Daily room for one session.
 
@@ -237,6 +319,11 @@ def create_room(
     ``sip_mode`` — when set to ``"dial-in"``, configures the room for PSTN
     dial-in. Daily requires ``sip`` properties on the room for the
     ``pinlessCallUpdate`` forwarding to work.
+
+    ``geo`` — pin the Daily SFU region (e.g. ``"eu-central-1"``). When ``None``
+    the property is omitted and Daily auto-selects the region from the first
+    participant's IP. Use :func:`detect_daily_geo` to derive it automatically
+    from the host's cloud region.
     """
     import time
 
@@ -263,13 +350,25 @@ def create_room(
             "num_endpoints": 1,
         }
 
+    # Pin the SFU region when known so room placement doesn't depend on join
+    # order or IP geolocation. None → omit and let Daily auto-select from the
+    # first participant's IP (the bot).
+    if geo:
+        body["properties"]["geo"] = geo
+
     result = _request_json(
         f"{_DAILY_REST_BASE}/rooms",
         api_key=api_key,
         method="POST",
         body=body,
     )
-    logger.info("[daily] created room {} (max_participants={}, sip_mode={})", room_name, max_participants, sip_mode)
+    logger.info(
+        "[daily] created room {} (max_participants={}, sip_mode={}, geo={})",
+        room_name,
+        max_participants,
+        sip_mode,
+        geo or "auto",
+    )
     return result
 
 
