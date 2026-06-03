@@ -30,6 +30,7 @@ from loguru import logger
 
 from voxtera.call_center.clients import es_request, qdrant_request
 from voxtera.call_center.compound import CompoundAndDiscovery
+from voxtera.call_center.concierge import ConciergeAgent
 from voxtera.call_center.discovery import BroadHotelDiscovery
 from voxtera.call_center.embeddings import PREFIX_PASSAGE, PREFIX_QUERY, embed_texts
 from voxtera.call_center.index_config import ES_INDEX, build_hotel_mapping
@@ -412,6 +413,15 @@ async def handle_kb_compound(request: web.Request) -> web.Response:
     )
 
 
+async def handle_concierge(request: web.Request) -> web.Response:
+    """Phase 3 concierge — utterance + region -> decompose -> compound -> answer."""
+    utterance = request.query.get("q", "") or request.query.get("utterance", "")
+    region = request.query.get("region", "")
+    session: aiohttp_lib.ClientSession = request.app["http_session"]
+    agent = ConciergeAgent(session=session)
+    return web.json_response(await agent.answer(utterance=utterance, region=region))
+
+
 async def handle_ui(request: web.Request) -> web.Response:
     """Serve the admin UI."""
     html_path = Path(__file__).parent / "ui.html"
@@ -462,6 +472,9 @@ def create_app() -> web.Application:
 
     # Phase 2c — compound-AND multi-requirement discovery
     app.router.add_get("/call_center/api/kb/compound", handle_kb_compound)
+
+    # Phase 3 — end-to-end concierge (decompose + compound + render)
+    app.router.add_get("/call_center/api/concierge", handle_concierge)
 
     return app
 
