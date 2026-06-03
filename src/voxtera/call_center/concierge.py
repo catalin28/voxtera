@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -109,32 +110,43 @@ class ConciergeAgent:
     async def answer(self, *, utterance: str, region: str) -> dict[str, Any]:
         utterance = (utterance or "").strip()
         region = (region or "").strip()
+        t_start = time.perf_counter()
+        timings: dict[str, float] = {}
 
         if not utterance:
             return self._short_circuit(utterance, region, REASON_EMPTY_UTTERANCE,
-                                       "I didn't catch that — could you say it again?")
+                                       "I didn't catch that — could you say it again?",
+                                       t_start, timings)
         if not region:
             return self._short_circuit(utterance, region, REASON_NO_REGION_SCOPE,
-                                       "Which region are you looking at?")
+                                       "Which region are you looking at?",
+                                       t_start, timings)
 
+        t0 = time.perf_counter()
         try:
             decomposition = await self._decompose_fn(utterance, region)
         except Exception as e:  # noqa: BLE001
+            timings["decompose_ms"] = _ms(time.perf_counter() - t0)
             logger.warning("Concierge decompose failed: {}", e)
             return self._short_circuit(utterance, region, REASON_DECOMPOSE_ERROR,
-                                       "Sorry, I couldn't process that request just now.")
+                                       "Sorry, I couldn't process that request just now.",
+                                       t_start, timings)
+        timings["decompose_ms"] = _ms(time.perf_counter() - t0)
 
         requirements = list(decomposition.get("requirements") or [])[: self._max_requirements]
         tags = decomposition.get("activity_tags") or None
         category = decomposition.get("category_hint") or None
 
+        t0 = time.perf_counter()
         retrieval = await self._compound.discover(
             region=region,
             requirements=requirements,
             activity_tags=tags,
             category_hint=category,
         )
+        timings["retrieve_ms"] = _ms(time.perf_counter() - t0)
 
+        t0 = time.perf_counter()
         try:
             answer = await self._render_fn({
                 "utterance": utterance,
@@ -143,17 +155,25 @@ class ConciergeAgent:
                 "retrieval": retrieval,
             })
         except Exception as e:  # noqa: BLE001
-            logger.warning("Concierge render failed: {}", e)
-            answer = "Sorry, I had trouble forming a reply. Please try again."
+            timings["render_ms"] = _ms(time.perf_counter() - t0)
+            timings["total_ms"] = _ms(time.perf_counter() - t_start)
+            logger.warning("Concierge render failed: {} (timings={})", e, timings)
             return {
                 "utterance": utterance,
                 "region": region,
                 "decomposition": decomposition,
                 "retrieval": retrieval,
-                "answer": answer,
+                "answer": "Sorry, I had trouble forming a reply. Please try again.",
                 "reason": REASON_RENDER_ERROR,
+                "timings": timings,
             }
+        timings["render_ms"] = _ms(time.perf_counter() - t0)
+        timings["total_ms"] = _ms(time.perf_counter() - t_start)
 
+        logger.info(
+            "concierge.answer region={!r} reqs={} reason={} timings={}",
+            region, len(requirements), retrieval.get("reason"), timings,
+        )
         return {
             "utterance": utterance,
             "region": region,
@@ -161,10 +181,13 @@ class ConciergeAgent:
             "retrieval": retrieval,
             "answer": answer,
             "reason": retrieval.get("reason"),
+            "timings": timings,
         }
 
     @staticmethod
-    def _short_circuit(utterance: str, region: str, reason: str, answer: str) -> dict[str, Any]:
+    def _short_circuit(utterance: str, region: str, reason: str, answer: str,
+                       t_start: float, timings: dict[str, float]) -> dict[str, Any]:
+        timings["total_ms"] = _ms(time.perf_counter() - t_start)
         return {
             "utterance": utterance,
             "region": region,
@@ -172,7 +195,13 @@ class ConciergeAgent:
             "retrieval": None,
             "answer": answer,
             "reason": reason,
+            "timings": timings,
         }
+
+
+def _ms(seconds: float) -> float:
+    """Convert seconds -> milliseconds rounded to 1 decimal place."""
+    return round(seconds * 1000.0, 1)
 
 
 # ----------------- default Anthropic-backed steps -----------------

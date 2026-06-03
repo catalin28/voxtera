@@ -1678,6 +1678,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_tts_test()
         if self.path == "/api/chat":
             return self._handle_chat()
+        if self.path == "/api/concierge":
+            return self._handle_concierge()
         if self.path == "/api/product-chat":
             return self._handle_product_chat()
         if self.path == "/api/admin/eject":
@@ -4452,6 +4454,39 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         )
         push({"type": "done", "session_id": session_id, "text": full_text})
         finish()
+
+    def _handle_concierge(self) -> None:
+        """POST /api/concierge — synchronous JSON Q&A backed by ConciergeAgent.
+
+        Request:  {"utterance": str, "region": str}
+        Response: full ConciergeAgent.answer() dict (answer, retrieval, decomposition,
+                  reason, timings).
+        """
+        from voxtera.call_center.concierge import ConciergeAgent
+
+        body = self._read_json_body()
+        utterance = (body.get("utterance") or "").strip()
+        region = (body.get("region") or "").strip()
+        if not utterance:
+            self._send_json(400, {"error": "utterance_required"})
+            return
+
+        async def _run() -> dict:
+            import aiohttp as _aio
+            async with _aio.ClientSession() as session:
+                agent = ConciergeAgent(session=session)
+                return await agent.answer(utterance=utterance, region=region)
+
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(_run())
+        except Exception as exc:  # noqa: BLE001
+            loop.close()
+            print(f"[concierge] error: {exc}")
+            self._send_json(500, {"error": str(exc)})
+            return
+        loop.close()
+        self._send_json(200, result)
 
     def _handle_product_chat(self):
         """POST /api/product-chat — streaming NDJSON: Voxtera product Q&A backed by the
