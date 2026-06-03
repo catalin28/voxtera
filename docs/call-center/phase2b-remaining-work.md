@@ -32,7 +32,12 @@ in `kb_retriever.py` / `discovery.py` early.
 from 0.25 → 0.70. See Phase 2a §3 for the full rationale — same finding
 applies to Broad Discovery (real region+activity narrowed matches: 0.77–0.82;
 nonsense queries: 0.77). Compressed E5 cosine range means absolute thresholding
-is a weak defense; relative margin / reranker is tracked as future work.
+is a weak defense.
+
+**Follow-up (folded into Phase 2c):** Relative-margin filter lands in
+`feat/VOX-rag-compound` alongside compound-AND, since intersection across N
+requirements would otherwise admit near-floor false positives. See
+`Voxtera_RAG_Development_Plan.md` § Phase 2c.
 
 ## 4. Multi-region seed corpus
 

@@ -17,8 +17,9 @@ DISTANCE = "Cosine"
 # cosine range (~0.74 [CLS] floor → ~0.85 strong match). Absolute thresholding
 # cannot separate signal from noise on its own; live calibration showed real
 # matches at 0.77–0.82 and pure-junk queries at 0.76–0.77. We keep an absolute
-# floor only to catch catastrophic failures (out-of-domain / embedding errors);
-# real relevance filtering happens via top-K + LLM-side check on chunk text.
+# floor only to catch catastrophic failures (out-of-domain / embedding errors).
+# Real relevance filtering will be handled by RELATIVE_MARGIN (lands in Phase 2c,
+# branch feat/VOX-rag-compound) + top-K + LLM-side check on chunk text.
 DEFAULT_TOP_K = 3
 DEFAULT_MIN_SCORE = 0.70
 

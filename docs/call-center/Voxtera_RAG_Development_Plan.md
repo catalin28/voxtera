@@ -218,22 +218,34 @@ Full design: [phase2-user-story.md](phase2-user-story.md) · [phase2-development
 
 ---
 
-### Phase 2c — Compound AND Search
+### Phase 2c — Compound AND Search + Relative-Margin Filtering
 
 **Branch:** `feat/VOX-rag-compound`
 **Estimated duration:** 2 days
 **Depends on:** 2b
 
-**Goal.** Multi-requirement discovery ("spa + scuba", "PADI dive centre AND kids club age 6–9"). Every requirement must be satisfied by at least one chunk; each requirement is scored separately and intersected at the hotel level.
+**Goal.** Multi-requirement discovery ("spa + scuba", "PADI dive centre AND kids club age 6–9"). Every requirement must be satisfied by at least one chunk; each requirement is scored separately and intersected at the hotel level. Also lands the **relative-margin score filter** uncovered during Phase 2a/2b live calibration (see Background below).
+
+**Background — why relative margin lands here.** Live Qdrant smoke (chore/VOX-rag-live-smoke, 2026-06-03) showed that `multilingual-e5-large` cosine scores are highly compressed: real matches scored 0.77–0.82, pure-nonsense queries (`xyzzy plugh zorkmid grue`) still scored 0.76–0.77. **No absolute threshold can separate signal from noise** — the bands overlap. `DEFAULT_MIN_SCORE` was raised to 0.70 as a catastrophic-failure guardrail only. Real relevance filtering must be **relative to the top score of each query**: keep chunks whose score is within a margin of the best chunk, drop the rest. This is cheap (no extra model call) and works regardless of where the absolute scores sit. Without it, compound-AND intersection in this phase would be polluted by near-floor matches that satisfy `requirement_i` only by accident.
 
 **Deliverables.**
 - [ ] `CompoundAndDiscovery` class that takes `requirements: list[str]` and runs N parallel broad searches
 - [ ] Hotel-level intersection: hotel passes only if it has ≥ 1 supporting chunk for every requirement
 - [ ] Per-requirement evidence chunks attached to each surviving hotel
 - [ ] Graceful degradation: if intersection is empty, return best partial match with `reason: "partial_match_only"` and a `missing_requirements: [...]` field so the chat layer can ask a priority question
+- [ ] **Relative-margin filter** applied in `HotelKBRetriever`, `BroadHotelDiscovery`, and `CompoundAndDiscovery`:
+      - New constant `RELATIVE_MARGIN = 0.05` in `kb_config.py` (overridable via env)
+      - After sorting by score, drop any chunk with `score < top_score - RELATIVE_MARGIN`
+      - Applied **after** the absolute-floor check (`>= DEFAULT_MIN_SCORE`), **before** top-K truncation
+      - New enumerated reason: `below_relative_margin` (returned only when the absolute floor passed but every non-top chunk fell outside the margin and top-K would have been empty otherwise — i.e. a single weak top match flying alone)
+      - Re-run both live smokes; expected effect: nonsense-query scenarios now return 0–1 chunks instead of 3, real queries unchanged
 - [ ] Unit suite + mock smoke + thin `/api/kb/compound` endpoint
+- [ ] Update `phase2a-test-report.md` §8 and `phase2b-test-report.md` §8 with re-run numbers showing the margin's effect
 
-**Exit criteria.** Given 6 compound queries (including the canonical "luxury hotel with spa for my wife AND scuba diving for me"), all 6 either return a correctly-intersected hotel list or correctly flag `partial_match_only` with the right missing requirement.
+**Exit criteria.** 
+1. Given 6 compound queries (including the canonical "luxury hotel with spa for my wife AND scuba diving for me"), all 6 either return a correctly-intersected hotel list or correctly flag `partial_match_only` with the right missing requirement.
+2. Live smoke re-run: nonsense-query scenarios in Phase 2a/2b harnesses now return 0–1 chunks (down from 3–5) while every real-match scenario keeps the same chunk count.
+3. `RELATIVE_MARGIN` value justified by score distribution captured in the chore branch (target: 0.05, document if changed).
 
 ---
 

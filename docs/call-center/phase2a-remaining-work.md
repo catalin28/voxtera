@@ -64,8 +64,13 @@ cosine) with the real `multilingual-e5-large` embedder. Result: **6/6 PASS**. Se
 own.** Calibrated `DEFAULT_MIN_SCORE` from 0.25 → 0.70 (catches only catastrophic
 failures – out-of-domain queries returning the bare [CLS] floor or embedding
 errors). Real relevance filtering happens via top-K + LLM-side check on chunk
-text. Future work: relative margin threshold (drop chunks scoring < top_score −
-0.05) and/or a cross-encoder reranker.
+text.
+
+**Follow-up (folded into Phase 2c):** Relative-margin filter — keep only chunks
+whose score is within `RELATIVE_MARGIN` (target 0.05) of the per-query top
+score. Tracked in `Voxtera_RAG_Development_Plan.md` § Phase 2c, branch
+`feat/VOX-rag-compound`. A cross-encoder reranker remains future work
+(post-2f).
 
 ## 4. Items Explicitly Out of Phase 2a (owned by later sub-phases)
 
