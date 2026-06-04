@@ -10,17 +10,20 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: #0f1117;
   color: #e4e4e7;
-  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 header {
   background: #1a1b23;
   border-bottom: 1px solid #2a2b35;
-  padding: 16px 24px;
+  padding: 14px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
-header h1 { font-size: 20px; font-weight: 600; color: #fff; }
+header h1 { font-size: 18px; font-weight: 600; color: #fff; }
 header a {
   color: #9ca3af;
   text-decoration: none;
@@ -28,21 +31,124 @@ header a {
 }
 header a:hover { color: #e4e4e7; }
 
-.container {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 32px 24px;
+.layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
 }
 
-.toolbar {
+/* --- Left panel: language list --- */
+.sidebar {
+  width: 220px;
+  background: #1a1b23;
+  border-right: 1px solid #2a2b35;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
+  flex-direction: column;
+  flex-shrink: 0;
 }
-.toolbar h2 {
-  font-size: 18px;
+.sidebar-header {
+  padding: 16px;
+  border-bottom: 1px solid #2a2b35;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sidebar-header h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.sidebar-header button {
+  background: #8b5cf6;
   color: #fff;
+  border: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sidebar-header button:hover { background: #7c3aed; }
+.lang-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+.lang-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #d1d5db;
+  transition: background 0.1s;
+}
+.lang-item:hover { background: #2a2b35; }
+.lang-item.active {
+  background: #2d2050;
+  color: #c4b5fd;
+  font-weight: 500;
+}
+.lang-item .code {
+  font-weight: 600;
+  width: 28px;
+  color: #8b5cf6;
+  font-size: 13px;
+}
+.lang-item .name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lang-item .timed-badge {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+}
+
+/* --- Main panel: editor --- */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 40px;
+}
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #6b7280;
+  font-size: 15px;
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+
+.editor { display: none; }
+.editor.active { display: block; }
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+.editor-header h2 {
+  font-size: 22px;
+  color: #fff;
+  font-weight: 600;
+}
+.editor-header .actions {
+  display: flex;
+  gap: 10px;
 }
 .btn {
   background: #8b5cf6;
@@ -60,6 +166,53 @@ header a:hover { color: #e4e4e7; }
 .btn-secondary { background: #374151; }
 .btn-secondary:hover { background: #4b5563; }
 
+.form-group {
+  margin-bottom: 20px;
+}
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.form-group textarea {
+  width: 100%;
+  background: #0f1117;
+  border: 1px solid #3a3b45;
+  color: #e4e4e7;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.5;
+}
+.form-group textarea:focus {
+  outline: none;
+  border-color: #8b5cf6;
+}
+.form-group .hint {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+.section-divider {
+  border: none;
+  border-top: 1px solid #2a2b35;
+  margin: 28px 0;
+}
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #d1d5db;
+  margin-bottom: 16px;
+}
+
+/* Toast */
 .toast {
   position: fixed;
   top: 20px;
@@ -74,47 +227,7 @@ header a:hover { color: #e4e4e7; }
 }
 .toast.error { background: #7f1d1d; color: #fecaca; }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: #1a1b23;
-  border: 1px solid #2a2b35;
-  border-radius: 12px;
-  overflow: hidden;
-}
-th, td {
-  text-align: left;
-  padding: 12px 16px;
-  border-bottom: 1px solid #2a2b35;
-}
-th {
-  background: #1f2029;
-  color: #9ca3af;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-td { font-size: 13px; }
-td.lang-code {
-  font-weight: 600;
-  color: #8b5cf6;
-  width: 60px;
-}
-td.greeting-text {
-  max-width: 500px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-td .actions {
-  display: flex;
-  gap: 8px;
-}
-tr:hover { background: #1f2029; }
-tr:last-child td { border-bottom: none; }
-
-/* Modal */
+/* Add Language Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -129,31 +242,11 @@ tr:last-child td { border-bottom: none; }
   background: #1a1b23;
   border: 1px solid #2a2b35;
   border-radius: 12px;
-  padding: 32px;
-  width: 600px;
-  max-width: 90vw;
-  max-height: 90vh;
-  overflow-y: auto;
+  padding: 28px;
+  width: 360px;
 }
-.modal h3 {
-  font-size: 18px;
-  color: #fff;
-  margin-bottom: 20px;
-}
-.form-group {
-  margin-bottom: 16px;
-}
-.form-group label {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: #9ca3af;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-}
-.form-group input,
-.form-group textarea {
+.modal h3 { font-size: 16px; color: #fff; margin-bottom: 16px; }
+.modal input {
   width: 100%;
   background: #0f1117;
   border: 1px solid #3a3b45;
@@ -161,28 +254,10 @@ tr:last-child td { border-bottom: none; }
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 14px;
-  font-family: inherit;
+  margin-bottom: 16px;
 }
-.form-group textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-.form-group input:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: #8b5cf6;
-}
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
-}
-.hint {
-  font-size: 11px;
-  color: #6b7280;
-  margin-top: 4px;
-}
+.modal input:focus { outline: none; border-color: #8b5cf6; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
 </style>
 </head>
 <body>
@@ -192,56 +267,65 @@ tr:last-child td { border-bottom: none; }
   <a href="/admin/index.html">← Back to Admin</a>
 </header>
 
-<div class="container">
-  <div class="toolbar">
-    <h2>Multilingual Welcome Messages</h2>
-    <button class="btn" id="btn-add">+ Add Language</button>
+<div class="layout">
+  <!-- Left: language list -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h2>Languages</h2>
+      <button id="btn-add" title="Add language">+</button>
+    </div>
+    <div class="lang-list" id="lang-list"></div>
   </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Lang</th>
-        <th>Neutral Greeting</th>
-        <th>Timed</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody id="greetings-body">
-      <tr><td colspan="4" style="text-align:center;color:#6b7280;">Loading…</td></tr>
-    </tbody>
-  </table>
+  <!-- Main: editor -->
+  <div class="main">
+    <div class="empty-state" id="empty-state">
+      <div class="icon">🌍</div>
+      <p>Select a language from the left to edit its greetings</p>
+    </div>
+
+    <div class="editor" id="editor">
+      <div class="editor-header">
+        <h2 id="editor-title">English</h2>
+        <div class="actions">
+          <button class="btn" id="btn-save">Save Changes</button>
+          <button class="btn btn-danger" id="btn-delete">Delete Language</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Neutral Greeting</label>
+        <textarea id="inp-greeting" placeholder="Time-neutral greeting…"></textarea>
+        <p class="hint">Played when the guest's timezone is unknown (PSTN, Telegram, older widget).</p>
+      </div>
+
+      <hr class="section-divider">
+      <p class="section-title">⏰ Time-of-Day Variants (optional)</p>
+
+      <div class="form-group">
+        <label>Morning (05:00 – 11:59)</label>
+        <textarea id="inp-morning" placeholder="Morning greeting…"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Afternoon (12:00 – 17:59)</label>
+        <textarea id="inp-afternoon" placeholder="Afternoon greeting…"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Evening (18:00 – 04:59)</label>
+        <textarea id="inp-evening" placeholder="Evening greeting…"></textarea>
+      </div>
+    </div>
+  </div>
 </div>
 
-<!-- Edit/Add Modal -->
+<!-- Add Language Modal -->
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
-    <h3 id="modal-title">Edit Greeting</h3>
-    <div class="form-group">
-      <label>Language Code</label>
-      <input type="text" id="inp-lang" placeholder="e.g. en, fr, ro" maxlength="5" />
-      <p class="hint">ISO 639-1 two-letter code (e.g. en, fr, es, ro, tr)</p>
-    </div>
-    <div class="form-group">
-      <label>Neutral Greeting</label>
-      <textarea id="inp-greeting" placeholder="Time-neutral greeting text…"></textarea>
-      <p class="hint">Used when guest's timezone is unknown (PSTN, Telegram, older widget).</p>
-    </div>
-    <div class="form-group">
-      <label>Morning Greeting</label>
-      <textarea id="inp-morning" placeholder="Morning variant (optional)…"></textarea>
-    </div>
-    <div class="form-group">
-      <label>Afternoon Greeting</label>
-      <textarea id="inp-afternoon" placeholder="Afternoon variant (optional)…"></textarea>
-    </div>
-    <div class="form-group">
-      <label>Evening Greeting</label>
-      <textarea id="inp-evening" placeholder="Evening variant (optional)…"></textarea>
-    </div>
+    <h3>Add New Language</h3>
+    <input type="text" id="inp-new-lang" placeholder="Language code (e.g. fr, ro, tr)" maxlength="5" />
     <div class="modal-actions">
-      <button class="btn btn-secondary" id="btn-cancel">Cancel</button>
-      <button class="btn" id="btn-save">Save</button>
+      <button class="btn btn-secondary" id="btn-modal-cancel">Cancel</button>
+      <button class="btn" id="btn-modal-add">Add</button>
     </div>
   </div>
 </div>
@@ -249,32 +333,48 @@ tr:last-child td { border-bottom: none; }
 <div class="toast" id="toast"></div>
 
 <script>
-const TOKEN = sessionStorage.getItem('voxtera_admin_token');
-if (!TOKEN) {
-  window.location.href = '/admin/index.html';
+// --- Auth ---
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : null;
 }
+const TOKEN = getCookie('voxtera_admin_token') || sessionStorage.getItem('voxtera_admin_token');
+if (!TOKEN) window.location.href = '/admin/index.html';
 
-const tbody = document.getElementById('greetings-body');
-const modalOverlay = document.getElementById('modal-overlay');
-const modalTitle = document.getElementById('modal-title');
-const inpLang = document.getElementById('inp-lang');
+// --- Language names (cosmetic) ---
+const LANG_NAMES = {
+  ar:'Arabic', az:'Azerbaijani', bg:'Bulgarian', cs:'Czech', da:'Danish',
+  de:'German', el:'Greek', en:'English', es:'Spanish', fi:'Finnish',
+  fr:'French', he:'Hebrew', hi:'Hindi', hu:'Hungarian', hy:'Armenian',
+  id:'Indonesian', it:'Italian', ja:'Japanese', ko:'Korean', nl:'Dutch',
+  no:'Norwegian', pl:'Polish', pt:'Portuguese', ro:'Romanian', ru:'Russian',
+  sv:'Swedish', th:'Thai', tr:'Turkish', uk:'Ukrainian', vi:'Vietnamese',
+  zh:'Chinese'
+};
+
+// --- State ---
+let data = { greetings: {}, timed_greetings: {} };
+let selectedLang = null;
+
+// --- DOM ---
+const langList = document.getElementById('lang-list');
+const emptyState = document.getElementById('empty-state');
+const editor = document.getElementById('editor');
+const editorTitle = document.getElementById('editor-title');
 const inpGreeting = document.getElementById('inp-greeting');
 const inpMorning = document.getElementById('inp-morning');
 const inpAfternoon = document.getElementById('inp-afternoon');
 const inpEvening = document.getElementById('inp-evening');
 const toast = document.getElementById('toast');
+const modalOverlay = document.getElementById('modal-overlay');
+const inpNewLang = document.getElementById('inp-new-lang');
 
-let editingLang = null; // null = adding new, string = editing existing
-
-// --- API helpers ---
+// --- API ---
 async function apiGet() {
-  const res = await fetch('/api/admin/greetings', {
-    headers: { 'X-Admin-Token': TOKEN }
-  });
+  const res = await fetch('/api/admin/greetings', { headers: { 'X-Admin-Token': TOKEN } });
   if (!res.ok) throw new Error(`${res.status}`);
   return res.json();
 }
-
 async function apiSave(lang, greeting, timed) {
   const body = { lang, greeting };
   if (timed) body.timed = timed;
@@ -283,22 +383,15 @@ async function apiSave(lang, greeting, timed) {
     headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || `${res.status}`);
-  }
+  if (!res.ok) { const e = await res.json(); throw new Error(e.error || res.status); }
   return res.json();
 }
-
 async function apiDelete(lang) {
   const res = await fetch(`/api/admin/greetings/${lang}`, {
     method: 'DELETE',
     headers: { 'X-Admin-Token': TOKEN }
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || `${res.status}`);
-  }
+  if (!res.ok) { const e = await res.json(); throw new Error(e.error || res.status); }
   return res.json();
 }
 
@@ -310,103 +403,52 @@ function showToast(msg, isError = false) {
   setTimeout(() => { toast.style.display = 'none'; }, 3000);
 }
 
-// --- Render table ---
-async function loadGreetings() {
-  try {
-    const data = await apiGet();
-    renderTable(data);
-  } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="4" style="color:#ef4444;">Failed to load: ${e.message}</td></tr>`;
-  }
-}
-
-function renderTable(data) {
-  const greetings = data.greetings || {};
-  const timed = data.timed_greetings || {};
-  const langs = Object.keys(greetings).sort();
-
-  if (langs.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="color:#6b7280;">No greetings configured.</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = langs.map(lang => {
-    const hasTimed = !!timed[lang];
-    const text = greetings[lang] || '';
-    const truncated = text.length > 80 ? text.slice(0, 80) + '…' : text;
-    return `<tr>
-      <td class="lang-code">${lang}</td>
-      <td class="greeting-text" title="${text.replace(/"/g, '&quot;')}">${truncated}</td>
-      <td>${hasTimed ? '✅' : '—'}</td>
-      <td class="actions">
-        <button class="btn btn-secondary" onclick="editGreeting('${lang}')">Edit</button>
-        ${lang !== 'en' ? `<button class="btn btn-danger" onclick="deleteGreeting('${lang}')">Delete</button>` : ''}
-      </td>
-    </tr>`;
+// --- Render sidebar ---
+function renderSidebar() {
+  const langs = Object.keys(data.greetings).sort();
+  langList.innerHTML = langs.map(lang => {
+    const name = LANG_NAMES[lang] || lang;
+    const hasTimed = !!data.timed_greetings[lang];
+    const active = lang === selectedLang ? ' active' : '';
+    return `<div class="lang-item${active}" data-lang="${lang}">
+      <span class="code">${lang}</span>
+      <span class="name">${name}</span>
+      ${hasTimed ? '<span class="timed-badge" title="Has timed variants"></span>' : ''}
+    </div>`;
   }).join('');
+
+  langList.querySelectorAll('.lang-item').forEach(el => {
+    el.addEventListener('click', () => selectLang(el.dataset.lang));
+  });
 }
 
-// --- Modal ---
-function openModal(lang = null, data = null) {
-  editingLang = lang;
-  modalTitle.textContent = lang ? `Edit: ${lang}` : 'Add New Language';
-  inpLang.value = lang || '';
-  inpLang.disabled = !!lang;
-  inpGreeting.value = '';
-  inpMorning.value = '';
-  inpAfternoon.value = '';
-  inpEvening.value = '';
+// --- Select a language ---
+function selectLang(lang) {
+  selectedLang = lang;
+  emptyState.style.display = 'none';
+  editor.classList.add('active');
 
-  if (data) {
-    inpGreeting.value = data.greeting || '';
-    if (data.timed) {
-      inpMorning.value = data.timed.morning || '';
-      inpAfternoon.value = data.timed.afternoon || '';
-      inpEvening.value = data.timed.evening || '';
-    }
-  }
-  modalOverlay.classList.add('active');
-  (lang ? inpGreeting : inpLang).focus();
+  const name = LANG_NAMES[lang] || lang;
+  editorTitle.textContent = `${name} (${lang})`;
+
+  inpGreeting.value = data.greetings[lang] || '';
+  const timed = data.timed_greetings[lang] || {};
+  inpMorning.value = timed.morning || '';
+  inpAfternoon.value = timed.afternoon || '';
+  inpEvening.value = timed.evening || '';
+
+  document.getElementById('btn-delete').style.display = lang === 'en' ? 'none' : '';
+
+  langList.querySelectorAll('.lang-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.lang === lang);
+  });
 }
 
-function closeModal() {
-  modalOverlay.classList.remove('active');
-  editingLang = null;
-}
-
-// --- Actions ---
-let _cachedData = null;
-
-async function editGreeting(lang) {
-  try {
-    const data = await apiGet();
-    _cachedData = data;
-    const greeting = data.greetings[lang] || '';
-    const timed = data.timed_greetings ? data.timed_greetings[lang] : null;
-    openModal(lang, { greeting, timed });
-  } catch (e) {
-    showToast('Failed to load: ' + e.message, true);
-  }
-}
-
-async function deleteGreeting(lang) {
-  if (!confirm(`Delete all greetings for "${lang}"? This cannot be undone.`)) return;
-  try {
-    await apiDelete(lang);
-    showToast(`Deleted "${lang}" greetings`);
-    loadGreetings();
-  } catch (e) {
-    showToast(e.message, true);
-  }
-}
-
-async function saveGreeting() {
-  const lang = inpLang.value.trim().toLowerCase();
+// --- Save ---
+async function save() {
+  if (!selectedLang) return;
   const greeting = inpGreeting.value.trim();
-  if (!lang || !greeting) {
-    showToast('Language code and neutral greeting are required.', true);
-    return;
-  }
+  if (!greeting) { showToast('Neutral greeting is required.', true); return; }
 
   const morning = inpMorning.value.trim();
   const afternoon = inpAfternoon.value.trim();
@@ -421,24 +463,67 @@ async function saveGreeting() {
   }
 
   try {
-    await apiSave(lang, greeting, timed);
-    showToast(`Saved "${lang}" greeting`);
+    await apiSave(selectedLang, greeting, timed);
+    showToast(`Saved "${selectedLang}" greeting`);
+    data = await apiGet();
+    renderSidebar();
+    selectLang(selectedLang);
+  } catch (e) { showToast(e.message, true); }
+}
+
+// --- Delete ---
+async function deleteLang() {
+  if (!selectedLang || selectedLang === 'en') return;
+  if (!confirm(`Delete all greetings for "${selectedLang}"?`)) return;
+  try {
+    await apiDelete(selectedLang);
+    showToast(`Deleted "${selectedLang}"`);
+    data = await apiGet();
+    selectedLang = null;
+    editor.classList.remove('active');
+    emptyState.style.display = '';
+    renderSidebar();
+  } catch (e) { showToast(e.message, true); }
+}
+
+// --- Add language modal ---
+function openModal() { modalOverlay.classList.add('active'); inpNewLang.value = ''; inpNewLang.focus(); }
+function closeModal() { modalOverlay.classList.remove('active'); }
+
+async function addLang() {
+  const lang = inpNewLang.value.trim().toLowerCase();
+  if (!lang) return;
+  if (data.greetings[lang]) {
     closeModal();
-    loadGreetings();
-  } catch (e) {
-    showToast(e.message, true);
+    selectLang(lang);
+    return;
   }
+  data.greetings[lang] = '';
+  closeModal();
+  renderSidebar();
+  selectLang(lang);
+  showToast(`Added "${lang}" — fill in the greeting and save.`);
 }
 
 // --- Events ---
-document.getElementById('btn-add').addEventListener('click', () => openModal());
-document.getElementById('btn-cancel').addEventListener('click', closeModal);
-document.getElementById('btn-save').addEventListener('click', saveGreeting);
+document.getElementById('btn-save').addEventListener('click', save);
+document.getElementById('btn-delete').addEventListener('click', deleteLang);
+document.getElementById('btn-add').addEventListener('click', openModal);
+document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);
+document.getElementById('btn-modal-add').addEventListener('click', addLang);
+inpNewLang.addEventListener('keydown', e => { if (e.key === 'Enter') addLang(); });
 modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 // --- Init ---
-loadGreetings();
+(async () => {
+  try {
+    data = await apiGet();
+    renderSidebar();
+  } catch (e) {
+    langList.innerHTML = `<p style="padding:16px;color:#ef4444;font-size:13px;">Failed to load: ${e.message}</p>`;
+  }
+})();
 </script>
 </body>
 </html>

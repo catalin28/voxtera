@@ -61,6 +61,19 @@ body {
   cursor: pointer;
 }
 .login-box button:hover { background: #7c3aed; }
+.login-box .remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #9ca3af;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+.login-box .remember input {
+  width: auto;
+  margin: 0;
+}
 .login-box .error {
   color: #ef4444;
   font-size: 13px;
@@ -148,6 +161,7 @@ body {
   <h1>Admin Portal</h1>
   <p class="subtitle">Enter your admin token to continue</p>
   <input type="password" id="token-input" placeholder="VOXTERA_ADMIN_TOKEN" autocomplete="off" />
+  <label class="remember"><input type="checkbox" id="remember-me" /> Remember me</label>
   <button id="btn-login">Authenticate</button>
   <p class="error" id="error-msg">Invalid token. Please try again.</p>
 </div>
@@ -204,9 +218,29 @@ const loginBox = document.getElementById('login-box');
 const dashboard = document.getElementById('dashboard');
 const tokenInput = document.getElementById('token-input');
 const errorMsg = document.getElementById('error-msg');
+const rememberMe = document.getElementById('remember-me');
+
+// --- Cookie helpers ---
+function setCookie(name, value, days) {
+  const d = new Date();
+  d.setTime(d.getTime() + days * 86400000);
+  document.cookie = name + '=' + encodeURIComponent(value) + ';expires=' + d.toUTCString() + ';path=/;SameSite=Strict';
+}
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+function deleteCookie(name) {
+  document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;SameSite=Strict';
+}
+
+// --- Token retrieval (cookie > sessionStorage) ---
+function getStoredToken() {
+  return getCookie('voxtera_admin_token') || sessionStorage.getItem('voxtera_admin_token');
+}
 
 // Check for stored token on load
-const stored = sessionStorage.getItem('voxtera_admin_token');
+const stored = getStoredToken();
 if (stored) {
   verify(stored);
 }
@@ -215,6 +249,7 @@ document.getElementById('btn-login').addEventListener('click', login);
 tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
 document.getElementById('btn-logout').addEventListener('click', () => {
   sessionStorage.removeItem('voxtera_admin_token');
+  deleteCookie('voxtera_admin_token');
   dashboard.style.display = 'none';
   loginBox.style.display = 'block';
   document.body.style.alignItems = 'center';
@@ -240,6 +275,9 @@ async function verify(token) {
     });
     if (res.ok) {
       sessionStorage.setItem('voxtera_admin_token', token);
+      if (rememberMe.checked) {
+        setCookie('voxtera_admin_token', token, 30);
+      }
       showDashboard();
       return true;
     }
