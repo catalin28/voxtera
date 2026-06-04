@@ -2213,8 +2213,8 @@
       const _audioConstraints = {
         deviceId:         _selectedMicDeviceId ? { exact: _selectedMicDeviceId } : undefined,
         channelCount:     1,
-        noiseSuppression: false,
-        echoCancellation: false,
+        noiseSuppression: true,
+        echoCancellation: true,
         autoGainControl:  false,
       };
       // Safari/iOS: voiceIsolation is very aggressive — disable if supported
