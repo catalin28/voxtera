@@ -93,18 +93,28 @@ def _has_geography(decomposition: dict[str, Any], session: dict[str, Any] | None
 def _needs_hotel_vs_recommend(decomposition: dict[str, Any]) -> bool:
     """True when intent is ambiguous between specific-hotel and recommendation.
 
-    Heuristic: the classifier returned ``query_type="broad"`` and the
-    caller did NOT explicitly mention any hotel, AND ``intent`` is one
-    of the ones that could equally be a scoped fact ("amenities",
-    "food", "policy", "atmosphere"). Practical effect: we only ask if
-    we genuinely cannot tell. If the caller said "recommendation" or
-    "comparison" we trust them.
+    Only ask when the caller said something genuinely under-specified —
+    broad query, no hotel named, no requirements / vibe / budget / traveller
+    signal at all. If the caller listed any criterion ("with a spa",
+    "near the beach", "under $200") they obviously want a recommendation
+    and we should not interrupt them.
     """
     if decomposition.get("hotel_mention"):
         return False
     if decomposition.get("query_type") != "broad":
         return False
-    return decomposition.get("intent") in {"amenities", "food", "policy", "atmosphere"}
+    if decomposition.get("intent") not in {"amenities", "food", "policy", "atmosphere"}:
+        return False
+    # Strong recommendation signals → trust the caller, don't ask.
+    if decomposition.get("requirements"):
+        return False
+    if decomposition.get("vibe_preferences"):
+        return False
+    if decomposition.get("budget_tier") or decomposition.get("budget_signal"):
+        return False
+    if decomposition.get("traveller_type"):
+        return False
+    return True
 
 
 def _needs_non_negotiable(decomposition: dict[str, Any]) -> bool:

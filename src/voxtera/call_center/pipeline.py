@@ -40,6 +40,7 @@ the demo UI is being wired up.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -100,6 +101,23 @@ def _placeholder_answer(path: str, language: str) -> str:
     return by_lang.get(language) or by_lang.get("en") or "Let me check on that."
 
 
+def _no_match_answer(language: str, region: str) -> str:
+    """Deterministic fail-closed reply when retrieval returned 0 hotels."""
+    where = f" in {region}" if region else ""
+    where_tr = f" {region} bölgesinde" if region else ""
+    msgs = {
+        "en": (
+            f"I couldn't find a hotel{where} that matches every part of that request. "
+            "Could you loosen one of the requirements, or tell me a bit more about what matters most?"
+        ),
+        "tr": (
+            f"İsteğinizin her parçasına uyan bir otel{where_tr} bulamadım. "
+            "Bir kriteri biraz esnetebilir misiniz veya en önemli olanı söyleyebilir misiniz?"
+        ),
+    }
+    return msgs.get(language) or msgs["en"]
+
+
 class ConciergePipeline:
     """End-to-end orchestrator for the call-center concierge."""
 
@@ -142,10 +160,53 @@ class ConciergePipeline:
                 t_start=t_start, timings=timings,
             )
 
-        # 1. Escalation guard.
-        t0 = time.perf_counter()
-        verdict = await self._classifier.classify(utterance)
-        timings["classify_ms"] = _ms(time.perf_counter() - t0)
+        # 1+2+3 fan-out: classify runs in parallel with (load_session -> decompose).
+        # Decompose needs session context (pending_slots merge, active_region),
+        # so it can't run truly independent of session_load; but classify is
+        # fully independent and is the biggest single LLM cost on the critical
+        # path. Running them concurrently saves ~classify_ms on the happy
+        # (non-escalate) path. On escalate we discard the decompose result —
+        # the wasted token spend is negligible and the latency win is large.
+        t_concurrent = time.perf_counter()
+
+        async def _classify_leg() -> dict[str, Any]:
+            t0 = time.perf_counter()
+            v = await self._classifier.classify(utterance)
+            timings["classify_ms"] = _ms(time.perf_counter() - t0)
+            return v
+
+        async def _session_decompose_leg() -> tuple[dict[str, Any], dict[str, Any], str]:
+            t0 = time.perf_counter()
+            sess = await self._sessions.load(sid)
+            timings["session_load_ms"] = _ms(time.perf_counter() - t0)
+            if region and not sess.get("active_region"):
+                sess["active_region"] = region
+            decompose_input_local = utterance
+            if sess.get("pending_slots"):
+                prior_utt = None
+                for turn in reversed(sess.get("history") or []):
+                    if turn.get("is_clarification") and turn.get("utterance"):
+                        prior_utt = turn["utterance"]
+                        break
+                if prior_utt:
+                    decompose_input_local = f"{prior_utt}\nFollow-up: {utterance}"
+                sess["pending_slots"] = []
+            ctx_local = {
+                "active_region": sess.get("active_region"),
+                "active_hotel_id": sess.get("active_hotel_id"),
+                "language": sess.get("language"),
+            }
+            t0 = time.perf_counter()
+            decomp = await self._decomposer.decompose(decompose_input_local, ctx_local)
+            timings["decompose_ms"] = _ms(time.perf_counter() - t0)
+            return sess, decomp, decompose_input_local
+
+        verdict, (session, decomposition, _decompose_input) = await asyncio.gather(
+            _classify_leg(),
+            _session_decompose_leg(),
+        )
+        timings["concurrent_pre_ms"] = _ms(time.perf_counter() - t_concurrent)
+
         if verdict.get("escalate"):
             answer = "Let me connect you to a colleague who can help with that right away."
             return self._finish(
@@ -155,23 +216,11 @@ class ConciergePipeline:
                 t_start=t_start, timings=timings,
             )
 
-        # 2. Load session (or skeleton on cache miss).
-        t0 = time.perf_counter()
-        session = await self._sessions.load(sid)
-        timings["session_load_ms"] = _ms(time.perf_counter() - t0)
-        # Region from request becomes the active region for this turn if absent.
-        if region and not session.get("active_region"):
-            session["active_region"] = region
-
-        # 3. Decompose.
-        ctx = {
-            "active_region": session.get("active_region"),
-            "active_hotel_id": session.get("active_hotel_id"),
-            "language": session.get("language"),
-        }
-        t0 = time.perf_counter()
-        decomposition = await self._decomposer.decompose(utterance, ctx)
-        timings["decompose_ms"] = _ms(time.perf_counter() - t0)
+        # Promote a newly extracted region into the session so subsequent
+        # turns don't have to re-state it.
+        new_region = decomposition.get("region") or decomposition.get("city")
+        if new_region and not session.get("active_region"):
+            session["active_region"] = new_region
 
         # Backfill session language from the first decomposed turn.
         if decomposition.get("language") and not session.get("language"):
@@ -182,6 +231,7 @@ class ConciergePipeline:
         triage_decision = self._triage.assess(decomposition, session)
         timings["triage_ms"] = _ms(time.perf_counter() - t0)
         if triage_decision.get("ask"):
+            session["pending_slots"] = list(triage_decision.get("pending_slots") or [])
             await self._sessions.append_turn(
                 session,
                 utterance=utterance,
@@ -283,16 +333,28 @@ class ConciergePipeline:
         retrieval: dict[str, Any] | None,
         session: dict[str, Any],
     ) -> str:
-        """Call the injected render_fn, or return a defensive fallback."""
+        """Call the injected render_fn, or return a defensive fallback.
+
+        Fails closed when retrieval produced zero hotels — the LLM has
+        no evidence to ground on and tends to invent geography ("scoped
+        to Paris") if asked to generate prose anyway.
+        """
+        hotels = (retrieval or {}).get("hotels") or []
+        if not hotels:
+            lang = (decomposition.get("language") or session.get("language") or "en").lower()
+            region = (
+                decomposition.get("region")
+                or decomposition.get("city")
+                or session.get("active_region")
+                or ""
+            )
+            return _no_match_answer(lang, region)
         if self._render_fn is None:
-            count = len((retrieval or {}).get("hotels") or [])
-            if count:
-                names = ", ".join(
-                    (h.get("payload") or {}).get("hotel_name", h.get("hotel_id"))
-                    for h in retrieval["hotels"][:3]  # type: ignore[index]
-                )
-                return f"Top matches: {names}."
-            return "I couldn't find a good match for that — could you tell me more?"
+            names = ", ".join(
+                (h.get("payload") or {}).get("hotel_name", h.get("hotel_id"))
+                for h in hotels[:3]
+            )
+            return f"Top matches: {names}."
         try:
             return await self._render_fn({
                 "utterance": utterance,

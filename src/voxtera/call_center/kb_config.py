@@ -60,3 +60,26 @@ CATEGORIES = (
     "atmosphere",
     "packages",
 )
+
+
+# Region aliases — map user-facing region tokens (city slugs from the
+# demo dropdown, decomposer outputs) to the canonical region labels
+# stored in Qdrant payloads. Today the corpus is one bucket
+# ("Turkish Riviera"); as ingestion grows finer-grained these aliases
+# can be removed.
+REGION_ALIASES: dict[str, str] = {
+    "antalya": "Turkish Riviera",
+    "belek": "Turkish Riviera",
+    "kemer": "Turkish Riviera",
+    "side": "Turkish Riviera",
+    "alanya": "Turkish Riviera",
+    "bodrum": "Turkish Riviera",
+    "turkish riviera": "Turkish Riviera",
+}
+
+
+def canonical_region(region: str | None) -> str:
+    """Return the canonical region label as stored in Qdrant payloads."""
+    if not region:
+        return ""
+    return REGION_ALIASES.get(region.strip().lower(), region.strip())

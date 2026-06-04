@@ -304,7 +304,16 @@ def _build_anthropic_decompose(model: str) -> DecomposeFn:
         msg = await client.messages.create(
             model=model,
             max_tokens=1024,
-            system=_DECOMPOSE_SYSTEM,
+            # Prompt caching: the decompose system prompt is large and
+            # static, so we mark it cacheable. Anthropic stores the
+            # encoded prompt for 5 min; subsequent calls within the
+            # window pay ~10% of the prompt-token cost and skip the
+            # encode step, saving ~200-500ms of TTFT.
+            system=[{
+                "type": "text",
+                "text": _DECOMPOSE_SYSTEM,
+                "cache_control": {"type": "ephemeral"},
+            }],
             messages=[{
                 "role": "user",
                 "content": f"{ctx_block}Utterance: {utterance}",

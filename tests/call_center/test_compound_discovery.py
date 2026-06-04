@@ -257,6 +257,7 @@ class TestCompoundCore:
         assert set(result) == {
             "region", "requirements", "normalized_requirements",
             "top_score", "count", "hotels", "missing_requirements", "reason",
+            "timings",
         }
         h = result["hotels"][0]
         assert set(h) == {"hotel_id", "score", "payload", "evidence"}

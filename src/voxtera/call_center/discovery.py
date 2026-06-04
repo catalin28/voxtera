@@ -24,6 +24,7 @@ Decision contract (see docs/call-center/phase2b-user-story.md §3):
 
 from __future__ import annotations
 
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -40,6 +41,7 @@ from voxtera.call_center.kb_config import (
     RELATIVE_MARGIN,
     RERANK_MIN_SCORE,
     RERANK_RELATIVE_MARGIN,
+    canonical_region,
 )
 from voxtera.call_center.reranker import RerankFn, is_rerank_enabled
 
@@ -102,16 +104,27 @@ class BroadHotelDiscovery:
         if not normalized_query:
             return self._empty(region, query, normalized_query, REASON_EMPTY_QUERY)
 
+        timings: dict[str, float] = {}
         try:
+            t0 = time.perf_counter()
             vector = await self._embed(normalized_query)
+            timings["embed_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
             body = self._build_search_body(vector, region, activity_tags, category_hint)
+            t0 = time.perf_counter()
             hits = await self._search(body)
+            timings["qdrant_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
         except Exception as e:  # noqa: BLE001 — graceful degradation per contract
             logger.warning("BroadHotelDiscovery error for region={!r}: {}", region, e)
-            return self._empty(region, query, normalized_query, REASON_ERROR)
+            empty = self._empty(region, query, normalized_query, REASON_ERROR)
+            empty["timings"] = timings
+            return empty
 
+        t0 = time.perf_counter()
         hits, reranked = await self._maybe_rerank(normalized_query, hits)
-        return self._finalize(region, query, normalized_query, hits, reranked=reranked)
+        timings["rerank_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
+        result = self._finalize(region, query, normalized_query, hits, reranked=reranked)
+        result["timings"] = timings
+        return result
 
     # --- internals ---
 
@@ -131,7 +144,7 @@ class BroadHotelDiscovery:
         category_hint: str | None,
     ) -> dict[str, Any]:
         must: list[dict[str, Any]] = [
-            {"key": "region", "match": {"value": region}},
+            {"key": "region", "match": {"value": canonical_region(region)}},
         ]
         if activity_tags:
             must.append({"key": "activity_tags", "match": {"any": list(activity_tags)}})

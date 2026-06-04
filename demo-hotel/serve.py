@@ -4709,6 +4709,20 @@ if __name__ == "__main__":
     # Clean up orphaned rooms from previous server runs before accepting traffic.
     _cleanup_orphaned_rooms()
     # --------------------------------------------------------------------------
+    # Pre-warm the call-center embedding model (e5-large) in a background
+    # thread so the first /api/concierge request doesn't pay the ~3s cold
+    # load. Embedding the warmup string forces sentence-transformers to
+    # load weights now.
+    def _warm_call_center_embed() -> None:
+        try:
+            from voxtera.call_center.embeddings import embed_query
+            t0 = time.perf_counter()
+            embed_query("warmup")
+            print(f"[warmup] call_center embed model ready in {time.perf_counter() - t0:.1f}s")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[warmup] embed pre-warm failed: {exc}")
+    threading.Thread(target=_warm_call_center_embed, daemon=True).start()
+    # --------------------------------------------------------------------------
     socketserver.ThreadingTCPServer.allow_reuse_address = True
     with socketserver.ThreadingTCPServer(("", port), DemoHandler) as httpd:
         print(f"Serving demo on http://localhost:{port}/demo.html")

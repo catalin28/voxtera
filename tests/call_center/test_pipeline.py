@@ -281,3 +281,77 @@ async def test_response_contract_shape() -> None:
     }
     assert required.issubset(out.keys())
     assert "total_ms" in out["timings"]
+
+
+# ---------- 9. clarification follow-up merges prior utterance ----------
+
+class _RecordingDecomposer:
+    """Captures every utterance fed to decompose so the test can assert merge behaviour."""
+
+    def __init__(self, payloads: list[dict[str, Any]]) -> None:
+        self._payloads = payloads
+        self.seen: list[str] = []
+
+    async def __call__(self, utterance: str, _ctx: dict[str, Any]) -> dict[str, Any]:
+        self.seen.append(utterance)
+        return self._payloads[len(self.seen) - 1]
+
+
+@pytest.mark.asyncio
+async def test_followup_after_clarification_merges_prior_utterance() -> None:
+    """When triage asked for geography, the next turn must be combined with
+    the original question before re-decomposing — otherwise the decomposer
+    sees a context-free fragment like "In Antalya" and returns garbage."""
+    rec = _RecordingDecomposer([
+        # turn 1: ambiguous broad query, no region → triage will ask
+        {"query_type": "broad", "intent": "recommendation",
+         "requirements": ["spa"], "language": "en"},
+        # turn 2: must see the merged "I want a hotel with a spa\nFollow-up: In Antalya"
+        {"query_type": "broad", "intent": "recommendation",
+         "region": "antalya", "requirements": ["spa"], "language": "en"},
+    ])
+    compound = _FakeCompound(_ok_retrieval())
+    p = ConciergePipeline(
+        session_store=SessionStore(),
+        classifier=EscalationClassifier(
+            classify_fn=_scripted_classify({"type": "none", "confidence": 0.0, "signal": None}),
+            cache_get=None, cache_set=None,
+        ),
+        decomposer=QueryDecomposer(decompose_fn=rec),
+        compound=compound,
+    )
+    out1 = await p.run(utterance="I want a hotel with a spa")
+    assert out1["path"] == "clarify"
+
+    out2 = await p.run(utterance="In Antalya", session_id=out1["session_id"])
+    assert out2["path"] == PATH_BROAD
+    # second decompose call saw the merged utterance
+    assert "spa" in rec.seen[1].lower()
+    assert "antalya" in rec.seen[1].lower()
+
+
+# ---------- 10. render fails closed on empty retrieval ----------
+
+@pytest.mark.asyncio
+async def test_render_fails_closed_when_retrieval_returns_no_hotels() -> None:
+    """If CompoundAndDiscovery returns 0 hotels, the LLM must NOT be called —
+    it tends to invent geography. Pipeline returns deterministic copy."""
+    compound = _FakeCompound({"reason": "no_match_above_threshold",
+                              "missing_requirements": ["spa"], "hotels": []})
+    called = {"n": 0}
+
+    async def render(_payload: dict[str, Any]) -> str:
+        called["n"] += 1
+        return "LLM SHOULD NOT BE CALLED"
+
+    p = _build(
+        decompose={"query_type": "broad", "intent": "recommendation",
+                   "region": "antalya", "requirements": ["spa"], "language": "en"},
+        compound=compound,
+        render_fn=render,
+    )
+    out = await p.run(utterance="spa hotel in antalya")
+    assert out["path"] == PATH_BROAD
+    assert called["n"] == 0
+    assert "antalya" in out["answer"].lower()
+    assert "couldn't find" in out["answer"].lower()

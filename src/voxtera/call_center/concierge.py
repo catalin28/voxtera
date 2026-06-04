@@ -183,7 +183,11 @@ def _build_anthropic_decompose(model: str) -> DecomposeFn:
         msg = await client.messages.create(
             model=model,
             max_tokens=512,
-            system=_DECOMPOSE_SYSTEM,
+            system=[{
+                "type": "text",
+                "text": _DECOMPOSE_SYSTEM,
+                "cache_control": {"type": "ephemeral"},
+            }],
             messages=[{
                 "role": "user",
                 "content": f"Region: {region}\nUtterance: {utterance}",
@@ -230,7 +234,11 @@ def _build_anthropic_render(model: str) -> RenderFn:
         msg = await client.messages.create(
             model=model,
             max_tokens=512,
-            system=_RENDER_SYSTEM,
+            system=[{
+                "type": "text",
+                "text": _RENDER_SYSTEM,
+                "cache_control": {"type": "ephemeral"},
+            }],
             messages=[{"role": "user", "content": user_msg}],
         )
         return _first_text_block(msg).strip()

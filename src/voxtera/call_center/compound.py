@@ -91,7 +91,17 @@ class CompoundAndDiscovery:
             logger.warning("CompoundAndDiscovery error for region={!r}: {}", region, e)
             return self._empty(region, requirements, normalized, REASON_ERROR)
 
-        return self._intersect(region, requirements, normalized, per_req)
+        result = self._intersect(region, requirements, normalized, per_req)
+        # Aggregate per-requirement timings: embed/qdrant run in parallel so
+        # the wall-time is dominated by the slowest leg.
+        embed = [t.get("timings", {}).get("embed_ms", 0.0) for t in per_req]
+        qdrant = [t.get("timings", {}).get("qdrant_ms", 0.0) for t in per_req]
+        result["timings"] = {
+            "fan_out": len(per_req),
+            "embed_ms_max": round(max(embed) if embed else 0.0, 1),
+            "qdrant_ms_max": round(max(qdrant) if qdrant else 0.0, 1),
+        }
+        return result
 
     # --- internals ---
 

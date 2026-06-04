@@ -123,7 +123,8 @@ class TestBroadDiscoveryCore:
         d = BroadHotelDiscovery(embed_fn=_fake_embed, search_fn=search)
         await d.discover(region=REGION, query="spa")
         must = search.calls[0]["filter"]["must"]  # type: ignore[attr-defined]
-        assert {"key": "region", "match": {"value": REGION}} in must
+        # REGION="antalya" is aliased to the canonical payload label.
+        assert {"key": "region", "match": {"value": "Turkish Riviera"}} in must
 
     async def test_activity_tags_appends_filter(self) -> None:
         search = _make_search_fn([
@@ -191,7 +192,8 @@ class TestBroadDiscoveryCore:
         d = BroadHotelDiscovery(embed_fn=_fake_embed, search_fn=search)
         await d.discover(region="  " + REGION + "  ", query="any")
         must = search.calls[0]["filter"]["must"]  # type: ignore[attr-defined]
-        assert must[0]["match"]["value"] == REGION
+        # Stripped then canonicalized via the region alias map.
+        assert must[0]["match"]["value"] == "Turkish Riviera"
 
     async def test_response_shape_matches_contract(self) -> None:
         hits = [_hit(0.8, hotel_id="rixos_premium_belek", idx=1)]
@@ -199,8 +201,9 @@ class TestBroadDiscoveryCore:
         result = await d.discover(region=REGION, query="any")
         assert set(result) == {
             "region", "query", "normalized_query",
-            "top_score", "count", "hotels", "reason",
+            "top_score", "count", "hotels", "reason", "timings",
         }
+        assert set(result["timings"]) >= {"embed_ms", "qdrant_ms"}
         hotel = result["hotels"][0]
         assert set(hotel) == {"hotel_id", "score", "evidence_chunk", "payload"}
         assert set(hotel["evidence_chunk"]) == {
