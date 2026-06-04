@@ -1,0 +1,283 @@
+"""Unit tests for ConciergePipeline (Phase 3 Slice B orchestrator).
+
+All five Slice-A modules are injected as either real instances (when
+their behaviour is part of the test) or scripted fakes (when only
+their output matters). No network, no Redis.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from voxtera.call_center.classifier import EscalationClassifier
+from voxtera.call_center.decompose import QueryDecomposer
+from voxtera.call_center.pipeline import ConciergePipeline
+from voxtera.call_center.router import (
+    PATH_BROAD,
+    PATH_ESCALATE,
+    PATH_HOTEL_RESOLVE,
+    PATH_SCOPED,
+    PATH_WEB,
+    SourceRouter,
+)
+from voxtera.call_center.session import SessionStore
+from voxtera.call_center.triage import Triage
+
+
+# ---------- minimal helpers ----------
+
+def _scripted_classify(raw: dict[str, Any]):
+    """Return a fake classify_fn whose raw shape is {type, confidence, signal}."""
+    async def fn(_u: str) -> dict[str, Any]:
+        return raw
+    return fn
+
+
+def _scripted_decompose(payload: dict[str, Any]):
+    async def fn(_u: str, _c: dict[str, Any]) -> dict[str, Any]:
+        return payload
+    return fn
+
+
+class _FakeCompound:
+    def __init__(self, result: dict[str, Any]) -> None:
+        self._result = result
+        self.calls: list[dict[str, Any]] = []
+
+    async def discover(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        return self._result
+
+
+def _ok_retrieval() -> dict[str, Any]:
+    return {
+        "reason": None,
+        "missing_requirements": [],
+        "hotels": [
+            {"hotel_id": "rixos_belek", "payload": {"hotel_name": "Rixos Belek"},
+             "score": 0.82, "evidence": {}},
+        ],
+    }
+
+
+def _build(
+    *,
+    classify: dict[str, Any] | None = None,
+    decompose: dict[str, Any] | None = None,
+    compound: _FakeCompound | None = None,
+    render_fn: Any | None = None,
+) -> ConciergePipeline:
+    classify = classify or {"type": "none", "confidence": 0.1, "signal": None}
+    decompose = decompose or {
+        "query_type": "broad", "intent": "recommendation",
+        "region": "antalya", "requirements": ["spa"], "language": "en",
+    }
+    return ConciergePipeline(
+        session_store=SessionStore(),  # in-memory fallback
+        classifier=EscalationClassifier(classify_fn=_scripted_classify(classify),
+                                         cache_get=None, cache_set=None),
+        decomposer=QueryDecomposer(decompose_fn=_scripted_decompose(decompose)),
+        triage=Triage(),
+        router=SourceRouter(),
+        compound=compound,
+        render_fn=render_fn,
+    )
+
+
+# ---------- 1. empty utterance ----------
+
+@pytest.mark.asyncio
+async def test_empty_utterance_short_circuits() -> None:
+    out = await _build().run(utterance="   ")
+    assert out["path"] == "empty"
+    assert "didn't catch" in out["answer"]
+
+
+# ---------- 2. escalation path ----------
+
+@pytest.mark.asyncio
+async def test_escalation_short_circuits_before_decompose() -> None:
+    p = _build(classify={
+        "type": "live_complaint", "confidence": 0.92,
+        "signal": "odama giremiyorum",
+    })
+    out = await p.run(utterance="Oteldeyim ve odama giremiyorum")
+    assert out["path"] == PATH_ESCALATE
+    assert out["escalation"]["escalation_type"] == "live_complaint"
+    assert out["decomposition"] is None  # decompose was skipped
+    assert "colleague" in out["answer"].lower()
+
+
+# ---------- 3. clarification path ----------
+
+@pytest.mark.asyncio
+async def test_triage_asks_geography_and_persists_clarification_count() -> None:
+    # broad query, no geography → triage should ask.
+    p = _build(decompose={
+        "query_type": "broad", "intent": "recommendation",
+        "requirements": ["spa"], "language": "en",
+    })
+    out = await p.run(utterance="recommend a hotel with a spa")
+    assert out["path"] == "clarify"
+    assert out["clarification"]["slot"] == "geography"
+    assert "destination" in out["answer"].lower()
+
+    # Same session, second turn — still missing geography but triage
+    # should still allow one more ask (clarification_count went 0 → 1).
+    sid = out["session_id"]
+    out2 = await p.run(utterance="another spa hotel", session_id=sid)
+    assert out2["path"] == "clarify"
+
+    # Third turn — clarification budget exhausted, pipeline proceeds.
+    out3 = await p.run(utterance="another spa hotel", session_id=sid)
+    assert out3["path"] != "clarify"
+
+
+# ---------- 4. broad KB path with retrieval + render ----------
+
+@pytest.mark.asyncio
+async def test_broad_path_runs_compound_and_renders() -> None:
+    compound = _FakeCompound(_ok_retrieval())
+
+    async def render(_payload: dict[str, Any]) -> str:
+        return "Rixos Belek fits the bill."
+
+    p = _build(
+        decompose={
+            "query_type": "broad", "intent": "recommendation",
+            "region": "antalya", "requirements": ["spa"], "language": "en",
+        },
+        compound=compound,
+        render_fn=render,
+    )
+    out = await p.run(utterance="spa hotel in antalya")
+    assert out["path"] == PATH_BROAD
+    assert out["retrieval"]["hotels"][0]["hotel_id"] == "rixos_belek"
+    assert out["answer"] == "Rixos Belek fits the bill."
+    assert compound.calls[0]["region"] == "antalya"
+    assert compound.calls[0]["requirements"] == ["spa"]
+
+
+@pytest.mark.asyncio
+async def test_broad_path_with_default_render_uses_hotel_names() -> None:
+    compound = _FakeCompound(_ok_retrieval())
+    p = _build(
+        decompose={
+            "query_type": "broad", "intent": "recommendation",
+            "region": "antalya", "requirements": ["spa"], "language": "en",
+        },
+        compound=compound,  # no render_fn -> default fallback
+    )
+    out = await p.run(utterance="spa hotel in antalya")
+    assert "Rixos Belek" in out["answer"]
+
+
+# ---------- 5. scoped path requires resolved hotel ----------
+
+@pytest.mark.asyncio
+async def test_scoped_with_unresolved_hotel_routes_to_hotel_resolve() -> None:
+    p = _build(decompose={
+        "query_type": "scoped", "intent": "amenities",
+        "hotel_mention": "Rixosta", "language": "en",
+    })
+    out = await p.run(utterance="Rixosta hamam var mı?")
+    assert out["path"] == PATH_HOTEL_RESOLVE
+    # Returns localised acknowledgement.
+    assert out["answer"] is not None
+
+
+@pytest.mark.asyncio
+async def test_scoped_with_session_hotel_runs_kb_path() -> None:
+    compound = _FakeCompound(_ok_retrieval())
+    store = SessionStore()
+    session = await store.load("preset")
+    session["session_id"] = "preset"
+    session["active_hotel_id"] = "rixos_belek"
+    session["active_region"] = "antalya"
+    await store.save(session)
+
+    p = ConciergePipeline(
+        session_store=store,
+        classifier=EscalationClassifier(
+            classify_fn=_scripted_classify({"type": "none", "confidence": 0.0, "signal": None}),
+            cache_get=None, cache_set=None,
+        ),
+        decomposer=QueryDecomposer(decompose_fn=_scripted_decompose({
+            "query_type": "scoped", "intent": "amenities",
+            "hotel_mention": "Rixos Belek", "language": "en",
+            "requirements": ["hamam"],
+        })),
+        compound=compound,
+    )
+    out = await p.run(utterance="hamam var mı?", session_id="preset")
+    assert out["path"] == PATH_SCOPED
+
+
+# ---------- 6. web / destination / hybrid placeholders ----------
+
+@pytest.mark.asyncio
+async def test_web_path_returns_placeholder_when_retriever_missing() -> None:
+    p = _build(decompose={
+        "query_type": "web", "intent": "event",
+        "city": "Bodrum", "language": "en",
+    })
+    out = await p.run(utterance="festivals in Bodrum next month?")
+    assert out["path"] == PATH_WEB
+    assert "web" in out["answer"].lower()
+    assert out["retrieval"] is None
+
+
+# ---------- 7. session persistence ----------
+
+@pytest.mark.asyncio
+async def test_session_id_returned_and_persists_across_calls() -> None:
+    compound = _FakeCompound(_ok_retrieval())
+    p = _build(
+        decompose={
+            "query_type": "broad", "intent": "recommendation",
+            "region": "antalya", "requirements": ["spa"], "language": "en",
+        },
+        compound=compound,
+    )
+    out = await p.run(utterance="spa hotel in antalya")
+    sid = out["session_id"]
+    assert sid
+
+    # Second call without explicit region — session.active_region carries over.
+    out2 = await p.run(utterance="another one", session_id=sid)
+    assert out2["session_id"] == sid
+    assert compound.calls[-1]["region"] == "antalya"
+
+
+@pytest.mark.asyncio
+async def test_turn_count_increments_on_full_answer() -> None:
+    compound = _FakeCompound(_ok_retrieval())
+    p = _build(
+        decompose={
+            "query_type": "broad", "intent": "recommendation",
+            "region": "antalya", "requirements": ["spa"], "language": "en",
+        },
+        compound=compound,
+    )
+    out = await p.run(utterance="spa hotel")
+    sid = out["session_id"]
+    session = await p._sessions.load(sid)  # noqa: SLF001 — test-only access
+    assert session["turn_count"] == 1
+    assert session["clarification_count"] == 0
+
+
+# ---------- 8. response contract ----------
+
+@pytest.mark.asyncio
+async def test_response_contract_shape() -> None:
+    compound = _FakeCompound(_ok_retrieval())
+    out = await _build(compound=compound).run(utterance="spa hotel in antalya")
+    required = {
+        "session_id", "utterance", "path", "reason",
+        "escalation", "clarification", "decomposition", "router",
+        "retrieval", "answer", "timings",
+    }
+    assert required.issubset(out.keys())
+    assert "total_ms" in out["timings"]

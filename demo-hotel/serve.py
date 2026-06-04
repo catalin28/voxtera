@@ -4456,26 +4456,49 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         finish()
 
     def _handle_concierge(self) -> None:
-        """POST /api/concierge — synchronous JSON Q&A backed by ConciergeAgent.
+        """POST /api/concierge — synchronous JSON Q&A backed by ConciergePipeline.
 
-        Request:  {"utterance": str, "region": str}
-        Response: full ConciergeAgent.answer() dict (answer, retrieval, decomposition,
-                  reason, timings).
+        Request:  {"utterance": str, "region": str, "session_id": str | None}
+        Response: full ConciergePipeline.run() dict
+                  (session_id, path, reason, answer, escalation,
+                   clarification, decomposition, router, retrieval, timings).
         """
-        from voxtera.call_center.concierge import ConciergeAgent
+        from voxtera.call_center.classifier import EscalationClassifier
+        from voxtera.call_center.compound import CompoundAndDiscovery
+        from voxtera.call_center.concierge import _build_anthropic_render
+        from voxtera.call_center.decompose import QueryDecomposer
+        from voxtera.call_center.pipeline import ConciergePipeline
+        from voxtera.call_center.router import SourceRouter
+        from voxtera.call_center.session import SessionStore
+        from voxtera.call_center.triage import Triage
 
         body = self._read_json_body()
         utterance = (body.get("utterance") or "").strip()
-        region = (body.get("region") or "").strip()
+        region = (body.get("region") or "").strip() or None
+        session_id = (body.get("session_id") or "").strip() or None
         if not utterance:
             self._send_json(400, {"error": "utterance_required"})
             return
 
         async def _run() -> dict:
             import aiohttp as _aio
-            async with _aio.ClientSession() as session:
-                agent = ConciergeAgent(session=session)
-                return await agent.answer(utterance=utterance, region=region)
+            async with _aio.ClientSession() as http:
+                pipeline = ConciergePipeline(
+                    session_store=SessionStore(),
+                    classifier=EscalationClassifier(),
+                    decomposer=QueryDecomposer(),
+                    triage=Triage(),
+                    router=SourceRouter(),
+                    compound=CompoundAndDiscovery(session=http),
+                    render_fn=_build_anthropic_render(
+                        os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001")
+                    ),
+                )
+                return await pipeline.run(
+                    utterance=utterance,
+                    session_id=session_id,
+                    region=region,
+                )
 
         loop = asyncio.new_event_loop()
         try:

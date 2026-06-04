@@ -32,6 +32,7 @@ from loguru import logger
 
 from voxtera.call_center.compound import CompoundAndDiscovery
 from voxtera.call_center.kb_config import DEFAULT_MAX_REQUIREMENTS
+from voxtera.call_center.prompts import load_prompt
 
 DEFAULT_MODEL = os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001")
 
@@ -44,48 +45,10 @@ DecomposeFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 RenderFn = Callable[[dict[str, Any]], Awaitable[str]]
 
 
-_DECOMPOSE_SYSTEM = """You convert hotel-guest utterances into a structured search plan.
-
-Given an utterance and a region scope, return STRICT JSON with this shape:
-
-  {
-    "requirements": ["short noun-phrase 1", "short noun-phrase 2", ...],
-    "activity_tags": ["tag1", "tag2"] or null,
-    "category_hint": "wellness" | "food_beverage" | "rooms" | "activities" | "policies" | null,
-    "language": "en" | "tr" | "ru" | "de" | "fr" | "es" | ...
-  }
-
-Rules:
-- Each requirement MUST be a short noun phrase suitable for semantic search
-  (e.g. "spa wellness massage", "kids club children programs", "ocean view balcony").
-  Do NOT include filler words like "I want", "we'd like", "for my wife".
-- Split independent requirements ("a spa AND scuba diving" -> 2 entries).
-- Use activity_tags ONLY when an obvious filterable tag applies (diving, golf, kids).
-- Use category_hint ONLY when the user is clearly asking about ONE specific category.
-- Detect the language of the utterance (ISO-639-1).
-- Return AT MOST 5 requirements.
-- Output ONLY the JSON object, no prose, no markdown fences."""
-
-
-_RENDER_SYSTEM = """You are a multilingual hotel concierge.
-
-You will receive:
-  - the original guest utterance
-  - the detected language (answer in this language)
-  - the region scope
-  - the structured retrieval result from a hotel knowledge base
-
-Write a SINGLE concise answer (2-4 sentences) that:
-  - Names the hotels that match, with one short reason per hotel grounded in
-    the evidence chunks.
-  - If reason == "partial_match_only", explicitly acknowledges the missing
-    requirements ("but none of them have X").
-  - If reason == "no_match_above_threshold" or "empty_requirements", says so
-    plainly without inventing hotels.
-  - If reason == "no_region_scope", asks the guest which region they have in mind.
-  - NEVER invent hotel names or amenities not present in the evidence.
-  - Do NOT use markdown, lists, or section headers — plain conversational text.
-  - Answer in the detected language."""
+# Prompts live in src/voxtera/call_center/prompts/*.md so they can be edited
+# without touching Python source (per project convention).
+_DECOMPOSE_SYSTEM = load_prompt("concierge_decompose_legacy")
+_RENDER_SYSTEM = load_prompt("concierge_render")
 
 
 class ConciergeAgent:

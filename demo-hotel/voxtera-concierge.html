@@ -481,16 +481,34 @@ async function ask(utterance){
   addBubble('user', 'You · ' + region, utterance);
   const waiting = addSystem('Thinking…');
   sendBtn.disabled = true;
+  const sessionId = sessionStorage.getItem('voxtera_concierge_sid') || null;
   try {
     const res = await fetch('/api/concierge', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({utterance, region}),
+      body: JSON.stringify({utterance, region, session_id: sessionId}),
     });
     waiting.remove();
     const data = await res.json();
     if (!res.ok){
       addBubble('assistant', 'Concierge · error', data.error || ('HTTP ' + res.status));
+      return;
+    }
+    // Persist session id for multi-turn context (triage clarifications, etc.).
+    if (data.session_id){
+      sessionStorage.setItem('voxtera_concierge_sid', data.session_id);
+    }
+    // Escalation banner — handoff to human.
+    if (data.escalation && data.escalation.escalate){
+      const label = 'Concierge · escalating (' + data.escalation.escalation_type + ')';
+      const bub = addBubble('assistant', label, data.answer || '—');
+      renderDebug(data, bub);
+      return;
+    }
+    // Clarification — ask the user a follow-up question and wait for reply.
+    if (data.clarification && data.clarification.question){
+      const bub = addBubble('assistant', 'Concierge · needs more info', data.clarification.question);
+      renderDebug(data, bub);
       return;
     }
     const bub = addBubble('assistant', 'Concierge', data.answer || '—');
