@@ -39,6 +39,8 @@ from typing import Any
 
 from loguru import logger
 
+from voxtera.call_center.prompts import load_localised_prompts
+
 # Max clarification turns per call (architecture §3 design principle).
 MAX_CLARIFICATIONS = 2
 
@@ -53,25 +55,11 @@ GEOGRAPHY_REQUIRED_QUERY_TYPES = {
     "broad", "compound", "comparison", "destination", "web", "hybrid",
 }
 
-# Localised clarification prompts. Keep terse — voice channel.
-# Extend with more locales as we ship.
-_PROMPTS: dict[str, dict[str, str]] = {
-    "tr": {
-        SLOT_GEOGRAPHY: "Nereye gitmek istiyorsunuz?",
-        SLOT_HOTEL_OR_RECOMMEND: "Belirli bir otel mi arıyorsunuz, yoksa öneri mi istersiniz?",
-        SLOT_NON_NEGOTIABLE: "Mutlaka olması gereken bir şey var mı (helal yemek, erişilebilirlik gibi)?",
-    },
-    "en": {
-        SLOT_GEOGRAPHY: "Which destination are you thinking of?",
-        SLOT_HOTEL_OR_RECOMMEND: "Are you asking about a specific hotel, or looking for suggestions?",
-        SLOT_NON_NEGOTIABLE: "Is there anything that must be available (halal food, accessibility, etc.)?",
-    },
-    "es": {
-        SLOT_GEOGRAPHY: "¿A qué destino está pensando ir?",
-        SLOT_HOTEL_OR_RECOMMEND: "¿Pregunta por un hotel en concreto o busca recomendaciones?",
-        SLOT_NON_NEGOTIABLE: "¿Hay algo imprescindible (comida halal, accesibilidad...)?",
-    },
-}
+# Localised clarification prompts. Loaded at import time from
+# src/voxtera/call_center/prompts/triage_questions.md so non-engineers
+# (and the future admin UI) can edit wording without touching code.
+# Schema: {locale: {slot: question_text}}.
+_PROMPTS: dict[str, dict[str, str]] = load_localised_prompts("triage_questions")
 
 _DEFAULT_LANG = "en"
 

@@ -44,6 +44,8 @@ from typing import Any
 
 from loguru import logger
 
+from voxtera.call_center.prompts import load_prompt
+
 DEFAULT_MODEL = os.environ.get("ESCALATION_MODEL", "gpt-4.1-nano")
 DEFAULT_CACHE_TTL_SECONDS = 24 * 60 * 60  # 24h — escalation signals are stable
 CACHE_KEY_PREFIX = "voxtera:cc:escalation:"
@@ -61,39 +63,9 @@ VALID_TYPES = {
 ESCALATE_MIN_CONFIDENCE = float(os.environ.get("ESCALATION_MIN_CONFIDENCE", "0.55"))
 
 
-_SYSTEM_PROMPT = """You classify hotel call-center utterances.
-
-Decide whether the caller's message should escalate OUT of the normal
-recommendation / knowledge-base flow. Multilingual input (Turkish,
-English, Russian, German, etc.).
-
-Categories — pick AT MOST ONE:
-
-  live_complaint  — Caller is ON the hotel property and has an active
-                    problem right now (can't get into room, AC broken,
-                    no hot water, noise, missing item, dirty room, ...).
-  medical         — Medical, safety, or security emergency (fainted,
-                    injury, ambulance, fire, theft in progress).
-  urgency         — Time-pressured request ("right now", "immediately",
-                    "acil", "şimdi", "сейчас же") that needs human attention.
-  booking         — Caller wants to MAKE a new reservation
-                    ("I want to book", "rezervasyon yapmak istiyorum").
-  post_booking    — Caller wants to MODIFY/CANCEL an existing booking
-                    ("change my reservation", "rezervasyonumu iptal etmek").
-  none            — Anything else — recommendations, KB questions,
-                    chit-chat, hypotheticals, future planning.
-
-Output STRICT JSON, no prose, no markdown fences:
-
-  {"type": "<category>", "confidence": 0.0-1.0, "signal": "<short phrase from input>"}
-
-Rules:
-  - If the caller is just ASKING about reservations in the abstract
-    ("do you have rooms?") that is NOT booking — that is "none".
-  - If the caller MENTIONS being at the hotel but is asking a normal
-    KB question ("where is the spa?") that is NOT live_complaint.
-  - Be conservative: if unsure, return {"type": "none", "confidence": 0.3, "signal": null}.
-"""
+# Loaded at import time from src/voxtera/call_center/prompts/escalation_classifier.md
+# so non-engineers (and the future admin UI) can tune wording without editing code.
+_SYSTEM_PROMPT = load_prompt("escalation_classifier")
 
 ClassifyFn = Callable[[str], Awaitable[dict[str, Any]]]
 CacheGet = Callable[[str], Awaitable[str | None]]
