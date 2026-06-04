@@ -24,6 +24,8 @@ from voxtera.actions.hotel_config import HotelConfig
 # on them.
 CREATE_TICKET_FUNCTION_NAME: Final[str] = "create_ticket"
 WEB_SEARCH_FUNCTION_NAME: Final[str] = "web_search"
+FIND_VIDEOS_FUNCTION_NAME: Final[str] = "find_hotel_videos"
+FIND_REVIEWS_FUNCTION_NAME: Final[str] = "find_hotel_reviews"
 _DEFAULT_TOOLS_DIR: Final[Path] = Path(__file__).resolve().parents[3] / "config" / "tools"
 
 
@@ -140,3 +142,30 @@ def build_web_search_tool() -> FunctionSchema:
     parameters — the schema is static.
     """
     return _to_pipecat_schema(_build_web_search_spec())
+
+
+def _build_static_spec(file_name: str, expected_name: str) -> dict:
+    """Load a static (no placeholders) tool spec from ``config/tools/<file_name>``."""
+    file_path = _DEFAULT_TOOLS_DIR / file_name
+    raw = file_path.read_text(encoding="utf-8")
+    tool = json.loads(raw)
+    function = tool.get("function") or {}
+    if function.get("name") != expected_name:
+        raise RuntimeError(
+            f"config/tools/{file_name} must define function.name={expected_name!r}"
+        )
+    return function
+
+
+def build_find_videos_tool() -> FunctionSchema:
+    """Build the ``find_hotel_videos`` FunctionSchema (static, no hotel-specific fields)."""
+    return _to_pipecat_schema(
+        _build_static_spec("find_hotel_videos.json", FIND_VIDEOS_FUNCTION_NAME)
+    )
+
+
+def build_find_reviews_tool() -> FunctionSchema:
+    """Build the ``find_hotel_reviews`` FunctionSchema (static, no hotel-specific fields)."""
+    return _to_pipecat_schema(
+        _build_static_spec("find_hotel_reviews.json", FIND_REVIEWS_FUNCTION_NAME)
+    )

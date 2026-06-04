@@ -1,0 +1,25 @@
+{
+  "type": "function",
+  "function": {
+    "name": "find_hotel_reviews",
+    "description": "Fetch public Google Reviews for a hotel — the aggregate rating, total review count, and up to five most-recent reviews. Use when the guest asks what other travelers say about the property, how well it scores, or for honest opinions. Do NOT use to verify amenities or policies (the knowledge base is authoritative for those).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "hotel_name": {
+          "type": "string",
+          "description": "The hotel's name as the guest said it (or the property in scope for this call)."
+        },
+        "region_hint": {
+          "type": "string",
+          "description": "Optional city / country to disambiguate common names (e.g. 'Barcelona', 'Mexico City'). Strongly recommended — without it 'Hilton' alone is ambiguous."
+        },
+        "language": {
+          "type": "string",
+          "description": "Optional ISO-639-1 code (e.g. 'en', 'tr', 'es'). Google will prefer reviews and the place name in that language when available."
+        }
+      },
+      "required": ["hotel_name"]
+    }
+  }
+}
