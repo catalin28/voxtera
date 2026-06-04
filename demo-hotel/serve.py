@@ -1623,6 +1623,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_visitors()
         if self.path.startswith("/api/admin/ip-lookup"):
             return self._handle_admin_ip_lookup()
+        if self.path == "/api/admin/greetings":
+            return self._handle_admin_greetings_get()
         if self.path == "/api/trace/snapshot":
             return self._handle_trace_snapshot()
         if self.path == "/api/trace/stream":
@@ -1687,6 +1689,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_end_session()
         if self.path == "/api/admin/config":
             return self._handle_admin_config_post()
+        if self.path == "/api/admin/greetings":
+            return self._handle_admin_greetings_post()
         if self.path == "/api/admin/tune":
             return self._handle_admin_tune()
         # Phase 3 — on-demand bot launcher
@@ -1712,6 +1716,9 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         return None
 
     def do_DELETE(self):  # noqa: N802
+        if self.path.startswith("/api/admin/greetings/"):
+            lang = self.path[len("/api/admin/greetings/") :]
+            return self._handle_admin_greetings_delete(lang)
         if self.path.startswith("/api/trace/sessions/"):
             sid = self.path[len("/api/trace/sessions/") :]
             return self._handle_delete_session(sid)
@@ -1880,6 +1887,116 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(401, {"error": "unauthorized"})
             return
         self._send_json(200, {"ok": True})
+
+    # ------------------------------------------------------------------
+    # /api/admin/greetings — CRUD for config/greetings.json
+    # ------------------------------------------------------------------
+
+    def _greetings_json_path(self) -> Path:
+        """Return the path to config/greetings.json."""
+        return Path(__file__).resolve().parent.parent / "config" / "greetings.json"
+
+    def _handle_admin_greetings_get(self) -> None:
+        """GET /api/admin/greetings — return full greetings JSON."""
+        ok, _ = self._admin_auth()
+        if not ok:
+            return
+        gpath = self._greetings_json_path()
+        if not gpath.is_file():
+            self._send_json(404, {"error": "greetings.json not found"})
+            return
+        data = json.loads(gpath.read_text(encoding="utf-8"))
+        self._send_json(200, data)
+
+    def _handle_admin_greetings_post(self) -> None:
+        """POST /api/admin/greetings — update or add a greeting.
+
+        Body: {"lang": "xx", "greeting": "...",
+               "timed": {"morning": "...", "afternoon": "...", "evening": "..."}}
+        If "timed" is omitted, only the neutral greeting is updated.
+        """
+        ok, _ = self._admin_auth()
+        if not ok:
+            return
+        body = self._read_json_body()
+        lang = body.get("lang", "").strip().lower()
+        greeting = body.get("greeting", "").strip()
+        timed = body.get("timed")
+
+        if not lang or not greeting:
+            self._send_json(400, {"error": "lang and greeting are required"})
+            return
+
+        gpath = self._greetings_json_path()
+        if gpath.is_file():
+            data = json.loads(gpath.read_text(encoding="utf-8"))
+        else:
+            data = {"greetings": {}, "timed_greetings": {}}
+
+        data["greetings"][lang] = greeting
+        if timed and isinstance(timed, dict):
+            data["timed_greetings"][lang] = timed
+
+        gpath.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # Reload in-memory greetings
+        from voxtera.prompts.greetings import GREETINGS as _G
+        from voxtera.prompts.greetings import TIMED_GREETINGS as _T
+        from voxtera.prompts.greetings import _load_greetings
+
+        new_g, new_t = _load_greetings()
+        _G.clear()
+        _G.update(new_g)
+        _T.clear()
+        _T.update(new_t)
+
+        self._send_json(200, {"ok": True, "lang": lang})
+
+    def _handle_admin_greetings_delete(self, lang: str) -> None:
+        """DELETE /api/admin/greetings/<lang> — remove a language from greetings."""
+        ok, _ = self._admin_auth()
+        if not ok:
+            return
+        lang = lang.strip().lower()
+        if not lang:
+            self._send_json(400, {"error": "language code required"})
+            return
+        if lang == "en":
+            self._send_json(400, {"error": "cannot delete English (fallback language)"})
+            return
+
+        gpath = self._greetings_json_path()
+        if not gpath.is_file():
+            self._send_json(404, {"error": "greetings.json not found"})
+            return
+
+        data = json.loads(gpath.read_text(encoding="utf-8"))
+        removed = False
+        if lang in data.get("greetings", {}):
+            del data["greetings"][lang]
+            removed = True
+        if lang in data.get("timed_greetings", {}):
+            del data["timed_greetings"][lang]
+            removed = True
+
+        if not removed:
+            self._send_json(404, {"error": f"language '{lang}' not found"})
+            return
+
+        gpath.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # Reload in-memory greetings
+        from voxtera.prompts.greetings import GREETINGS as _G
+        from voxtera.prompts.greetings import TIMED_GREETINGS as _T
+        from voxtera.prompts.greetings import _load_greetings
+
+        new_g, new_t = _load_greetings()
+        _G.clear()
+        _G.update(new_g)
+        _T.clear()
+        _T.update(new_t)
+
+        self._send_json(200, {"ok": True, "deleted": lang})
 
     # ------------------------------------------------------------------
     # /api/admin/visitors — parsed Caddy access log with enrichment
