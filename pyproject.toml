@@ -68,4 +68,7 @@ packages = ["voxtera"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-v"
+addopts = "-v -m 'not live_eval'"
+markers = [
+    "live_eval: end-to-end evaluation against live LLMs (opt-in via -m live_eval)",
+]
