@@ -32,6 +32,19 @@ DEFAULT_MAX_REQUIREMENTS = 5
 DEFAULT_MAX_HOTELS = 5
 DISCOVERY_OVERSHOOT_MULT = 6
 
+# Cross-encoder rerank defaults (Phase 3a)
+# bge-reranker-v2-m3 is multilingual (matches multilingual-e5-large above).
+# Raw model output is a logit; we apply sigmoid in the reranker so all callers
+# see a [0,1] score. With sigmoid applied:
+#   ~0.50 ≈ borderline · ~0.70 ≈ confident match · ~0.95+ ≈ exact match
+# RERANK_MIN_SCORE drops hits below an absolute floor (real separation, unlike
+# the e5 0.70 floor which is a junk-floor only). RERANK_RELATIVE_MARGIN trims
+# any hit whose rerank score is more than this far below the top hit, also on
+# the [0,1] scale.
+RERANK_MODEL = "BAAI/bge-reranker-v2-m3"
+RERANK_MIN_SCORE = 0.50
+RERANK_RELATIVE_MARGIN = 0.15
+
 # Curated chunk categories (architecture v0.3 §6 + dev plan Phase 2f)
 CATEGORIES = (
     "overview",

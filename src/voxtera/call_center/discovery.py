@@ -38,7 +38,10 @@ from voxtera.call_center.kb_config import (
     DISCOVERY_OVERSHOOT_MULT,
     QDRANT_COLLECTION,
     RELATIVE_MARGIN,
+    RERANK_MIN_SCORE,
+    RERANK_RELATIVE_MARGIN,
 )
+from voxtera.call_center.reranker import RerankFn, is_rerank_enabled
 
 EmbedFn = Callable[[str], Awaitable[list[float]] | list[float]]
 SearchFn = Callable[[list[float], dict, int], Awaitable[list[dict]]]
@@ -63,6 +66,9 @@ class BroadHotelDiscovery:
         overshoot_mult: int = DISCOVERY_OVERSHOOT_MULT,
         embed_fn: EmbedFn | None = None,
         search_fn: SearchFn | None = None,
+        rerank_fn: RerankFn | None = None,
+        rerank_min_score: float = RERANK_MIN_SCORE,
+        rerank_relative_margin: float = RERANK_RELATIVE_MARGIN,
     ) -> None:
         self._session = session
         self._collection = collection
@@ -72,6 +78,13 @@ class BroadHotelDiscovery:
         self._overshoot_mult = overshoot_mult
         self._embed_fn = embed_fn
         self._search_fn = search_fn
+        # Rerank is opt-in via dependency injection: tests pass rerank_fn=None
+        # (default) and never load the model. Production wires a real one in.
+        # The env kill-switch only affects callers that ask for it via
+        # `rerank_fn` being non-None but env-disabled.
+        self._rerank_fn = rerank_fn
+        self._rerank_min_score = rerank_min_score
+        self._rerank_relative_margin = rerank_relative_margin
 
     async def discover(
         self,
@@ -97,7 +110,8 @@ class BroadHotelDiscovery:
             logger.warning("BroadHotelDiscovery error for region={!r}: {}", region, e)
             return self._empty(region, query, normalized_query, REASON_ERROR)
 
-        return self._finalize(region, query, normalized_query, hits)
+        hits, reranked = await self._maybe_rerank(normalized_query, hits)
+        return self._finalize(region, query, normalized_query, hits, reranked=reranked)
 
     # --- internals ---
 
@@ -143,13 +157,58 @@ class BroadHotelDiscovery:
         )
         return resp.get("result", []) or []
 
+    async def _maybe_rerank(
+        self, query: str, hits: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Replace each hit's `score` with a cross-encoder rerank score.
+
+        Returns ``(hits, reranked)`` where ``reranked`` is True iff rerank
+        actually ran (so `_finalize` can pick the right thresholds).
+        Falls back to the unmodified hits — and the cosine-scale thresholds
+        — on any rerank failure.
+        """
+        if self._rerank_fn is None or not hits or not is_rerank_enabled():
+            return hits, False
+        passages = [
+            (h.get("payload") or {}).get("text") or ""
+            for h in hits
+        ]
+        try:
+            result = self._rerank_fn(query, passages)
+            scores = await result if hasattr(result, "__await__") else result
+        except Exception as e:  # noqa: BLE001 — never fail retrieval over rerank
+            logger.warning("Reranker failed (falling back to cosine scores): {}", e)
+            return hits, False
+        if len(scores) != len(hits):
+            logger.warning(
+                "Reranker returned {} scores for {} hits; ignoring rerank",
+                len(scores), len(hits),
+            )
+            return hits, False
+        rescored: list[dict[str, Any]] = []
+        for hit, s in zip(hits, scores):
+            new_hit = dict(hit)
+            new_hit["_cosine"] = float(hit.get("score", 0.0))
+            new_hit["score"] = float(s)
+            rescored.append(new_hit)
+        rescored.sort(key=lambda h: h["score"], reverse=True)
+        return rescored, True
+
     def _finalize(
         self,
         region: str,
         query: str,
         normalized_query: str,
         hits: list[dict[str, Any]],
+        reranked: bool = False,
     ) -> dict[str, Any]:
+        # Pick the active thresholds: rerank scale ([0,1] separated) when
+        # rerank ran; cosine scale (compressed, junk-floor only) otherwise.
+        min_score = self._rerank_min_score if reranked else self._min_score
+        relative_margin = (
+            self._rerank_relative_margin if reranked else self._relative_margin
+        )
+
         # Aggregate by hotel_id, keep the highest-scoring chunk per hotel.
         best_per_hotel: dict[str, dict[str, Any]] = {}
         best_below_threshold = 0.0
@@ -159,7 +218,7 @@ class BroadHotelDiscovery:
             if not hotel_id:
                 continue
             score = float(h.get("score", 0.0))
-            if score < self._min_score:
+            if score < min_score:
                 if score > best_below_threshold:
                     best_below_threshold = score
                 continue
@@ -183,12 +242,12 @@ class BroadHotelDiscovery:
             }
 
         # Relative-margin filter: keep only hotels whose best-chunk score is
-        # within RELATIVE_MARGIN of the top hotel's score. Trim-only; top hotel
-        # always survives.
+        # within `relative_margin` of the top hotel's score. Trim-only; top
+        # hotel always survives.
         top_score = ordered[0]["_score"]
         within_margin = [
             e for e in ordered
-            if e["_score"] >= top_score - self._relative_margin
+            if e["_score"] >= top_score - relative_margin
         ]
         capped = within_margin[: self._max_hotels]
 

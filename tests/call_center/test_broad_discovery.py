@@ -227,3 +227,137 @@ class TestThresholdBoundaries:
         result = await d.discover(region=REGION, query="any")
         assert result["count"] == 0
         assert result["reason"] == REASON_NO_MATCH
+
+
+def _make_rerank_fn(scores_by_text: dict[str, float] | None = None,
+                    raises: bool = False):
+    """Return a deterministic rerank_fn that maps chunk text -> rerank score.
+
+    Unmapped texts get 0.10 (sub-floor) so the test can assert filtering.
+    """
+    calls: list[tuple[str, list[str]]] = []
+    mapping = scores_by_text or {}
+
+    def _fn(query: str, passages: list[str]) -> list[float]:
+        calls.append((query, list(passages)))
+        if raises:
+            raise RuntimeError("boom")
+        return [mapping.get(p, 0.10) for p in passages]
+
+    _fn.calls = calls  # type: ignore[attr-defined]
+    return _fn
+
+
+class TestRerank:
+    async def test_rerank_reorders_hits_by_rerank_score(self) -> None:
+        # Cosine order: A (0.82) > B (0.80). Rerank inverts it: B > A.
+        hits = [
+            _hit(0.82, hotel_id="hotel_a", chunk_id="a1", idx=1),
+            _hit(0.80, hotel_id="hotel_b", chunk_id="b1", idx=2),
+        ]
+        # Use _hit's "text" payload to identify which passage scores higher.
+        rerank = _make_rerank_fn({"text-1": 0.78, "text-2": 0.92})
+        d = BroadHotelDiscovery(
+            embed_fn=_fake_embed,
+            search_fn=_make_search_fn(hits),
+            rerank_fn=rerank,
+        )
+        result = await d.discover(region=REGION, query="spa with thalasso")
+
+        assert result["count"] == 2
+        assert [h["hotel_id"] for h in result["hotels"]] == ["hotel_b", "hotel_a"]
+        # Rerank score replaces cosine in the public `score`.
+        assert result["hotels"][0]["score"] == pytest.approx(0.92)
+        assert result["hotels"][1]["score"] == pytest.approx(0.78)
+        # Rerank ran exactly once with the right passages.
+        assert len(rerank.calls) == 1  # type: ignore[attr-defined]
+        q, passages = rerank.calls[0]  # type: ignore[attr-defined]
+        assert q == "spa with thalasso"
+        assert passages == ["text-1", "text-2"]
+
+    async def test_rerank_drops_hits_below_rerank_min_score(self) -> None:
+        # Both hits clear the cosine floor (0.70) but only one clears the
+        # rerank floor (0.50).
+        hits = [
+            _hit(0.78, hotel_id="hotel_a", chunk_id="a1", idx=1),
+            _hit(0.81, hotel_id="hotel_b", chunk_id="b1", idx=2),
+        ]
+        rerank = _make_rerank_fn({"text-1": 0.72, "text-2": 0.12})
+        d = BroadHotelDiscovery(
+            embed_fn=_fake_embed,
+            search_fn=_make_search_fn(hits),
+            rerank_fn=rerank,
+        )
+        result = await d.discover(region=REGION, query="any")
+
+        assert result["count"] == 1
+        assert result["hotels"][0]["hotel_id"] == "hotel_a"
+        assert result["hotels"][0]["score"] == pytest.approx(0.72)
+
+    async def test_rerank_failure_falls_back_to_cosine(self) -> None:
+        # If rerank raises, retrieval must still return cosine-scored hits.
+        hits = [_hit(0.82, hotel_id="hotel_a", chunk_id="a1", idx=1)]
+        rerank = _make_rerank_fn(raises=True)
+        d = BroadHotelDiscovery(
+            embed_fn=_fake_embed,
+            search_fn=_make_search_fn(hits),
+            rerank_fn=rerank,
+        )
+        result = await d.discover(region=REGION, query="any")
+
+        assert result["count"] == 1
+        assert result["hotels"][0]["score"] == pytest.approx(0.82)
+
+    async def test_rerank_disabled_by_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Env kill-switch bypasses rerank even when rerank_fn is provided.
+        monkeypatch.setenv("RAG_RERANK_ENABLED", "false")
+        hits = [_hit(0.82, hotel_id="hotel_a", chunk_id="a1", idx=1)]
+        rerank = _make_rerank_fn({"text-1": 0.99})  # would change score if it ran
+        d = BroadHotelDiscovery(
+            embed_fn=_fake_embed,
+            search_fn=_make_search_fn(hits),
+            rerank_fn=rerank,
+        )
+        result = await d.discover(region=REGION, query="any")
+
+        assert result["hotels"][0]["score"] == pytest.approx(0.82)
+        assert rerank.calls == []  # type: ignore[attr-defined]
+
+    async def test_rerank_relative_margin_trims_weaker_hotels(self) -> None:
+        # Rerank scores: A=0.90 (leader), B=0.80 (within 0.15), C=0.60 (trim).
+        hits = [
+            _hit(0.81, hotel_id="hotel_a", chunk_id="a1", idx=1),
+            _hit(0.80, hotel_id="hotel_b", chunk_id="b1", idx=2),
+            _hit(0.79, hotel_id="hotel_c", chunk_id="c1", idx=3),
+        ]
+        rerank = _make_rerank_fn(
+            {"text-1": 0.90, "text-2": 0.80, "text-3": 0.60}
+        )
+        d = BroadHotelDiscovery(
+            embed_fn=_fake_embed,
+            search_fn=_make_search_fn(hits),
+            rerank_fn=rerank,
+            rerank_relative_margin=0.15,
+        )
+        result = await d.discover(region=REGION, query="any")
+
+        assert [h["hotel_id"] for h in result["hotels"]] == ["hotel_a", "hotel_b"]
+
+    async def test_rerank_called_only_once_per_discover(self) -> None:
+        # Sanity: even though rerank_fn looks like an embed_fn, it must run
+        # exactly once on the post-search batch \u2014 not per-hit.
+        hits = [
+            _hit(0.82, hotel_id=f"hotel_{i}", chunk_id=f"c{i}", idx=i)
+            for i in range(1, 11)
+        ]
+        rerank = _make_rerank_fn({f"text-{i}": 0.60 for i in range(1, 11)})
+        d = BroadHotelDiscovery(
+            embed_fn=_fake_embed,
+            search_fn=_make_search_fn(hits),
+            rerank_fn=rerank,
+        )
+        await d.discover(region=REGION, query="any")
+        assert len(rerank.calls) == 1  # type: ignore[attr-defined]
+        assert len(rerank.calls[0][1]) == 10  # type: ignore[attr-defined]
+
+
