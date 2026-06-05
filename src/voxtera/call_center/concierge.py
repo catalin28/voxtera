@@ -30,6 +30,7 @@ from typing import Any
 import aiohttp
 from loguru import logger
 
+from voxtera.call_center.clients import anthropic_client as _anthropic
 from voxtera.call_center.compound import CompoundAndDiscovery
 from voxtera.call_center.kb_config import DEFAULT_MAX_REQUIREMENTS
 from voxtera.call_center.prompts import load_prompt
@@ -77,13 +78,23 @@ class ConciergeAgent:
         timings: dict[str, float] = {}
 
         if not utterance:
-            return self._short_circuit(utterance, region, REASON_EMPTY_UTTERANCE,
-                                       "I didn't catch that — could you say it again?",
-                                       t_start, timings)
+            return self._short_circuit(
+                utterance,
+                region,
+                REASON_EMPTY_UTTERANCE,
+                "I didn't catch that — could you say it again?",
+                t_start,
+                timings,
+            )
         if not region:
-            return self._short_circuit(utterance, region, REASON_NO_REGION_SCOPE,
-                                       "Which region are you looking at?",
-                                       t_start, timings)
+            return self._short_circuit(
+                utterance,
+                region,
+                REASON_NO_REGION_SCOPE,
+                "Which region are you looking at?",
+                t_start,
+                timings,
+            )
 
         t0 = time.perf_counter()
         try:
@@ -91,9 +102,14 @@ class ConciergeAgent:
         except Exception as e:  # noqa: BLE001
             timings["decompose_ms"] = _ms(time.perf_counter() - t0)
             logger.warning("Concierge decompose failed: {}", e)
-            return self._short_circuit(utterance, region, REASON_DECOMPOSE_ERROR,
-                                       "Sorry, I couldn't process that request just now.",
-                                       t_start, timings)
+            return self._short_circuit(
+                utterance,
+                region,
+                REASON_DECOMPOSE_ERROR,
+                "Sorry, I couldn't process that request just now.",
+                t_start,
+                timings,
+            )
         timings["decompose_ms"] = _ms(time.perf_counter() - t0)
 
         requirements = list(decomposition.get("requirements") or [])[: self._max_requirements]
@@ -111,12 +127,14 @@ class ConciergeAgent:
 
         t0 = time.perf_counter()
         try:
-            answer = await self._render_fn({
-                "utterance": utterance,
-                "region": region,
-                "decomposition": decomposition,
-                "retrieval": retrieval,
-            })
+            answer = await self._render_fn(
+                {
+                    "utterance": utterance,
+                    "region": region,
+                    "decomposition": decomposition,
+                    "retrieval": retrieval,
+                }
+            )
         except Exception as e:  # noqa: BLE001
             timings["render_ms"] = _ms(time.perf_counter() - t0)
             timings["total_ms"] = _ms(time.perf_counter() - t_start)
@@ -135,7 +153,10 @@ class ConciergeAgent:
 
         logger.info(
             "concierge.answer region={!r} reqs={} reason={} timings={}",
-            region, len(requirements), retrieval.get("reason"), timings,
+            region,
+            len(requirements),
+            retrieval.get("reason"),
+            timings,
         )
         return {
             "utterance": utterance,
@@ -148,8 +169,14 @@ class ConciergeAgent:
         }
 
     @staticmethod
-    def _short_circuit(utterance: str, region: str, reason: str, answer: str,
-                       t_start: float, timings: dict[str, float]) -> dict[str, Any]:
+    def _short_circuit(
+        utterance: str,
+        region: str,
+        reason: str,
+        answer: str,
+        t_start: float,
+        timings: dict[str, float],
+    ) -> dict[str, Any]:
         timings["total_ms"] = _ms(time.perf_counter() - t_start)
         return {
             "utterance": utterance,
@@ -169,6 +196,7 @@ def _ms(seconds: float) -> float:
 
 # ----------------- default Anthropic-backed steps -----------------
 
+
 def _build_anthropic_decompose(model: str) -> DecomposeFn:
     """Build a decompose_fn that calls Anthropic and parses strict JSON.
 
@@ -177,21 +205,23 @@ def _build_anthropic_decompose(model: str) -> DecomposeFn:
     """
 
     async def decompose(utterance: str, region: str) -> dict[str, Any]:
-        from anthropic import AsyncAnthropic
-
-        client = AsyncAnthropic()  # picks up ANTHROPIC_API_KEY
+        client = _anthropic()  # shared, connection pool kept warm
         msg = await client.messages.create(
             model=model,
             max_tokens=512,
-            system=[{
-                "type": "text",
-                "text": _DECOMPOSE_SYSTEM,
-                "cache_control": {"type": "ephemeral"},
-            }],
-            messages=[{
-                "role": "user",
-                "content": f"Region: {region}\nUtterance: {utterance}",
-            }],
+            system=[
+                {
+                    "type": "text",
+                    "text": _DECOMPOSE_SYSTEM,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Region: {region}\nUtterance: {utterance}",
+                }
+            ],
         )
         raw = _first_text_block(msg)
         return _parse_strict_json(raw)
@@ -203,9 +233,6 @@ def _build_anthropic_render(model: str) -> RenderFn:
     """Build a render_fn that calls Anthropic with the retrieval payload."""
 
     async def render(payload: dict[str, Any]) -> str:
-        from anthropic import AsyncAnthropic
-
-        client = AsyncAnthropic()
         # Trim retrieval to the fields the model actually needs to stay grounded.
         retrieval = payload.get("retrieval") or {}
         trimmed = {
@@ -231,19 +258,46 @@ def _build_anthropic_render(model: str) -> RenderFn:
             f"Guest utterance: {payload.get('utterance')}\n\n"
             f"Retrieval result (JSON):\n{json.dumps(trimmed, ensure_ascii=False)}"
         )
+        client = _anthropic()  # shared, connection pool kept warm
         msg = await client.messages.create(
             model=model,
             max_tokens=512,
-            system=[{
-                "type": "text",
-                "text": _RENDER_SYSTEM,
-                "cache_control": {"type": "ephemeral"},
-            }],
+            system=[
+                {
+                    "type": "text",
+                    "text": _RENDER_SYSTEM,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             messages=[{"role": "user", "content": user_msg}],
+        )
+        usage = _extract_usage(msg)
+        # render latency tracks output_tokens; stop_reason == "max_tokens" means
+        # the answer is being truncated at the 512 cap. cache_read confirms the
+        # render system prompt cache is hitting.
+        logger.info(
+            "concierge.render usage in={} out={} cache_read={} stop={}",
+            usage.get("input_tokens"),
+            usage.get("output_tokens"),
+            usage.get("cache_read_input_tokens"),
+            getattr(msg, "stop_reason", None),
         )
         return _first_text_block(msg).strip()
 
     return render
+
+
+def _extract_usage(msg: Any) -> dict[str, Any]:
+    """Pull token counts off an Anthropic Messages response, defensively."""
+    u = getattr(msg, "usage", None)
+    if u is None:
+        return {}
+    return {
+        "input_tokens": getattr(u, "input_tokens", None),
+        "output_tokens": getattr(u, "output_tokens", None),
+        "cache_read_input_tokens": getattr(u, "cache_read_input_tokens", None),
+        "cache_creation_input_tokens": getattr(u, "cache_creation_input_tokens", None),
+    }
 
 
 def _first_text_block(msg: Any) -> str:

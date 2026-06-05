@@ -21,7 +21,6 @@ Usage:
 
 import argparse
 import json
-import sys
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -82,7 +81,7 @@ def _poll_session_ready(host: str, session_id: str, timeout: float = 30.0) -> fl
 def test_single_call(host: str, caller: str = "+15551234567") -> None:
     """Simulate one PSTN call and measure timing."""
     print(f"\n{'='*60}")
-    print(f"  PSTN DRY CALL — Single Call Test")
+    print("  PSTN DRY CALL — Single Call Test")
     print(f"  Target: {host}")
     print(f"  Caller: {caller}")
     print(f"{'='*60}\n")
@@ -92,7 +91,7 @@ def test_single_call(host: str, caller: str = "+15551234567") -> None:
     # Step 1: POST webhook
     print("[1/4] Posting webhook (simulating incoming call)...")
     result = _post_webhook(host, caller)
-    t_webhook = time.perf_counter() - t_start
+    time.perf_counter() - t_start
 
     print(f"      Status: {result['status']}")
     print(f"      Response: {result['body']}")
@@ -120,19 +119,19 @@ def test_single_call(host: str, caller: str = "+15551234567") -> None:
 
     # Step 3: Summary
     total = time.perf_counter() - t_start
-    print(f"\n[3/4] Timing Summary:")
+    print("\n[3/4] Timing Summary:")
     print(f"      Webhook processing:  {result['elapsed_ms']:>7.0f}ms")
     if ready_elapsed:
         print(f"      Bot startup:         {ready_elapsed * 1000:>7.0f}ms")
-        print(f"      ─────────────────────────────────")
+        print("      ─────────────────────────────────")
         print(f"      TOTAL HOLD TIME:     {ready_elapsed:>7.1f}s")
-        print(f"\n      This is what the caller hears as hold music.")
+        print("\n      This is what the caller hears as hold music.")
     else:
-        print(f"      Bot startup:         (not measured — bot didn't start)")
+        print("      Bot startup:         (not measured — bot didn't start)")
         print(f"      Total elapsed:       {total:.1f}s")
 
     # Step 4: Verdict
-    print(f"\n[4/4] Verdict:")
+    print("\n[4/4] Verdict:")
     if ready_elapsed and ready_elapsed < 5.0:
         print("      GOOD — caller waits < 5s")
     elif ready_elapsed and ready_elapsed < 10.0:
@@ -146,7 +145,7 @@ def test_single_call(host: str, caller: str = "+15551234567") -> None:
 def test_rate_limit(host: str, burst: int = 5, caller: str = "+15551234567") -> None:
     """Fire multiple calls from the same number to test rate limiting."""
     print(f"\n{'='*60}")
-    print(f"  PSTN DRY CALL — Rate Limit Test")
+    print("  PSTN DRY CALL — Rate Limit Test")
     print(f"  Target: {host}")
     print(f"  Caller: {caller}")
     print(f"  Burst:  {burst} calls")
@@ -168,7 +167,7 @@ def test_rate_limit(host: str, burst: int = 5, caller: str = "+15551234567") -> 
     rejected_429 = sum(1 for r in results if r["status"] == 429)
     rejected_503 = sum(1 for r in results if r["status"] == 503)
 
-    print(f"\n  Summary:")
+    print("\n  Summary:")
     print(f"    Accepted (200): {accepted}")
     print(f"    Rate-limited (429): {rejected_429}")
     print(f"    Capacity-limited (503): {rejected_503}")
@@ -182,7 +181,7 @@ def test_rate_limit(host: str, burst: int = 5, caller: str = "+15551234567") -> 
 def test_concurrent(host: str, count: int = 12) -> None:
     """Fire calls from different numbers simultaneously to test concurrent limit."""
     print(f"\n{'='*60}")
-    print(f"  PSTN DRY CALL — Concurrent Limit Test")
+    print("  PSTN DRY CALL — Concurrent Limit Test")
     print(f"  Target: {host}")
     print(f"  Calls:  {count} (each from a different number)")
     print(f"{'='*60}\n")
@@ -210,7 +209,7 @@ def test_concurrent(host: str, count: int = 12) -> None:
     accepted = sum(1 for _, r in results if r["status"] == 200)
     rejected = sum(1 for _, r in results if r["status"] != 200)
 
-    print(f"\n  Summary:")
+    print("\n  Summary:")
     print(f"    Accepted: {accepted}")
     print(f"    Rejected: {rejected}")
     print(f"\n  {'PASS' if rejected > 0 else 'NOTE'} — "
@@ -220,7 +219,7 @@ def test_concurrent(host: str, count: int = 12) -> None:
 def test_webhook_validation(host: str) -> None:
     """Test webhook input validation and error handling."""
     print(f"\n{'='*60}")
-    print(f"  PSTN DRY CALL — Webhook Validation Tests")
+    print("  PSTN DRY CALL — Webhook Validation Tests")
     print(f"  Target: {host}")
     print(f"{'='*60}\n")
 
@@ -234,10 +233,7 @@ def test_webhook_validation(host: str) -> None:
 
     passed = 0
     for name, payload, expected_status in tests:
-        if isinstance(payload, bytes):
-            data = payload
-        else:
-            data = json.dumps(payload).encode()
+        data = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
 
         req = Request(
             f"{host}/pstn/webhook",

@@ -30,7 +30,6 @@ from dotenv import load_dotenv
 
 from voxtera.call_center.compound import CompoundAndDiscovery
 
-
 REGION = "Turkish Riviera"
 
 # (label, region, requirements, expected_reason, expected_missing_subset)
@@ -77,9 +76,7 @@ async def main() -> int:
 
             ok_reason = (reason == expected_reason)
             ok_missing = expected_missing.issubset(set(missing))
-            if expected_reason is None:
-                ok_count = count >= 1
-            elif expected_reason == "partial_match_only":
+            if expected_reason is None or expected_reason == "partial_match_only":
                 ok_count = count >= 1
             else:
                 ok_count = count == 0

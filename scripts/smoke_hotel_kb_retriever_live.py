@@ -24,7 +24,6 @@ from dotenv import load_dotenv
 
 from voxtera.call_center.kb_retriever import HotelKBRetriever
 
-
 # (label, hotel_id, query, category_hint, expected_reason, min_chunks)
 SCENARIOS = [
     ("scoped happy path",         "rixos_premium_belek", "water park land of legends",  None,            None,                       1),

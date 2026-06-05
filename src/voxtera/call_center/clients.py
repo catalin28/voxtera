@@ -3,8 +3,38 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import aiohttp
+
+# --- Shared LLM clients ------------------------------------------------
+# A new AsyncAnthropic/AsyncOpenAI per request opens a fresh TLS connection
+# each call — a large slice of the ~2.2s decompose / ~1.5s render wall-time is
+# this connection setup, not generation. Lazily-created module-level singletons
+# keep the HTTP connection pool warm and are shared across decompose + render.
+# Lazy so import and injected-fn tests need no API key.
+_anthropic_client: Any = None
+_openai_client: Any = None
+
+
+def anthropic_client() -> Any:
+    """Process-wide shared AsyncAnthropic (warm connection pool)."""
+    global _anthropic_client
+    if _anthropic_client is None:
+        from anthropic import AsyncAnthropic
+
+        _anthropic_client = AsyncAnthropic()
+    return _anthropic_client
+
+
+def openai_client() -> Any:
+    """Process-wide shared AsyncOpenAI (warm connection pool)."""
+    global _openai_client
+    if _openai_client is None:
+        from openai import AsyncOpenAI
+
+        _openai_client = AsyncOpenAI()
+    return _openai_client
 
 
 def _es_url() -> str:

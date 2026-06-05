@@ -34,17 +34,23 @@ from typing import Any
 # Path identifiers — kept stable across versions; downstream retrievers
 # dispatch on these strings.
 PATH_ESCALATE = "escalate"
-PATH_SCOPED = "scoped_qdrant"          # Path 1
-PATH_BROAD = "broad_qdrant"            # Path 2
-PATH_DESTINATION = "destination_kb"    # Path 3
-PATH_WEB = "web_search"                # Path 4
-PATH_HYBRID = "hybrid"                 # Path 5
-PATH_HOTEL_RESOLVE = "hotel_resolve"   # Elasticsearch step before Path 1
+PATH_SCOPED = "scoped_qdrant"  # Path 1
+PATH_BROAD = "broad_qdrant"  # Path 2
+PATH_DESTINATION = "destination_kb"  # Path 3
+PATH_WEB = "web_search"  # Path 4
+PATH_HYBRID = "hybrid"  # Path 5
+PATH_HOTEL_RESOLVE = "hotel_resolve"  # Elasticsearch step before Path 1
 PATH_NEEDS_GEOGRAPHY = "needs_geography"  # triage gap that slipped through
 
 PATHS = {
-    PATH_ESCALATE, PATH_SCOPED, PATH_BROAD, PATH_DESTINATION,
-    PATH_WEB, PATH_HYBRID, PATH_HOTEL_RESOLVE, PATH_NEEDS_GEOGRAPHY,
+    PATH_ESCALATE,
+    PATH_SCOPED,
+    PATH_BROAD,
+    PATH_DESTINATION,
+    PATH_WEB,
+    PATH_HYBRID,
+    PATH_HOTEL_RESOLVE,
+    PATH_NEEDS_GEOGRAPHY,
 }
 
 # Intents that flag a time-sensitive query (must go to web).
@@ -55,7 +61,10 @@ _LOCAL_OPERATOR_INTENTS = {"local_operator"}
 
 # Intents that indicate destination-level (cultural / geographic) knowledge.
 _DESTINATION_INTENTS = {
-    "destination_info", "etiquette", "landmarks", "visa",
+    "destination_info",
+    "etiquette",
+    "landmarks",
+    "visa",
 }
 
 
@@ -101,11 +110,19 @@ def _decide(
         return {"path": PATH_ESCALATE, "sources": [], "reason": "escalation_trigger", "needs": None}
 
     # 2. Time-sensitive → web.
-    if qt == "web" or intent in _TIME_SENSITIVE_INTENTS:
+    #    A time-sensitive *intent* (event/weather/practical_info) is only a
+    #    safety net to catch web queries the decomposer didn't tag qt="web".
+    #    It must NOT hijack an explicitly SCOPED query: "is the hotel on the
+    #    beach?" is a static fact in that hotel's guide (qt=scoped,
+    #    source_required=["hotel_kb"]) even though the model labelled the intent
+    #    "practical_info". Genuinely live hotel questions come back as qt="hybrid".
+    if qt == "web" or (intent in _TIME_SENSITIVE_INTENTS and qt != "scoped"):
         if not has_geo:
             return {
-                "path": PATH_NEEDS_GEOGRAPHY, "sources": [],
-                "reason": "web_query_missing_geography", "needs": "geography",
+                "path": PATH_NEEDS_GEOGRAPHY,
+                "sources": [],
+                "reason": "web_query_missing_geography",
+                "needs": "geography",
             }
         return {"path": PATH_WEB, "sources": ["web"], "reason": "time_sensitive", "needs": None}
 
@@ -113,59 +130,95 @@ def _decide(
     if qt == "hybrid" or intent in _LOCAL_OPERATOR_INTENTS:
         if hotel_id or (isinstance(hotel_mention, str) and hotel_mention.strip()):
             return {
-                "path": PATH_HYBRID, "sources": ["hotel_kb", "web"],
-                "reason": "local_operator_with_hotel", "needs": None,
+                "path": PATH_HYBRID,
+                "sources": ["hotel_kb", "web"],
+                "reason": "local_operator_with_hotel",
+                "needs": None,
             }
         if not has_geo:
             return {
-                "path": PATH_NEEDS_GEOGRAPHY, "sources": [],
-                "reason": "local_operator_missing_geography", "needs": "geography",
+                "path": PATH_NEEDS_GEOGRAPHY,
+                "sources": [],
+                "reason": "local_operator_missing_geography",
+                "needs": "geography",
             }
         return {
-            "path": PATH_WEB, "sources": ["web"],
-            "reason": "local_operator_no_hotel", "needs": None,
+            "path": PATH_WEB,
+            "sources": ["web"],
+            "reason": "local_operator_no_hotel",
+            "needs": None,
         }
 
     # 4. Specific hotel query.
-    if qt == "scoped" or (isinstance(hotel_mention, str) and hotel_mention.strip()):
-        if hotel_id:
+    has_mention = isinstance(hotel_mention, str) and bool(hotel_mention.strip())
+    if qt == "scoped" or has_mention:
+        if has_mention:
+            # A freshly NAMED hotel always re-resolves, even when a (possibly
+            # different) hotel is already active in the session. Otherwise stale
+            # session.active_hotel_id shadows the new mention and we answer about
+            # the wrong hotel — e.g. "tell me about Akra Kemer" then "how about
+            # Crystal Tat?" would keep answering about Akra Kemer. Re-resolution
+            # is ~170ms; correctness beats the saved round-trip.
             return {
-                "path": PATH_SCOPED, "sources": ["hotel_kb"],
-                "reason": "hotel_resolved", "needs": None,
+                "path": PATH_HOTEL_RESOLVE,
+                "sources": [],
+                "reason": "hotel_mention_unresolved",
+                "needs": "hotel_resolve",
+            }
+        if hotel_id:
+            # No new mention → genuine follow-up about the hotel locked into this
+            # session ("what are the standard rooms?").
+            return {
+                "path": PATH_SCOPED,
+                "sources": ["hotel_kb"],
+                "reason": "hotel_resolved",
+                "needs": None,
             }
         return {
-            "path": PATH_HOTEL_RESOLVE, "sources": [],
-            "reason": "hotel_mention_unresolved", "needs": "hotel_resolve",
+            "path": PATH_HOTEL_RESOLVE,
+            "sources": [],
+            "reason": "hotel_mention_unresolved",
+            "needs": "hotel_resolve",
         }
 
     # 5. Multi-hotel recommendation / comparison / compound.
     if qt in {"broad", "comparison", "compound"}:
         if not has_geo:
             return {
-                "path": PATH_NEEDS_GEOGRAPHY, "sources": [],
-                "reason": "broad_query_missing_geography", "needs": "geography",
+                "path": PATH_NEEDS_GEOGRAPHY,
+                "sources": [],
+                "reason": "broad_query_missing_geography",
+                "needs": "geography",
             }
         return {
-            "path": PATH_BROAD, "sources": ["hotel_kb"],
-            "reason": f"broad_{qt}", "needs": None,
+            "path": PATH_BROAD,
+            "sources": ["hotel_kb"],
+            "reason": f"broad_{qt}",
+            "needs": None,
         }
 
     # 6. Destination-level knowledge.
     if qt == "destination" or intent in _DESTINATION_INTENTS:
         return {
-            "path": PATH_DESTINATION, "sources": ["destination_kb"],
-            "reason": "destination_level", "needs": None,
+            "path": PATH_DESTINATION,
+            "sources": ["destination_kb"],
+            "reason": "destination_level",
+            "needs": None,
         }
 
     # 7. Fallthrough — broad Qdrant if we have geography, else ask.
     if not has_geo:
         return {
-            "path": PATH_NEEDS_GEOGRAPHY, "sources": [],
-            "reason": "fallthrough_missing_geography", "needs": "geography",
+            "path": PATH_NEEDS_GEOGRAPHY,
+            "sources": [],
+            "reason": "fallthrough_missing_geography",
+            "needs": "geography",
         }
     return {
-        "path": PATH_BROAD, "sources": ["hotel_kb"],
-        "reason": "fallthrough_default", "needs": None,
+        "path": PATH_BROAD,
+        "sources": ["hotel_kb"],
+        "reason": "fallthrough_default",
+        "needs": None,
     }
 
 

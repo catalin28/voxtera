@@ -83,6 +83,66 @@ When the corpus grows finer-grained (per-city payload), trim or remove the alias
 
 ---
 
+## 2b. Bug fix — scoped query returned the wrong hotel (added 2026-06-04)
+
+### Symptom
+
+A scoped, named-hotel query answered about a *different* hotel. From
+`concierge-2026-06-04.jsonl`:
+
+```
+path=scoped_qdrant  hotel_mention="Crystal Tat Beach Pearl Collection"
+                    → returned "Cornelia De Luxe Resort"
+router.reason = "hotel_resolved"
+```
+
+This fires on the most natural flow: *"recommend a hotel"* → bot names Crystal Tat
+→ *"tell me about Crystal Tat"* → answer about the wrong property.
+
+### Root cause
+
+`ConciergePipeline._run_kb` sourced the resolved id **only** from the
+decomposition:
+
+```python
+hotel_id = decomposition.get("hotel_id") if path == PATH_SCOPED else None
+```
+
+But `decomposition["hotel_id"]` is written in exactly one place — the *inline*
+resolver on the `PATH_HOTEL_RESOLVE` branch ([`pipeline.py`](../../src/voxtera/call_center/pipeline.py)).
+When `session["active_hotel_id"]` is already set from a prior turn, the router
+returns `PATH_SCOPED` **directly** (`router.py` → reason `"hotel_resolved"`), so
+that branch never runs, `hotel_id` stays `None`, the scope filter no-ops, and
+`compound.discover` degrades to a generic broad semantic search over
+`requirements` (`["hotel overview", "amenities", "facilities"]`) — returning
+whatever ranks top.
+
+### Fix
+
+Source the id from **either** location, and warn loudly if a scoped path still
+has no id:
+
+```python
+hotel_id = (
+    (decomposition.get("hotel_id") or session.get("active_hotel_id"))
+    if path == PATH_SCOPED
+    else None
+)
+...
+if path == PATH_SCOPED and not hotel_id:
+    logger.warning("scoped path with unresolved hotel_id (mention=%r) — "
+                   "retrieval will not be hotel-scoped", decomposition.get("hotel_mention"))
+```
+
+### Tests
+
+`tests/call_center/test_pipeline.py::test_scoped_with_session_hotel_runs_kb_path`
+was strengthened to assert `discover` receives `hotel_id="rixos_belek"` and the
+result is filtered to that hotel. Verified it **fails on the old code and passes
+on the fix**. Full suite: 145 passed, 3 skipped (Redis).
+
+---
+
 ## 3. Latency optimisations
 
 ### 3.1 Pre-warm e5-large at server boot
@@ -130,7 +190,17 @@ system=[{
 
 Anthropic stores the encoded prompt for ~5 min. Cache hits pay ~10% of input-token cost and skip the encode step.
 
-**Win:** ~300–800 ms per Claude call after the first warm-up; small token-cost reduction.
+**Win:** small — and smaller than first claimed. See the correction below.
+
+> **Correction (2026-06-04).** This optimisation was oversold. The decompose
+> system prompt (`prompts/query_decomposer.md`) is **~648 words (~860 tokens)**,
+> not the "large, static" prompt assumed here. At that size the encode step is
+> trivial (~tens of ms), so prompt caching saves **little to nothing** on
+> decompose — the original "~300–800 ms" figure does not hold. The same applies
+> to the even smaller render prompt (~135 words). The real cost in both calls is
+> **output-token generation**, not prompt encode (see §3.5). Keep the cache block
+> — it's harmless and trims a little token cost — but do not count on it for
+> latency.
 
 ### 3.4 Sub-stage timing instrumentation for retrieve
 
@@ -150,6 +220,47 @@ The two contract tests (`test_response_shape_matches_contract` in `test_broad_di
 
 **Win:** diagnostic only — surfaces where time actually goes.
 
+### 3.5 Token-usage instrumentation on decompose + render (added 2026-06-04)
+
+**Problem.** `decompose_ms` (~2–3 s) was the single largest stage on the critical
+path, but nothing logged `usage` or `stop_reason`, so we couldn't tell whether
+the cost was prompt-encode, output generation, or truncation at the `max_tokens`
+cap. The Phase 3 doc *assumed* a large prompt; the live data (below) disproved it.
+
+**Fix.** A `_extract_usage()` helper in
+[`decompose.py`](../../src/voxtera/call_center/decompose.py) and
+[`concierge.py`](../../src/voxtera/call_center/concierge.py) pulls token counts
+off the Anthropic response. Decompose threads them through the decomposition
+payload, so they land directly in `concierge-YYYY-MM-DD.jsonl`:
+
+```json
+"decomposition": {
+  "...": "...",
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 880,
+    "output_tokens": 310,
+    "cache_read_input_tokens": 860,
+    "cache_creation_input_tokens": 0
+  }
+}
+```
+
+Render logs the same via loguru (`concierge.render usage in=… out=… cache_read=… stop=…`)
+since its contract returns a bare string.
+
+**How to read it.**
+
+- `stop_reason == "max_tokens"` → the answer is being truncated at the cap
+  (1024 for decompose, 512 for render); raise the cap or shorten the output.
+- `output_tokens` is the real latency driver. High output + slow wall-time → the
+  lever is **fewer output tokens** (omit null fields / leaner schema) or a faster
+  model (`gpt-4.1-nano`), *not* prompt caching.
+- `cache_read_input_tokens > 0` confirms the cache is hitting — and, given the
+  ~860-token prompt, confirms it's saving very little (§3.3 correction).
+
+**Win:** diagnostic only — settles *why* decompose is slow on the next run.
+
 ---
 
 ## 4. Expected timings (warm path, 2nd+ request)
@@ -158,13 +269,37 @@ The two contract tests (`test_response_shape_matches_contract` in `test_broad_di
 |---|---:|---:|---|
 | classify | 2500 ms | 0 ms* | runs in parallel — hides behind decompose |
 | session_load | 264 ms | 264 ms | included in parallel leg |
-| decompose | 2952 ms | ~2200 ms | prompt caching |
+| decompose | 2952 ms | ~2200 ms | output-token bound (NOT caching — see §3.3 correction) |
 | triage + route | 0 ms | 0 ms | unchanged |
 | retrieve | 4950 ms | ~250 ms | warm model (embed ~180 + qdrant ~60) |
-| render | 2189 ms | ~1500 ms | prompt caching |
+| render | 2189 ms | ~1500 ms | output-token bound |
 | **total** | **12872 ms** | **~4200 ms** | ~3× faster |
 
 *classify wall-time is 0 on the critical path; it still runs (it's the longer of the parallel legs unless decompose is slower, which it usually is).
+
+### 4.1 Measured live (2026-06-04, `concierge-2026-06-04.jsonl`)
+
+Four real calls confirm the warm-path model and reset where the budget actually goes:
+
+| utterance | decompose | classify | retrieve | render | total |
+|---|---:|---:|---:|---:|---:|
+| spa + kids club (Antalya) | 3001 | 1086 | 314 | 1972 | 5649 |
+| spa to relax (paris → no match) | 1958 | 1028 | 220 | 0 | 2319 |
+| spa to relax (Antalya) | 3002 | 787 | 262 | 1377 | 4802 |
+| scoped: Crystal Tat Beach | 2012 | 1206 | 361 | 1789 | 4307 |
+
+Takeaways, all verified against the code:
+
+- **Retrieve is not the bottleneck** — 220–361 ms warm. The "~4 s retrieve" worry
+  was a misread of `total`. No further tuning needed here.
+- **Decompose (2–3 s) is the #1 cost** and scales with output JSON size (1 req →
+  ~1958 ms; 2 reqs + vibes → ~3001 ms). It is *output-token bound*; the ~860-token
+  prompt means caching barely helps. Levers: omit null fields / leaner schema, or
+  `gpt-4.1-nano`. §3.5 logging will confirm `output_tokens` / `stop_reason`.
+- **Classify is already free** — fully hidden inside the decompose leg
+  (787–1206 ms < decompose). A fast-path classifier saves **zero** wall-time until
+  decompose drops below classify. Do not build it yet.
+- **Render (1.4–2.0 s)** is #2; streaming render → TTS is the time-to-first-audio win.
 
 To reach **< 3s end-to-end without streaming**, the classifier must come off the critical path entirely (Step 4 in the latency plan — regex emergency fast-path + async telemetry).
 
@@ -235,9 +370,20 @@ For each: clear `sessionStorage` (DevTools → Application → Storage → Clear
 - `retrieval.reason` (should be `null` on a good match, or one of: `partial_match_only`, `no_match_above_threshold`, `no_region_scope`, `empty_requirements`, `retriever_error`)
 - `retrieval.count` (number of hotels returned)
 
-### 5.5 Verifying prompt cache hits
+### 5.5 Verifying token usage + cache hits (now logged — §3.5)
 
-After 2+ requests within ~5 min using the same prompts, Anthropic returns `usage.cache_read_input_tokens > 0` on the response. To inspect this you'd need to log `msg.usage` in the decompose/render functions (not currently logged). If you want this surfaced in the debug panel, ask and we'll add it.
+Token usage **is now logged** (added 2026-06-04). After a run, inspect
+`concierge-YYYY-MM-DD.jsonl`:
+
+```bash
+python3 -c "import json,sys; [print(d['decomposition'].get('stop_reason'), d['decomposition'].get('usage')) for d in map(json.loads, open(sys.argv[1])) if d.get('decomposition')]" logs/concierge-$(date +%F).jsonl
+```
+
+- `decomposition.usage.output_tokens` — the decompose latency driver.
+- `decomposition.stop_reason` — `"max_tokens"` means truncation at the 1024 cap.
+- `decomposition.usage.cache_read_input_tokens > 0` — cache is hitting (but saves
+  little here; see §3.3 correction).
+- Render usage is in the loguru stream: grep for `concierge.render usage`.
 
 ### 5.6 Live evaluation suite
 
@@ -274,6 +420,16 @@ tests/call_center/test_broad_discovery.py     # contract test allows timings; al
 tests/call_center/test_compound_discovery.py  # contract test allows timings
 ```
 
+Follow-up change set (2026-06-04, same branch):
+
+```
+src/voxtera/call_center/pipeline.py      # scoped hotel_id sourced from session.active_hotel_id (§2b);
+                                         #   warn on unresolved scoped path
+src/voxtera/call_center/decompose.py     # _extract_usage(): thread usage + stop_reason into payload (§3.5)
+src/voxtera/call_center/concierge.py     # _extract_usage(): log render usage + stop_reason (§3.5)
+tests/call_center/test_pipeline.py       # regression test asserts scoped hotel_id reaches discover (§2b)
+```
+
 Plus three prior fixes from earlier in the session (already merged into the same uncommitted change set):
 
 - `triage.py` — narrowed `_needs_hotel_vs_recommend` to stop the over-ask
@@ -296,4 +452,22 @@ fix(call-center): region alias + latency tuning
 
 Expected: 12.8s → ~4.2s on warm path. Streaming render still
 needed to hit voice-pipeline < 3s TTFA.
+```
+
+Follow-up commit (2026-06-04):
+
+```
+fix(call-center): scoped hotel scope + token diagnostics
+
+- scoped query no longer returns the wrong hotel: _run_kb now sources
+  hotel_id from session.active_hotel_id when the router resolves via
+  session (reason "hotel_resolved"), not just from decomposition (§2b)
+- warn when a scoped path reaches retrieval with no resolved hotel_id
+- log Anthropic usage + stop_reason on decompose (into the jsonl) and
+  render (loguru) to settle why decompose is output-bound (§3.5)
+- regression test asserts the resolved id reaches discover()
+- doc correction: decompose prompt is ~860 tokens, so prompt caching
+  saves little; decompose latency is output-token bound (§3.3, §4.1)
+
+Tests: 145 passed, 3 skipped (Redis).
 ```

@@ -75,6 +75,7 @@ class CompoundAndDiscovery:
         requirements: list[str],
         activity_tags: list[str] | None = None,
         category_hint: str | None = None,
+        hotel_id: str | None = None,
     ) -> dict[str, Any]:
         region = (region or "").strip()
         normalized = [r.strip() for r in (requirements or []) if r and r.strip()]
@@ -86,7 +87,9 @@ class CompoundAndDiscovery:
             return self._empty(region, requirements, normalized, REASON_EMPTY_REQUIREMENTS)
 
         try:
-            per_req = await self._fan_out(normalized, region, activity_tags, category_hint)
+            per_req = await self._fan_out(
+                normalized, region, activity_tags, category_hint, hotel_id=hotel_id
+            )
         except Exception as e:  # noqa: BLE001 — graceful degradation per contract
             logger.warning("CompoundAndDiscovery error for region={!r}: {}", region, e)
             return self._empty(region, requirements, normalized, REASON_ERROR)
@@ -111,6 +114,8 @@ class CompoundAndDiscovery:
         region: str,
         activity_tags: list[str] | None,
         category_hint: str | None,
+        *,
+        hotel_id: str | None = None,
     ) -> list[dict[str, Any]]:
         tasks = [
             self._discovery.discover(
@@ -118,6 +123,7 @@ class CompoundAndDiscovery:
                 query=req,
                 activity_tags=activity_tags,
                 category_hint=category_hint,
+                hotel_id=hotel_id,
             )
             for req in requirements
         ]
@@ -175,15 +181,17 @@ class CompoundAndDiscovery:
         for hid in ids:
             per_req_hits = [m[hid] for m in maps]
             avg_score = sum(h["score"] for h in per_req_hits) / len(per_req_hits)
-            out.append({
-                "hotel_id": hid,
-                "score": float(avg_score),
-                "payload": per_req_hits[0]["payload"],
-                "evidence": {
-                    req: h["evidence_chunk"]
-                    for req, h in zip(requirements, per_req_hits)
-                },
-            })
+            out.append(
+                {
+                    "hotel_id": hid,
+                    "score": float(avg_score),
+                    "payload": per_req_hits[0]["payload"],
+                    "evidence": {
+                        req: h["evidence_chunk"]
+                        for req, h in zip(requirements, per_req_hits, strict=False)
+                    },
+                }
+            )
         out.sort(key=lambda h: h["score"], reverse=True)
         return out[: self._max_hotels]
 

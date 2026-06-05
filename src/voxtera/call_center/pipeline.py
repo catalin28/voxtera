@@ -41,7 +41,11 @@ the demo UI is being wired up.
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import time
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -49,6 +53,7 @@ from loguru import logger
 from voxtera.call_center.classifier import EscalationClassifier
 from voxtera.call_center.compound import CompoundAndDiscovery
 from voxtera.call_center.decompose import QueryDecomposer
+from voxtera.call_center.resolver import HotelResolver
 from voxtera.call_center.router import (
     PATH_BROAD,
     PATH_DESTINATION,
@@ -67,6 +72,14 @@ from voxtera.call_center.triage import Triage
 # Other paths (web, destination, hybrid) return acknowledged placeholders
 # until the dedicated retrievers ship in later phases.
 _KB_PATHS = {PATH_SCOPED, PATH_BROAD}
+
+# Fallback requirements for a scoped query about a resolved hotel that arrived
+# with no specific ask ("tell me about X", "how about X?"). The decomposer is
+# inconsistent here — sometimes it emits ["hotel overview", "amenities", ...],
+# sometimes []. An empty list makes CompoundAndDiscovery short-circuit with
+# `empty_requirements` and the concierge fails closed even though the hotel is
+# known. Injecting a generic overview makes the scoped path robust to that.
+_SCOPED_DEFAULT_REQUIREMENTS = ("hotel overview", "amenities", "facilities")
 
 
 def _ms(seconds: float) -> float:
@@ -131,6 +144,7 @@ class ConciergePipeline:
         router: SourceRouter | None = None,
         compound: CompoundAndDiscovery | None = None,
         render_fn: Any | None = None,
+        resolver: HotelResolver | None = None,
     ) -> None:
         self._sessions = session_store
         self._classifier = classifier
@@ -139,6 +153,9 @@ class ConciergePipeline:
         self._router = router or SourceRouter()
         self._compound = compound
         self._render_fn = render_fn
+        # Optional injected resolver (offline tests / custom backends). When
+        # None we build the real Elasticsearch-backed resolver per call.
+        self._resolver = resolver
 
     async def run(
         self,
@@ -154,10 +171,13 @@ class ConciergePipeline:
 
         if not utterance:
             return self._finish(
-                sid=sid, utterance=utterance,
-                path="empty", reason="empty_utterance",
+                sid=sid,
+                utterance=utterance,
+                path="empty",
+                reason="empty_utterance",
                 answer="I didn't catch that — could you say it again?",
-                t_start=t_start, timings=timings,
+                t_start=t_start,
+                timings=timings,
             )
 
         # 1+2+3 fan-out: classify runs in parallel with (load_session -> decompose).
@@ -179,7 +199,7 @@ class ConciergePipeline:
             t0 = time.perf_counter()
             sess = await self._sessions.load(sid)
             timings["session_load_ms"] = _ms(time.perf_counter() - t0)
-            if region and not sess.get("active_region"):
+            if region:
                 sess["active_region"] = region
             decompose_input_local = utterance
             if sess.get("pending_slots"):
@@ -210,16 +230,20 @@ class ConciergePipeline:
         if verdict.get("escalate"):
             answer = "Let me connect you to a colleague who can help with that right away."
             return self._finish(
-                sid=sid, utterance=utterance,
-                path=PATH_ESCALATE, reason="escalation_classifier",
-                escalation=verdict, answer=answer,
-                t_start=t_start, timings=timings,
+                sid=sid,
+                utterance=utterance,
+                path=PATH_ESCALATE,
+                reason="escalation_classifier",
+                escalation=verdict,
+                answer=answer,
+                t_start=t_start,
+                timings=timings,
             )
 
         # Promote a newly extracted region into the session so subsequent
         # turns don't have to re-state it.
         new_region = decomposition.get("region") or decomposition.get("city")
-        if new_region and not session.get("active_region"):
+        if new_region:
             session["active_region"] = new_region
 
         # Backfill session language from the first decomposed turn.
@@ -242,8 +266,10 @@ class ConciergePipeline:
             )
             await self._sessions.save(session)
             return self._finish(
-                sid=sid, utterance=utterance,
-                path="clarify", reason=triage_decision.get("reason", "clarification"),
+                sid=sid,
+                utterance=utterance,
+                path="clarify",
+                reason=triage_decision.get("reason", "clarification"),
                 decomposition=decomposition,
                 clarification={
                     "question": triage_decision.get("question"),
@@ -251,7 +277,8 @@ class ConciergePipeline:
                     "language": triage_decision.get("language"),
                 },
                 answer=triage_decision.get("question"),
-                t_start=t_start, timings=timings,
+                t_start=t_start,
+                timings=timings,
             )
 
         # 5. Route.
@@ -260,9 +287,39 @@ class ConciergePipeline:
         timings["route_ms"] = _ms(time.perf_counter() - t0)
         path = decision.get("path", PATH_BROAD)
 
+        # A broad/multi-hotel recommendation means the caller has moved off any
+        # specific hotel — drop the stale active_hotel_id so it can't shadow a
+        # later scoped follow-up (and so the next turn isn't poisoned by it).
+        if path == PATH_BROAD:
+            session.pop("active_hotel_id", None)
+
         # 6. Execute path.
         retrieval: dict[str, Any] | None = None
         answer: str | None = None
+
+        # 6a. Hotel resolution — resolve the name mention to a hotel_id,
+        #     then proceed as a scoped KB query filtered to that hotel.
+        if path == PATH_HOTEL_RESOLVE:
+            hotel_mention = (decomposition.get("hotel_mention") or "").strip()
+            if hotel_mention:
+                t0 = time.perf_counter()
+                if self._resolver is not None:
+                    resolution = await self._resolver.resolve(hotel_mention)
+                else:
+                    import aiohttp as _aio
+
+                    async with _aio.ClientSession() as _resolve_http:
+                        resolution = await HotelResolver(session=_resolve_http).resolve(
+                            hotel_mention
+                        )
+                timings["resolve_ms"] = _ms(time.perf_counter() - t0)
+                if resolution.get("decision") == "auto_resolve" and resolution.get("hotel_id"):
+                    # Promote to scoped query with the resolved hotel_id.
+                    decomposition["hotel_id"] = resolution["hotel_id"]
+                    session["active_hotel_id"] = resolution["hotel_id"]
+                    path = PATH_SCOPED
+                    decision["path"] = PATH_SCOPED
+                    decision["reason"] = "hotel_resolved_inline"
 
         if path in _KB_PATHS:
             t0 = time.perf_counter()
@@ -289,11 +346,16 @@ class ConciergePipeline:
         await self._sessions.save(session)
 
         return self._finish(
-            sid=sid, utterance=utterance,
-            path=path, reason=decision.get("reason", path),
-            decomposition=decomposition, router=decision,
-            retrieval=retrieval, answer=answer,
-            t_start=t_start, timings=timings,
+            sid=sid,
+            utterance=utterance,
+            path=path,
+            reason=decision.get("reason", path),
+            decomposition=decomposition,
+            router=decision,
+            retrieval=retrieval,
+            answer=answer,
+            t_start=t_start,
+            timings=timings,
         )
 
     # ---------- internal helpers ----------
@@ -308,23 +370,53 @@ class ConciergePipeline:
         if self._compound is None:
             return {
                 "reason": "no_retriever_configured",
-                "hotels": [], "missing_requirements": [],
+                "hotels": [],
+                "missing_requirements": [],
             }
-        region = (
-            decomposition.get("region")
-            or session.get("active_region")
-            or ""
-        )
+        region = decomposition.get("region") or session.get("active_region") or ""
         requirements = list(decomposition.get("requirements") or [])
-        # For scoped queries the hotel is the filter, but the existing
-        # CompoundAndDiscovery surface filters by region; scoped narrowing
-        # by hotel_id is wired through downstream (Phase 4 work).
-        return await self._compound.discover(
+        # Source the resolved hotel id from EITHER the decomposition (set by the
+        # inline resolver on the PATH_HOTEL_RESOLVE branch) OR the session
+        # (set on a prior turn; router then returns PATH_SCOPED directly with
+        # reason "hotel_resolved"). Reading only `decomposition` silently drops
+        # the scope on the session-resolved path, degrading a scoped lookup to a
+        # generic broad search and returning the wrong hotel. See _run_kb scope
+        # filter below.
+        hotel_id = (
+            (decomposition.get("hotel_id") or session.get("active_hotel_id"))
+            if path == PATH_SCOPED
+            else None
+        )
+        # Scoped query about a known hotel but no specific requirement → fall
+        # back to a generic overview instead of failing closed (empty_requirements).
+        if path == PATH_SCOPED and hotel_id and not requirements:
+            requirements = list(_SCOPED_DEFAULT_REQUIREMENTS)
+            logger.info(
+                "scoped query for hotel_id={!r} had no requirements — injecting overview default",
+                hotel_id,
+            )
+        if path == PATH_SCOPED and not hotel_id:
+            # Scoped path reached without a resolved hotel id — the query will
+            # degrade to a generic broad search over `requirements`. Surface it
+            # rather than silently answering about the wrong hotel.
+            logger.warning(
+                "scoped path with unresolved hotel_id (mention={!r}) — "
+                "retrieval will not be hotel-scoped",
+                decomposition.get("hotel_mention"),
+            )
+        result = await self._compound.discover(
             region=region,
             requirements=requirements,
             activity_tags=None,
             category_hint=None,
+            hotel_id=hotel_id,
         )
+        # For scoped queries, filter results to the resolved hotel only.
+        if hotel_id and path == PATH_SCOPED:
+            result["hotels"] = [
+                h for h in result.get("hotels", []) if h.get("hotel_id") == hotel_id
+            ]
+        return result
 
     async def _render(
         self,
@@ -351,17 +443,18 @@ class ConciergePipeline:
             return _no_match_answer(lang, region)
         if self._render_fn is None:
             names = ", ".join(
-                (h.get("payload") or {}).get("hotel_name", h.get("hotel_id"))
-                for h in hotels[:3]
+                (h.get("payload") or {}).get("hotel_name", h.get("hotel_id")) for h in hotels[:3]
             )
             return f"Top matches: {names}."
         try:
-            return await self._render_fn({
-                "utterance": utterance,
-                "region": decomposition.get("region") or session.get("active_region"),
-                "decomposition": decomposition,
-                "retrieval": retrieval or {},
-            })
+            return await self._render_fn(
+                {
+                    "utterance": utterance,
+                    "region": decomposition.get("region") or session.get("active_region"),
+                    "decomposition": decomposition,
+                    "retrieval": retrieval or {},
+                }
+            )
         except Exception as e:  # noqa: BLE001
             logger.warning("ConciergePipeline render failed: {}", e)
             return "Sorry, I had trouble forming a reply."
@@ -383,7 +476,7 @@ class ConciergePipeline:
         answer: str | None = None,
     ) -> dict[str, Any]:
         timings["total_ms"] = _ms(time.perf_counter() - t_start)
-        return {
+        result = {
             "session_id": sid,
             "utterance": utterance,
             "path": path,
@@ -396,3 +489,45 @@ class ConciergePipeline:
             "answer": answer,
             "timings": timings,
         }
+        self._log_query(result)
+        return result
+
+    def _log_query(self, result: dict[str, Any]) -> None:
+        """Append a structured NDJSON record to the concierge query log."""
+        try:
+            log_dir = Path(os.environ.get("CONCIERGE_LOG_DIR", "logs"))
+            log_dir.mkdir(parents=True, exist_ok=True)
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
+            log_file = log_dir / f"concierge-{today}.jsonl"
+            # Compact retrieval: keep hotel_ids + scores but drop full evidence text
+            retrieval = result.get("retrieval") or {}
+            hotels_summary = [
+                {
+                    "hotel_id": h.get("hotel_id"),
+                    "score": round(float(h.get("score", 0)), 3),
+                    "name": (h.get("payload") or {}).get("hotel_name"),
+                }
+                for h in retrieval.get("hotels", [])
+            ]
+            record = {
+                "ts": datetime.now(UTC).isoformat(),
+                "session_id": result.get("session_id"),
+                "utterance": result.get("utterance"),
+                "path": result.get("path"),
+                "reason": result.get("reason"),
+                "decomposition": result.get("decomposition"),
+                "router": result.get("router"),
+                "retrieval_summary": {
+                    "hotels": hotels_summary,
+                    "count": len(hotels_summary),
+                    "region": retrieval.get("region"),
+                    "missing_requirements": retrieval.get("missing_requirements", []),
+                    "reason": retrieval.get("reason"),
+                },
+                "answer_length": len(result.get("answer") or ""),
+                "timings": result.get("timings"),
+            }
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception as e:  # noqa: BLE001
+            logger.debug("concierge log write failed: {}", e)

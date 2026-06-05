@@ -138,9 +138,7 @@ async def main() -> None:
         result = await compound.discover(region=region.strip(), requirements=reqs)
         ok_reason = (result["reason"] == expected_reason)
         ok_missing = expected_missing.issubset(set(result["missing_requirements"]))
-        if expected_reason in (None,):
-            ok_count = result["count"] >= 1
-        elif expected_reason == "partial_match_only":
+        if expected_reason in (None,) or expected_reason == "partial_match_only":
             ok_count = result["count"] >= 1
         else:
             ok_count = result["count"] == 0

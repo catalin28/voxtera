@@ -52,7 +52,12 @@ SLOT_NON_NEGOTIABLE = "non_negotiable"
 # Query types where geography is non-negotiable (web queries fail
 # without a location; broad/comparison/destination need region or city).
 GEOGRAPHY_REQUIRED_QUERY_TYPES = {
-    "broad", "compound", "comparison", "destination", "web", "hybrid",
+    "broad",
+    "compound",
+    "comparison",
+    "destination",
+    "web",
+    "hybrid",
 }
 
 # Localised clarification prompts. Loaded at import time from
@@ -123,6 +128,13 @@ def _needs_non_negotiable(decomposition: dict[str, Any]) -> bool:
     delivering useless results (e.g. a "halal-required" caller getting
     a non-halal hotel as the top hit).
     """
+    # A scoped query is about a specific, already-known hotel — the caller is
+    # asking a factual question ("do they have bars?"), not requesting a
+    # recommendation. Never interrupt it with a dietary/accessibility prompt;
+    # just retrieve and answer.
+    if decomposition.get("query_type") == "scoped":
+        return False
+
     intent = decomposition.get("intent")
     if intent == "food" and not decomposition.get("dietary_religious"):
         return True
@@ -137,8 +149,12 @@ def _needs_non_negotiable(decomposition: dict[str, Any]) -> bool:
 
 def _no_ask(reason: str, language: str) -> dict[str, Any]:
     return {
-        "ask": False, "question": None, "slot": None,
-        "reason": reason, "language": language, "pending_slots": [],
+        "ask": False,
+        "question": None,
+        "slot": None,
+        "reason": reason,
+        "language": language,
+        "pending_slots": [],
     }
 
 
@@ -147,8 +163,12 @@ def _ask(slot: str, language: str, reason: str) -> dict[str, Any]:
     if not question:
         question = _PROMPTS[_DEFAULT_LANG][slot]
     return {
-        "ask": True, "question": question, "slot": slot,
-        "reason": reason, "language": language, "pending_slots": [slot],
+        "ask": True,
+        "question": question,
+        "slot": slot,
+        "reason": reason,
+        "language": language,
+        "pending_slots": [slot],
     }
 
 

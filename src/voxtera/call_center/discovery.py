@@ -95,6 +95,7 @@ class BroadHotelDiscovery:
         query: str,
         activity_tags: list[str] | None = None,
         category_hint: str | None = None,
+        hotel_id: str | None = None,
     ) -> dict[str, Any]:
         region = (region or "").strip()
         normalized_query = (query or "").strip()
@@ -109,7 +110,9 @@ class BroadHotelDiscovery:
             t0 = time.perf_counter()
             vector = await self._embed(normalized_query)
             timings["embed_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
-            body = self._build_search_body(vector, region, activity_tags, category_hint)
+            body = self._build_search_body(
+                vector, region, activity_tags, category_hint, hotel_id=hotel_id
+            )
             t0 = time.perf_counter()
             hits = await self._search(body)
             timings["qdrant_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
@@ -142,10 +145,14 @@ class BroadHotelDiscovery:
         region: str,
         activity_tags: list[str] | None,
         category_hint: str | None,
+        *,
+        hotel_id: str | None = None,
     ) -> dict[str, Any]:
         must: list[dict[str, Any]] = [
             {"key": "region", "match": {"value": canonical_region(region)}},
         ]
+        if hotel_id:
+            must.append({"key": "hotel_id", "match": {"value": hotel_id}})
         if activity_tags:
             must.append({"key": "activity_tags", "match": {"any": list(activity_tags)}})
         if category_hint:
@@ -182,10 +189,7 @@ class BroadHotelDiscovery:
         """
         if self._rerank_fn is None or not hits or not is_rerank_enabled():
             return hits, False
-        passages = [
-            (h.get("payload") or {}).get("text") or ""
-            for h in hits
-        ]
+        passages = [(h.get("payload") or {}).get("text") or "" for h in hits]
         try:
             result = self._rerank_fn(query, passages)
             scores = await result if hasattr(result, "__await__") else result
@@ -195,11 +199,12 @@ class BroadHotelDiscovery:
         if len(scores) != len(hits):
             logger.warning(
                 "Reranker returned {} scores for {} hits; ignoring rerank",
-                len(scores), len(hits),
+                len(scores),
+                len(hits),
             )
             return hits, False
         rescored: list[dict[str, Any]] = []
-        for hit, s in zip(hits, scores):
+        for hit, s in zip(hits, scores, strict=False):
             new_hit = dict(hit)
             new_hit["_cosine"] = float(hit.get("score", 0.0))
             new_hit["score"] = float(s)
@@ -218,9 +223,7 @@ class BroadHotelDiscovery:
         # Pick the active thresholds: rerank scale ([0,1] separated) when
         # rerank ran; cosine scale (compressed, junk-floor only) otherwise.
         min_score = self._rerank_min_score if reranked else self._min_score
-        relative_margin = (
-            self._rerank_relative_margin if reranked else self._relative_margin
-        )
+        relative_margin = self._rerank_relative_margin if reranked else self._relative_margin
 
         # Aggregate by hotel_id, keep the highest-scoring chunk per hotel.
         best_per_hotel: dict[str, dict[str, Any]] = {}
@@ -239,9 +242,7 @@ class BroadHotelDiscovery:
             if existing is None or score > existing["_score"]:
                 best_per_hotel[hotel_id] = {"_score": score, "_hit": h}
 
-        ordered = sorted(
-            best_per_hotel.values(), key=lambda x: x["_score"], reverse=True
-        )
+        ordered = sorted(best_per_hotel.values(), key=lambda x: x["_score"], reverse=True)
 
         if not ordered:
             return {
@@ -258,10 +259,7 @@ class BroadHotelDiscovery:
         # within `relative_margin` of the top hotel's score. Trim-only; top
         # hotel always survives.
         top_score = ordered[0]["_score"]
-        within_margin = [
-            e for e in ordered
-            if e["_score"] >= top_score - relative_margin
-        ]
+        within_margin = [e for e in ordered if e["_score"] >= top_score - relative_margin]
         capped = within_margin[: self._max_hotels]
 
         hotels = [self._hotel_from_entry(e) for e in capped]
@@ -299,9 +297,7 @@ class BroadHotelDiscovery:
         }
 
     @staticmethod
-    def _empty(
-        region: str, query: str, normalized_query: str, reason: str
-    ) -> dict[str, Any]:
+    def _empty(region: str, query: str, normalized_query: str, reason: str) -> dict[str, Any]:
         return {
             "region": region,
             "query": query,

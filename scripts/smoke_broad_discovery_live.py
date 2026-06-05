@@ -23,7 +23,6 @@ from dotenv import load_dotenv
 
 from voxtera.call_center.discovery import BroadHotelDiscovery
 
-
 REGION = "Turkish Riviera"
 
 # (label, region, query, tags, category_hint, expected_reason, extra_check)
