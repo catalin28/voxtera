@@ -43,6 +43,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -65,12 +66,11 @@ from voxtera.call_center.router import (
     PATH_WEB,
     SourceRouter,
 )
-from voxtera.call_center.session import SessionStore, new_session_id
+from voxtera.call_center.session import SessionStore, build_transcript, new_session_id
 from voxtera.call_center.triage import Triage
+from voxtera.call_center.web_retriever import WebRetriever
 
-# Paths that ConciergePipeline currently knows how to fully answer.
-# Other paths (web, destination, hybrid) return acknowledged placeholders
-# until the dedicated retrievers ship in later phases.
+# Paths that resolve against the hotel KB (Qdrant).
 _KB_PATHS = {PATH_SCOPED, PATH_BROAD}
 
 # Fallback requirements for a scoped query about a resolved hotel that arrived
@@ -90,7 +90,10 @@ def _placeholder_answer(path: str, language: str) -> str:
     """Localised acknowledgement for paths whose retrievers ship later."""
     msgs = {
         PATH_DESTINATION: {
-            "en": "I can answer destination questions like that — full destination KB ships in the next release.",
+            "en": (
+                "I can answer destination questions like that — "
+                "full destination KB ships in the next release."
+            ),
             "tr": "Bu tür destinasyon sorularını yakında tam olarak yanıtlayabileceğim.",
         },
         PATH_WEB: {
@@ -98,8 +101,14 @@ def _placeholder_answer(path: str, language: str) -> str:
             "tr": "Bu canlı bir web aramasi gerektiriyor — web katmanı yakında devreye alınacak.",
         },
         PATH_HYBRID: {
-            "en": "That mixes hotel data and a live web check — the hybrid path lights up in the next release.",
-            "tr": "Bu otel verisi ile canlı web aramasını birleştiriyor — hibrit yol yakında aktif olacak.",
+            "en": (
+                "That mixes hotel data and a live web check — "
+                "the hybrid path lights up in the next release."
+            ),
+            "tr": (
+                "Bu otel verisi ile canlı web aramasını birleştiriyor — "
+                "hibrit yol yakında aktif olacak."
+            ),
         },
         PATH_HOTEL_RESOLVE: {
             "en": "Which hotel exactly are you asking about?",
@@ -114,6 +123,115 @@ def _placeholder_answer(path: str, language: str) -> str:
     return by_lang.get(language) or by_lang.get("en") or "Let me check on that."
 
 
+# Progressive narrowing: when a BROAD query returns this many strong matches,
+# behave like a travel agent and ask ONE differentiating question instead of
+# reading out the whole list. (DEFAULT_MAX_HOTELS is 5, so 4+ = "a lot".)
+_NARROW_THRESHOLD = 4
+_MAX_CLARIFICATIONS = 2  # shared budget with Triage
+
+# Vector-store name detection: a confident single hotel needs a strong absolute
+# e5 score AND a clear margin over the runner-up (good matches sit ~0.77-0.84).
+_DETECT_MIN_SCORE = 0.78
+_DETECT_MARGIN = 0.04
+# A literal hotel-NAME match scores high in absolute terms (0.83+); a generic
+# vibe query ("spa hotel") tops out ~0.80 because e5 compresses generic matches.
+# So a strong absolute score is a confident name hit even when a runner-up is
+# close — e.g. two same-name hotels ("Casa Dell Arte" Residance vs Arts&Leisure)
+# sit near-tied at 0.82-0.84, which the margin gate alone would wrongly reject.
+_DETECT_STRONG_SCORE = 0.82
+# ...but the strong-score path STILL needs a small gap. A nameless follow-up
+# ("do they have spa?") makes many hotels tie near-perfectly (e.g. 0.827 vs
+# 0.826) and would otherwise be wrongly "detected", hijacking the active hotel.
+# A genuine name match keeps a modest lead (Casa Dell Arte: 0.838 vs 0.821 =
+# 0.017); a generic cluster does not (~0.001). 0.012 separates the two.
+_DETECT_STRONG_MARGIN = 0.012
+# Generic words in hotel names that aren't distinctive enough to prove the guest
+# actually NAMED a hotel (so "from the beach" doesn't match "...Beach Resort").
+_NAME_GENERIC_TOKENS = frozenset(
+    {
+        "hotel",
+        "otel",
+        "resort",
+        "resorts",
+        "suites",
+        "suite",
+        "residence",
+        "residences",
+        "residance",
+        "residances",
+        "spa",
+        "beach",
+        "bay",
+        "park",
+        "garden",
+        "club",
+        "palace",
+        "grand",
+        "royal",
+        "collection",
+        "boutique",
+        "the",
+        "by",
+        "of",
+        "and",
+        "de",
+        "la",
+        "el",
+        "pearl",
+        "city",
+    }
+)
+
+
+def _detected_name_in_utterance(hotel_name: str, utterance: str) -> bool:
+    """True if the detected hotel's name actually appears in the utterance.
+
+    Name detection exists to catch a hotel NAME the decomposer missed — so the
+    name must be present. A high vector score with NO name overlap is just a
+    content match (e.g. a restaurant-heavy query matching a restaurant-dense
+    hotel) and must NOT hijack the active hotel. Returns True when the name is
+    all-generic (can't verify) so the score gate still decides.
+    """
+    words = set(re.findall(r"\w+", (utterance or "").lower()))
+    distinctive = [
+        t
+        for t in re.findall(r"\w+", (hotel_name or "").lower())
+        if len(t) >= 3 and t not in _NAME_GENERIC_TOKENS
+    ]
+    if not distinctive:
+        return True  # nothing distinctive to check — defer to the score gate
+    return any(t in words for t in distinctive)
+
+
+def _narrowing_question(decomposition: dict[str, Any]) -> tuple[str, str]:
+    """Pick the single most useful differentiating question + slot, localised.
+
+    Priority (Architecture §Phase 5): budget → children ages → location pref.
+    Only en/tr are localised (matching _no_match_answer / _placeholder_answer);
+    other languages fall back to English.
+    """
+    lang = (decomposition.get("language") or "en").lower()
+
+    def _t(en: str, tr: str) -> str:
+        return tr if lang == "tr" else en
+
+    if not decomposition.get("budget_tier") and not decomposition.get("budget_signal"):
+        return "budget", _t(
+            "I found several great options — to narrow it down, what's your budget range?",
+            "Birkaç harika seçenek buldum — daraltmak için bütçe aralığınız nedir?",
+        )
+    if decomposition.get("traveller_type") == "family" and not decomposition.get("children_ages"):
+        return "children_ages", _t(
+            "A few of these fit — how old are the children, so I can match the kids' facilities?",
+            "Bunlardan birkaçı uygun — çocuk olanaklarını eşleştirebilmem "
+            "için çocuklar kaç yaşında?",
+        )
+    return "location_pref", _t(
+        "I have a few matches — would you prefer beachfront, or somewhere closer to the city?",
+        "Birkaç eşleşme var — sahil kenarında mı yoksa şehre yakın bir yer mi tercih edersiniz?",
+    )
+
+
 def _no_match_answer(language: str, region: str) -> str:
     """Deterministic fail-closed reply when retrieval returned 0 hotels."""
     where = f" in {region}" if region else ""
@@ -121,7 +239,8 @@ def _no_match_answer(language: str, region: str) -> str:
     msgs = {
         "en": (
             f"I couldn't find a hotel{where} that matches every part of that request. "
-            "Could you loosen one of the requirements, or tell me a bit more about what matters most?"
+            "Could you loosen one of the requirements, or tell me a bit more "
+            "about what matters most?"
         ),
         "tr": (
             f"İsteğinizin her parçasına uyan bir otel{where_tr} bulamadım. "
@@ -129,6 +248,358 @@ def _no_match_answer(language: str, region: str) -> str:
         ),
     }
     return msgs.get(language) or msgs["en"]
+
+
+# Explicit "please search the web" requests. Phrase-matched (not bare "internet",
+# which would false-fire on "online check-in" / "wifi"). When detected, the
+# concierge re-runs the PREVIOUS question on the web instead of the literal ask.
+_WEB_REQUEST_PHRASES = (
+    "search the internet",
+    "search on the internet",
+    "search on internet",
+    "search internet",
+    "search online",
+    "search it online",
+    "search the web",
+    "search web",
+    "web search",
+    "look it up online",
+    "look online",
+    "look it up on the internet",
+    "check online",
+    "check the internet",
+    "on the internet",
+    "google it",
+    "google this",
+    "can you google",
+    # Turkish
+    "internette ara",
+    "internetten ara",
+    "internetten bak",
+    "web'de ara",
+    "çevrimiçi ara",
+)
+
+
+# Function/question words stripped before ES name detection so a sentence like
+# "How far is Casa Dell Arte from the beach?" resolves on the distinctive name
+# tokens ("casa dell arte") rather than letting "beach" pull in a wrong
+# "...Beach Resort". Content nouns (beach/spa/pool) are KEPT — many hotels carry
+# them in their name (e.g. "Crystal Tat Beach").
+_RESOLVE_STOPWORDS = frozenset(
+    {
+        "how",
+        "far",
+        "is",
+        "are",
+        "was",
+        "the",
+        "a",
+        "an",
+        "from",
+        "to",
+        "in",
+        "at",
+        "of",
+        "for",
+        "what",
+        "where",
+        "when",
+        "which",
+        "who",
+        "do",
+        "does",
+        "did",
+        "can",
+        "could",
+        "would",
+        "will",
+        "i",
+        "you",
+        "we",
+        "me",
+        "my",
+        "our",
+        "your",
+        "it",
+        "this",
+        "that",
+        "there",
+        "near",
+        "around",
+        "and",
+        "or",
+        "please",
+        "tell",
+        "about",
+        "know",
+        "much",
+        "away",
+        "us",
+        "have",
+        "has",
+        # turkish function / question words
+        "nasıl",
+        "nerede",
+        "ne",
+        "kadar",
+        "mı",
+        "mi",
+        "mu",
+        "mü",
+        "için",
+        "var",
+        "bir",
+        "bu",
+        "şu",
+        "ile",
+        "den",
+        "dan",
+    }
+)
+
+
+def _clean_for_resolution(utterance: str) -> str:
+    toks = [
+        t for t in re.split(r"\W+", (utterance or "").lower()) if t and t not in _RESOLVE_STOPWORDS
+    ]
+    return " ".join(toks)
+
+
+def _is_web_search_request(utterance: str) -> bool:
+    u = (utterance or "").lower()
+    return any(p in u for p in _WEB_REQUEST_PHRASES)
+
+
+# Short affirmations / refusals used to accept or decline an offer the bot just
+# made ("…would you like me to check online?"). Kept short so a substantive
+# message that merely starts with "yes" ("yes, but show me Antalya hotels")
+# doesn't get swallowed.
+_AFFIRM_TOKENS = (
+    "yes",
+    "yeah",
+    "yep",
+    "yup",
+    "sure",
+    "ok",
+    "okay",
+    "please",
+    "go ahead",
+    "do it",
+    "sounds good",
+    "yes please",
+    "please do",
+    # Turkish
+    "evet",
+    "tabii",
+    "olur",
+    "lütfen",
+    "tamam",
+)
+_NEGATE_TOKENS = ("no", "nope", "nah", "don't", "do not", "hayır", "yok", "gerek yok")
+# Phrases that mark the bot's own answer as an offer to LOOK SOMETHING UP (so the
+# next turn knows a bare "yes" means "yes, go fetch it"). The warm persona often
+# phrases this as "look into" / "find out" rather than literally "online", so we
+# match those too — otherwise a "yes" falls through and the bot fabricates a
+# promise it never fulfils.
+_WEB_OFFER_KEYWORDS = (
+    "online",
+    "internet",
+    "web",
+    "çevrimiçi",
+    "internette",
+    "internetten",
+    "look it up",
+    "look that up",
+    "look up",
+    "look into",
+    "find out",
+    "find you",
+    "get you the",
+    "pull together",
+    "pull up",
+    "search for",
+    "look for",
+    # Turkish
+    "araştır",
+    "bakabilir",
+    "bulabilir",
+)
+
+
+def _is_affirmation(utterance: str) -> bool:
+    u = (utterance or "").strip().lower().strip(".!?, ")
+    if not u or len(u.split()) > 4:
+        return False
+    if any(neg in u.split() for neg in ("no", "nope", "nah")) or any(
+        neg in u for neg in ("don't", "do not", "hayır", "gerek yok")
+    ):
+        return False
+    return any(tok in u for tok in _AFFIRM_TOKENS)
+
+
+def _is_refusal(utterance: str) -> bool:
+    u = (utterance or "").strip().lower().strip(".!?, ")
+    if not u or len(u.split()) > 4:
+        return False
+    return any(neg in u.split() for neg in ("no", "nope", "nah")) or any(
+        neg in u for neg in ("no thanks", "don't", "do not", "hayır", "gerek yok")
+    )
+
+
+def _answer_offers_web(answer: str) -> bool:
+    """True when the bot's answer ended with an offer to search online."""
+    a = (answer or "").lower()
+    return "?" in a and any(k in a for k in _WEB_OFFER_KEYWORDS)
+
+
+# When the guest asks about REVIEWS, point the web search straight at review
+# sites instead of the open web. (Google reviews live in Maps and are hard to
+# fetch, but TripAdvisor + the OTAs carry rich guest reviews.)
+_REVIEW_DOMAINS = [
+    "tripadvisor.com",
+    "booking.com",
+    "expedia.com",
+    "trustpilot.com",
+    "holidaycheck.com",
+    "agoda.com",
+    "hotels.com",
+    "google.com",
+]
+_REVIEW_TERMS = (
+    "review",
+    "reviews",
+    "rating",
+    "ratings",
+    "tripadvisor",
+    "trip advisor",
+    "feedback",
+    "opinion",
+    "opinions",
+    "what people think",
+    "what guests",
+    "didn't like",
+    "did not like",
+    "complaints",
+    "criticism",
+    # Turkish
+    "yorum",
+    "yorumlar",
+    "puan",
+    "değerlendirme",
+    "şikayet",
+)
+
+
+def _is_review_query(decomposition: dict[str, Any], utterance: str) -> bool:
+    """True if the turn is asking about guest reviews / ratings."""
+    blob = " ".join(
+        [
+            (utterance or ""),
+            " ".join((decomposition or {}).get("requirements") or []),
+            (decomposition or {}).get("intent") or "",
+        ]
+    ).lower()
+    return any(t in blob for t in _REVIEW_TERMS)
+
+
+def _ask_what_to_search(language: str) -> str:
+    return (
+        "İnternette tam olarak neyi aramamı istersiniz?"
+        if language == "tr"
+        else "Sure — what would you like me to look up online?"
+    )
+
+
+def _web_caveat(language: str) -> str:
+    # A light, natural disclaimer — not a robotic bracketed footnote. Kept short
+    # so it doesn't undercut the warm concierge tone when read aloud.
+    return (
+        "Bunu hızlı bir web aramasından buldum, dilerseniz teyit edebiliriz."
+        if language == "tr"
+        else "I pulled that from a quick web search, so we can double-check it if you'd like."
+    )
+
+
+def _no_web_answer(language: str) -> str:
+    return (
+        "Bunu şu anda web'de bulamadım — biraz sonra tekrar deneyebilir misiniz?"
+        if language == "tr"
+        else "I couldn't find that on the web just now — could you try again in a moment?"
+    )
+
+
+def _format_sources(web: dict[str, Any]) -> str:
+    sources = (web or {}).get("sources") or []
+    lines = []
+    for s in sources[:2]:
+        label = s.get("title") or s.get("url")
+        if label:
+            lines.append(f"• {label}")
+    return ("\n\nSources:\n" + "\n".join(lines)) if lines else ""
+
+
+def _web_answer(web: dict[str, Any], language: str, *, synth: str | None = None) -> str:
+    """Build a grounded spoken reply from a web result: answer + caveat.
+
+    No source list — this is read aloud in a voice system, so citations are
+    noise. The UI still shows sources in the web-search card. `synth` is an
+    optional LLM-cleaned answer that replaces the raw (often self-contradictory)
+    retriever blob.
+    """
+    # The synth already weaves a natural "worth confirming" note into its warm
+    # reply, so don't bolt a separate caveat on. Only the raw-fallback path (no
+    # synth) needs the appended disclaimer.
+    if synth:
+        return synth
+    answer = (web or {}).get("answer")
+    if not answer:
+        sources = (web or {}).get("sources") or []
+        answer = (sources[0].get("snippet") if sources else "") or ""
+    if not answer:
+        return _no_web_answer(language)
+    return f"{answer}\n\n{_web_caveat(language)}"
+
+
+def _hotel_facts_text(kb: dict[str, Any] | None, limit: int = 5) -> str:
+    """Flatten a scoped KB result into a short 'what the hotel's guide says' block
+    for the hybrid synth — the hotel name plus its evidence passages."""
+    hotels = (kb or {}).get("hotels") or []
+    if not hotels:
+        return ""
+    h = hotels[0]
+    name = (h.get("payload") or {}).get("hotel_name") or h.get("hotel_id") or "the hotel"
+    lines = [f"Hotel: {name}"]
+    for label, chunk in list((h.get("evidence") or {}).items())[:limit]:
+        text = (chunk.get("text_en") or chunk.get("text") or "").strip()
+        if text:
+            lines.append(f"- {label}: {text[:300]}")
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def _hybrid_answer(
+    hotel_part: str, web: dict[str, Any], language: str, *, synth: str | None = None
+) -> str:
+    """Combine a hotel-KB answer with a live web lookup (proactive hybrid path).
+
+    No source list (voice). `synth` replaces the raw web blob when an LLM has
+    cleaned it into one coherent answer.
+    """
+    web_ans = synth or (web or {}).get("answer")
+    parts: list[str] = []
+    if hotel_part:
+        parts.append(hotel_part)
+    if web_ans:
+        lead = (
+            "Yakınlarda (web aramasından): " if language == "tr" else "Nearby (from a web search): "
+        )
+        # Synth weaves its own "worth confirming" note; only append the caveat to
+        # the raw-fallback web blob.
+        tail = "" if synth else "\n\n" + _web_caveat(language)
+        parts.append(lead + web_ans + tail)
+    if not parts:
+        return _no_web_answer(language)
+    return "\n\n".join(parts)
 
 
 class ConciergePipeline:
@@ -145,6 +616,10 @@ class ConciergePipeline:
         compound: CompoundAndDiscovery | None = None,
         render_fn: Any | None = None,
         resolver: HotelResolver | None = None,
+        web_retriever: WebRetriever | None = None,
+        web_synth_fn: Any | None = None,
+        converse_fn: Any | None = None,
+        web_query_fn: Any | None = None,
     ) -> None:
         self._sessions = session_store
         self._classifier = classifier
@@ -153,6 +628,19 @@ class ConciergePipeline:
         self._router = router or SourceRouter()
         self._compound = compound
         self._render_fn = render_fn
+        # Optional LLM that rewrites a raw web-search blob into ONE clean,
+        # non-contradictory spoken answer. None = use the raw retriever answer.
+        self._web_synth_fn = web_synth_fn
+        # Optional LLM that answers conversational/meta/recall turns from the
+        # transcript (no retrieval). None = a deterministic fallback reply.
+        self._converse_fn = converse_fn
+        # Optional LLM that rewrites the conversation into ONE web search query
+        # (resolves pronouns + the real hotel name from the dialog, independent of
+        # ES/decomposition). None = fall back to the heuristic query builder.
+        self._web_query_fn = web_query_fn
+        # Live web lookup for PATH_WEB / PATH_HYBRID. None disables the web
+        # paths (they fall back to the honest "ships later" placeholder).
+        self._web = web_retriever
         # Optional injected resolver (offline tests / custom backends). When
         # None we build the real Elasticsearch-backed resolver per call.
         self._resolver = resolver
@@ -165,9 +653,17 @@ class ConciergePipeline:
         region: str | None = None,
     ) -> dict[str, Any]:
         utterance = (utterance or "").strip()
+        # When the user explicitly selects "All regions" the caller sends
+        # region="" (empty string).  We distinguish that from region=None
+        # (not provided) so we can suppress the decomposer's inferred region.
+        self._user_region_override = region
         sid = session_id or new_session_id()
         t_start = time.perf_counter()
         timings: dict[str, float] = {}
+        # Per-turn debug trace of every vector-store / ES call (what query went
+        # where). Reset each turn; surfaced in the result as `trace`. Safe because
+        # serve.py builds a fresh pipeline per request and turns run sequentially.
+        self._trace: dict[str, list[dict[str, Any]]] = {"qdrant": [], "es": []}
 
         if not utterance:
             return self._finish(
@@ -199,8 +695,19 @@ class ConciergePipeline:
             t0 = time.perf_counter()
             sess = await self._sessions.load(sid)
             timings["session_load_ms"] = _ms(time.perf_counter() - t0)
+            # Region handling distinguishes THREE inputs:
+            #   - a concrete region ("Antalya")  -> scope to it
+            #   - explicit "" ("All regions")     -> clear any stale scope + flag
+            #   - None (not provided)             -> leave session as-is
+            # The empty-string case is what makes "All regions" work: without
+            # this it stays falsy and a previous turn's region lingers, pinning
+            # the search to the wrong place (e.g. a Bodrum hotel searched in Antalya).
             if region:
                 sess["active_region"] = region
+                sess["all_regions"] = False
+            elif region == "":
+                sess["active_region"] = None
+                sess["all_regions"] = True
             decompose_input_local = utterance
             if sess.get("pending_slots"):
                 prior_utt = None
@@ -215,6 +722,9 @@ class ConciergePipeline:
                 "active_region": sess.get("active_region"),
                 "active_hotel_id": sess.get("active_hotel_id"),
                 "language": sess.get("language"),
+                # Full prior dialogue (current utterance not yet appended), so the
+                # decomposer resolves follow-ups against the real conversation.
+                "transcript": build_transcript(sess.get("history")),
             }
             t0 = time.perf_counter()
             decomp = await self._decomposer.decompose(decompose_input_local, ctx_local)
@@ -240,15 +750,92 @@ class ConciergePipeline:
                 timings=timings,
             )
 
+        # Accept/decline a web-search OFFER the bot made last turn. When the
+        # previous answer asked "…would you like me to check online?", a bare
+        # "yes"/"sure"/"evet" must accept it — the user shouldn't have to repeat
+        # "search online". We pop the flag so it never lingers into later turns.
+        pending_web_offer = bool(session.pop("pending_web_offer", False))
+        if self._web is not None and pending_web_offer and _is_affirmation(utterance):
+            # last_question still holds the original question (a bare "yes" never
+            # overwrote it), so re-run THAT online.
+            return await self._handle_web_request(sid, utterance, session, t_start, timings)
+        if pending_web_offer and _is_refusal(utterance):
+            lang = (session.get("language") or "en").lower()
+            ack = (
+                "Tabii, başka bir konuda yardımcı olabilir miyim?"
+                if lang == "tr"
+                else "No problem. Is there anything else I can help with?"
+            )
+            await self._sessions.append_turn(
+                session,
+                utterance=utterance,
+                decomposition=None,
+                reason="web_offer_declined",
+                answer=ack,
+                is_clarification=False,
+            )
+            await self._sessions.save(session)
+            return self._finish(
+                sid=sid,
+                utterance=utterance,
+                path="clarify",
+                reason="web_offer_declined",
+                answer=ack,
+                t_start=t_start,
+                timings=timings,
+            )
+
+        # Explicit "search the web" request: re-run the PREVIOUS question online
+        # (hybrid if a hotel is active) instead of trying to answer the literal
+        # meta-request from the KB. This is how "How far is X?" → "can you search
+        # online?" becomes a live web lookup of the original question.
+        if self._web is not None and _is_web_search_request(utterance):
+            return await self._handle_web_request(sid, utterance, session, t_start, timings)
+
+        # Conversational / meta / recall ("hi", "thanks", "what did I ask you?",
+        # "can you repeat?"): answer from the conversation history, NOT the hotel
+        # KB. Without this, such turns get embedded as a search query and match
+        # garbage hotels on literal tokens. Does not overwrite last_question.
+        if (decomposition.get("query_type") or "").lower() == "conversational":
+            return await self._handle_converse(
+                sid, utterance, session, decomposition, t_start, timings
+            )
+
+        # Remember the substantive question so a later "search online" can re-run it.
+        session["last_question"] = utterance
+
         # Promote a newly extracted region into the session so subsequent
-        # turns don't have to re-state it.
+        # turns don't have to re-state it. A region named in the utterance
+        # overrides an "all regions" selection (the caller got specific).
         new_region = decomposition.get("region") or decomposition.get("city")
         if new_region:
             session["active_region"] = new_region
+            session["all_regions"] = False
 
         # Backfill session language from the first decomposed turn.
         if decomposition.get("language") and not session.get("language"):
             session["language"] = decomposition["language"]
+
+        # Deterministic named-hotel detection (LLM-independent). The decomposer
+        # sometimes misses a hotel name — especially foreign ones like
+        # "Casa Dell Arte" — leaving hotel_mention null, which then wrongly
+        # scopes to a stale session hotel. ES is good at exact name matching, so
+        # for a specific-hotel query with no extracted mention we probe the raw
+        # utterance; a confident (dominant) match locks onto that hotel and
+        # overrides any stale session scope. Skipped for broad/recommendation
+        # queries to avoid the extra lookup on the common path.
+        if (
+            self._compound is not None
+            and not decomposition.get("hotel_mention")
+            and not decomposition.get("hotel_id")
+            and (decomposition.get("query_type") or "") in ("scoped", "comparison")
+        ):
+            t0 = time.perf_counter()
+            detected = await self._detect_named_hotel(utterance)
+            timings["hotel_detect_ms"] = _ms(time.perf_counter() - t0)
+            if detected:
+                decomposition["hotel_id"] = detected
+                session["active_hotel_id"] = detected
 
         # 4. Triage — may ask one clarification question and short-circuit.
         t0 = time.perf_counter()
@@ -313,6 +900,12 @@ class ConciergePipeline:
                             hotel_mention
                         )
                 timings["resolve_ms"] = _ms(time.perf_counter() - t0)
+                self._trace_es(
+                    "resolve",
+                    hotel_mention,
+                    decision=resolution.get("decision"),
+                    hotel_id=resolution.get("hotel_id"),
+                )
                 if resolution.get("decision") == "auto_resolve" and resolution.get("hotel_id"):
                     # Promote to scoped query with the resolved hotel_id.
                     decomposition["hotel_id"] = resolution["hotel_id"]
@@ -325,14 +918,130 @@ class ConciergePipeline:
             t0 = time.perf_counter()
             retrieval = await self._run_kb(decomposition, session, path)
             timings["retrieve_ms"] = _ms(time.perf_counter() - t0)
+
+            # Idea 1 — semantic fallback. If the structured path found nothing,
+            # search the RAW utterance directly. Requirement extraction can drop
+            # the hotel name or over-narrow; the full sentence keeps everything
+            # the caller said, and the vector store often recognises a named
+            # hotel even when the decomposer missed it.
+            if not ((retrieval or {}).get("hotels")):
+                t0 = time.perf_counter()
+                fb = await self._semantic_fallback(utterance, decomposition, session)
+                timings["fallback_ms"] = _ms(time.perf_counter() - t0)
+                if fb is not None:
+                    retrieval = fb
+
+            # Progressive narrowing — only on broad searches with many strong
+            # matches, only once per session, and only within the shared
+            # clarification budget. Acts like an agent narrowing the field
+            # instead of dumping 5 hotels.
+            clar_count = int(session.get("clarification_count") or 0)
+            if (
+                path == PATH_BROAD
+                and len((retrieval or {}).get("hotels") or []) >= _NARROW_THRESHOLD
+                and not session.get("narrowed")
+                and clar_count < _MAX_CLARIFICATIONS
+            ):
+                slot, question = _narrowing_question(decomposition)
+                session["narrowed"] = True
+                session["pending_slots"] = [slot]
+                await self._sessions.append_turn(
+                    session,
+                    utterance=utterance,
+                    decomposition=decomposition,
+                    reason="progressive_narrowing",
+                    answer=question,
+                    is_clarification=True,
+                )
+                await self._sessions.save(session)
+                return self._finish(
+                    sid=sid,
+                    utterance=utterance,
+                    path="clarify",
+                    reason="progressive_narrowing",
+                    decomposition=decomposition,
+                    router=decision,
+                    retrieval=retrieval,
+                    clarification={
+                        "question": question,
+                        "slot": slot,
+                        "language": decomposition.get("language") or "en",
+                    },
+                    answer=question,
+                    t_start=t_start,
+                    timings=timings,
+                )
+
             t0 = time.perf_counter()
             answer = await self._render(utterance, decomposition, retrieval, session)
             timings["render_ms"] = _ms(time.perf_counter() - t0)
+
+        elif path == PATH_WEB and self._web is not None:
+            # Pure live-web question (events, weather, local operators, hours).
+            t0 = time.perf_counter()
+            dq = await self._web_query_from_dialog(utterance, session)
+            rev = _REVIEW_DOMAINS if _is_review_query(decomposition, utterance) else None
+            web = await self._web.discover(utterance, decomposition, query=dq, include_domains=rev)
+            timings["web_ms"] = _ms(time.perf_counter() - t0)
+            retrieval = {"web": web}
+            lang = (decomposition.get("language") or session.get("language") or "en").lower()
+            answer = _web_answer(web, lang, synth=await self._synth_web(utterance, web, lang))
+
+        elif path == PATH_HYBRID and self._web is not None:
+            # Hotel KB + live web (e.g. "is there a dive shop near my hotel?").
+            t0 = time.perf_counter()
+            kb = await self._run_kb(decomposition, session, PATH_SCOPED)
+            timings["retrieve_ms"] = _ms(time.perf_counter() - t0)
+            t0 = time.perf_counter()
+            hotel_name, location = self._hotel_web_context(kb, decomposition, session)
+            dq = await self._web_query_from_dialog(utterance, session)
+            rev = _REVIEW_DOMAINS if _is_review_query(decomposition, utterance) else None
+            web = await self._web.discover(
+                utterance,
+                decomposition,
+                hotel_name=hotel_name,
+                location=location,
+                query=dq,
+                include_domains=rev,
+            )
+            timings["web_ms"] = _ms(time.perf_counter() - t0)
+            retrieval = {
+                "hotels": (kb or {}).get("hotels") or [],
+                "web": web,
+                "reason": "hybrid",
+                "region": (kb or {}).get("region"),
+            }
+            lang = (decomposition.get("language") or session.get("language") or "en").lower()
+            # ONE combined answer: feed the hotel's own guide facts AND the web
+            # result to a single synth so it weaves them into a coherent concierge
+            # reply. This avoids the old two-part glue, which produced a double
+            # greeting AND offered to "search online" right above the results it
+            # had already fetched.
+            hotel_facts = _hotel_facts_text(kb)
+            combined = await self._synth_web(utterance, web, lang, hotel_facts=hotel_facts)
+            if combined:
+                answer = combined
+            else:
+                # No synth wired → fall back to the two-part composition.
+                hotel_part = (
+                    await self._render(utterance, decomposition, kb, session)
+                    if (kb or {}).get("hotels")
+                    else ""
+                )
+                answer = _hybrid_answer(hotel_part, web, lang)
+
         else:
-            # Paths whose retrievers ship in later phases — return an
-            # honest acknowledgement instead of pretending to answer.
+            # Paths whose retrievers ship in later phases (destination KB), or
+            # web/hybrid with no web backend wired — honest acknowledgement.
             lang = (decomposition.get("language") or session.get("language") or "en").lower()
             answer = _placeholder_answer(path, lang)
+
+        # If the answer ended with an offer to look something up (any path), arm
+        # the flag so a bare "yes" next turn actually runs the web search instead
+        # of falling through to the conversational path (which would just promise
+        # to do it). Cleared on the next turn whether or not it's accepted.
+        if self._web is not None and _answer_offers_web(answer):
+            session["pending_web_offer"] = True
 
         # 7. Persist turn.
         await self._sessions.append_turn(
@@ -373,7 +1082,12 @@ class ConciergePipeline:
                 "hotels": [],
                 "missing_requirements": [],
             }
-        region = decomposition.get("region") or session.get("active_region") or ""
+        # If the user explicitly selected "All regions" (empty string),
+        # ignore the decomposer's inferred region and search globally.
+        if getattr(self, "_user_region_override", None) is not None:
+            region = self._user_region_override  # "" means all regions
+        else:
+            region = decomposition.get("region") or session.get("active_region") or ""
         requirements = list(decomposition.get("requirements") or [])
         # Source the resolved hotel id from EITHER the decomposition (set by the
         # inline resolver on the PATH_HOTEL_RESOLVE branch) OR the session
@@ -404,6 +1118,41 @@ class ConciergePipeline:
                 "retrieval will not be hotel-scoped",
                 decomposition.get("hotel_mention"),
             )
+        self._trace_qdrant("retrieve", requirements, region=region, hotel_id=hotel_id, rerank=True)
+        # Resolved hotel: gather SEVERAL of its passages, not the single best
+        # chunk. A question about a known hotel ("how far from the beach?") needs
+        # the full picture — the address chunk AND the "located on the beach"
+        # chunk — so the LLM can answer instead of seeing one chunk that happens
+        # to miss the detail. cross-hotel discovery keeps one chunk per hotel by
+        # design; for a single known hotel that is too thin.
+        if path == PATH_SCOPED and hotel_id and hasattr(self._compound, "fetch_hotel_chunks"):
+            chunks = await self._compound.fetch_hotel_chunks(
+                hotel_id=hotel_id, query=" ".join(requirements), region=region, k=6
+            )
+            if chunks:
+                evidence: dict[str, Any] = {}
+                for i, c in enumerate(chunks):
+                    label = c.get("category") or f"passage_{i + 1}"
+                    if label in evidence:  # duplicate category → keep both
+                        label = f"{label}_{i + 1}"
+                    evidence[label] = c
+                hotel = {
+                    "hotel_id": hotel_id,
+                    "score": float(chunks[0].get("score", 0.0)),
+                    "payload": {"hotel_name": chunks[0].get("hotel_name", "")},
+                    "evidence": evidence,
+                }
+                return {
+                    "region": region,
+                    "requirements": requirements,
+                    "normalized_requirements": requirements,
+                    "top_score": float(chunks[0].get("score", 0.0)),
+                    "count": 1,
+                    "hotels": [hotel],
+                    "missing_requirements": [],
+                    "reason": "hotel_resolved",
+                }
+            # No chunks for this hotel → fall through to the single-chunk path.
         result = await self._compound.discover(
             region=region,
             requirements=requirements,
@@ -417,6 +1166,369 @@ class ConciergePipeline:
                 h for h in result.get("hotels", []) if h.get("hotel_id") == hotel_id
             ]
         return result
+
+    async def _handle_web_request(
+        self,
+        sid: str,
+        utterance: str,
+        session: dict[str, Any],
+        t_start: float,
+        timings: dict[str, float],
+    ) -> dict[str, Any]:
+        """Handle an explicit 'search the web' request by re-running the previous
+        question online (hybrid when a hotel is active)."""
+        lang = (session.get("language") or "en").lower()
+        prior = session.get("last_question")
+        if not prior or self._web is None:
+            answer = _ask_what_to_search(lang)
+            session["pending_slots"] = ["web_query"]
+            await self._sessions.append_turn(
+                session,
+                utterance=utterance,
+                decomposition=None,
+                reason="web_request_no_prior",
+                answer=answer,
+                is_clarification=True,
+            )
+            await self._sessions.save(session)
+            return self._finish(
+                sid=sid,
+                utterance=utterance,
+                path="clarify",
+                reason="web_request_no_prior",
+                answer=answer,
+                clarification={"question": answer, "slot": "web_query", "language": lang},
+                t_start=t_start,
+                timings=timings,
+            )
+
+        # Resolve the hotel FIRST so the web query carries its real name +
+        # location (the prior question may use a pronoun — "is there a spa
+        # there?" — which is useless to a web search without the hotel name).
+        active_hotel = session.get("active_hotel_id")
+        kb: dict[str, Any] | None = None
+        hotel_name = location = None
+        decomp = {
+            "hotel_id": active_hotel,
+            "query_type": "scoped",
+            "region": session.get("active_region"),
+            "requirements": [prior],
+        }
+        if active_hotel:
+            t0 = time.perf_counter()
+            kb = await self._run_kb(decomp, session, PATH_SCOPED)
+            timings["retrieve_ms"] = _ms(time.perf_counter() - t0)
+            hotel_name, location = self._hotel_web_context(kb, decomp, session)
+        t0 = time.perf_counter()
+        dq = await self._web_query_from_dialog(prior, session)
+        rev = _REVIEW_DOMAINS if _is_review_query(decomp, prior) else None
+        web = await self._web.discover(
+            prior,
+            decomp,
+            hotel_name=hotel_name,
+            location=location,
+            query=dq,
+            include_domains=rev,
+        )
+        timings["web_ms"] = _ms(time.perf_counter() - t0)
+
+        # The user explicitly said "yes, search online" — so just ANSWER the
+        # question from the web. Do NOT re-render the hotel KB, which would
+        # repeat the very "I don't have that — want me to check online?" offer
+        # the user is responding to. The hotel context was already given last
+        # turn. We still keep KB hotels for the evidence card, not the answer.
+        synth = await self._synth_web(prior, web, lang)
+        answer = _web_answer(web, lang, synth=synth)
+        if active_hotel:
+            retrieval = {
+                "hotels": (kb or {}).get("hotels") or [],
+                "web": web,
+                "reason": "web_request",
+            }
+            path = PATH_HYBRID
+        else:
+            retrieval = {"web": web, "reason": "web_request"}
+            path = PATH_WEB
+
+        await self._sessions.append_turn(
+            session,
+            utterance=utterance,
+            decomposition=None,
+            reason="web_request",
+            answer=answer,
+            is_clarification=False,
+        )
+        await self._sessions.save(session)
+        return self._finish(
+            sid=sid,
+            utterance=utterance,
+            path=path,
+            reason="web_request",
+            retrieval=retrieval,
+            answer=answer,
+            t_start=t_start,
+            timings=timings,
+        )
+
+    async def _web_query_from_dialog(self, utterance: str, session: dict[str, Any]) -> str | None:
+        """Rewrite the conversation into ONE web search query via the LLM.
+
+        Uses the full transcript (which already holds the resolved hotel name and
+        location from earlier bot answers), so the query doesn't depend on the ES
+        resolver or the decomposition. Returns None when no fn is wired or it
+        errors — the WebRetriever then falls back to its heuristic builder.
+        """
+        if self._web_query_fn is None:
+            return None
+        try:
+            result = self._web_query_fn(
+                {
+                    "utterance": utterance,
+                    "transcript": build_transcript(session.get("history")),
+                    "language": (session.get("language") or "en"),
+                }
+            )
+            q = (await result) if hasattr(result, "__await__") else result
+            return (q or "").strip() or None
+        except Exception as e:  # noqa: BLE001 — never fail the turn over query rewrite
+            logger.warning("web query rewrite failed: {}", e)
+            return None
+
+    async def _synth_web(
+        self,
+        question: str,
+        web: dict[str, Any],
+        language: str,
+        hotel_facts: str | None = None,
+    ) -> str | None:
+        """Rewrite a raw web-search result into ONE clean spoken answer.
+
+        Tavily's `answer` often merges several sources into a self-contradictory
+        blob ("on the beach ... a 13-minute walk ... directly on the beach").
+        The injected synth LLM is asked to resolve that into a single coherent
+        reply for the voice channel. When `hotel_facts` is given (hybrid path),
+        the synth also weaves in what the hotel's own guide says — producing ONE
+        answer instead of a hotel reply glued to a web reply. Returns None (caller
+        falls back) when no synth fn is wired or it errors.
+        """
+        if self._web_synth_fn is None or not (web or {}).get("answer"):
+            return None
+        try:
+            result = self._web_synth_fn(
+                {
+                    "question": question,
+                    "web": web,
+                    "language": language,
+                    "hotel_facts": hotel_facts,
+                }
+            )
+            return (await result) if hasattr(result, "__await__") else result
+        except Exception as e:  # noqa: BLE001 — never fail the turn over synthesis
+            logger.warning("web synthesis failed: {}", e)
+            return None
+
+    @staticmethod
+    def _hotel_web_context(
+        kb: dict[str, Any] | None,
+        decomposition: dict[str, Any],
+        session: dict[str, Any],
+    ) -> tuple[str | None, str | None]:
+        """Resolve (hotel_name, location) for a hotel-scoped web query.
+
+        Trust the KB hotel only if it IS the active/subject hotel — a hybrid KB
+        leg can return generic hotels, whose name/location would mislead the web
+        search. Otherwise fall back to the decomposer's spoken mention + geo.
+        """
+        active = session.get("active_hotel_id")
+        name: str | None = None
+        location: str | None = None
+        for h in (kb or {}).get("hotels") or []:
+            if not active or h.get("hotel_id") == active:
+                p = h.get("payload") or {}
+                name = p.get("hotel_name") or None
+                location = p.get("district") or p.get("region") or None
+                break
+        name = name or decomposition.get("hotel_mention")
+        location = (
+            location
+            or decomposition.get("city")
+            or decomposition.get("region")
+            or session.get("active_region")
+        )
+        return name, location
+
+    async def _handle_converse(
+        self,
+        sid: str,
+        utterance: str,
+        session: dict[str, Any],
+        decomposition: dict[str, Any],
+        t_start: float,
+        timings: dict[str, float],
+    ) -> dict[str, Any]:
+        """Answer a conversational/meta/recall turn from the transcript — no
+        retrieval. This is what makes the agent a dialogue partner instead of a
+        question-answering machine: it can greet, acknowledge, recall what was
+        asked, and summarise the conversation."""
+        lang = (decomposition.get("language") or session.get("language") or "en").lower()
+        transcript = build_transcript(session.get("history"))
+        answer = None
+        if self._converse_fn is not None:
+            try:
+                result = self._converse_fn(
+                    {"utterance": utterance, "transcript": transcript, "language": lang}
+                )
+                answer = (await result) if hasattr(result, "__await__") else result
+            except Exception as e:  # noqa: BLE001
+                logger.warning("converse failed: {}", e)
+        if not answer:
+            answer = (
+                "Tabii, size nasıl yardımcı olabilirim?"
+                if lang == "tr"
+                else "Sure — how can I help you with your hotel search?"
+            )
+        await self._sessions.append_turn(
+            session,
+            utterance=utterance,
+            decomposition=decomposition,
+            reason="conversational",
+            answer=answer,
+            is_clarification=False,
+        )
+        await self._sessions.save(session)
+        return self._finish(
+            sid=sid,
+            utterance=utterance,
+            path="conversational",
+            reason="conversational",
+            decomposition=decomposition,
+            answer=answer,
+            t_start=t_start,
+            timings=timings,
+        )
+
+    def _trace_qdrant(self, stage: str, query: Any, **kw: Any) -> None:
+        q = query if isinstance(query, str) else ", ".join(str(x) for x in (query or []))
+        entry = {"store": "qdrant", "stage": stage, "query": q}
+        entry.update({k: v for k, v in kw.items() if v is not None or k == "rerank"})
+        getattr(self, "_trace", {"qdrant": []}).setdefault("qdrant", []).append(entry)
+
+    def _trace_es(self, stage: str, query: str, **kw: Any) -> None:
+        entry = {"store": "elasticsearch", "stage": stage, "query": query}
+        entry.update(kw)
+        getattr(self, "_trace", {"es": []}).setdefault("es", []).append(entry)
+
+    async def _detect_named_hotel(self, utterance: str) -> str | None:
+        """Vector-store named-hotel detection (LLM-independent).
+
+        Searches the cleaned utterance in Qdrant and locks onto a single
+        DOMINANT hotel. The embedding treats a hotel name as a whole concept
+        ("Casa Dell Arte") and isn't fooled by noise tokens like "beach" that
+        BM25 matches against the wrong "...Beach Resort" — so this is more robust
+        than ES for a name buried in a sentence. A generic query ("spa hotel")
+        yields a tight cluster, not a peak, so nothing is detected. ES (the
+        resolver) is still used for clean, explicitly-extracted mentions.
+        """
+        if self._compound is None:
+            return None
+        # Use the FULL utterance — the embedding handles the whole sentence, and
+        # the admin semantic-search panel confirms the full query ranks the right
+        # hotel top. Cleaning/stripping words shifts the embedding and flips the
+        # ranking to a different same-name hotel, so we do NOT clean here.
+        q = (utterance or "").strip()
+        if not q:
+            return None
+        try:
+            # rerank=False: the cross-encoder over-weights common tokens ("beach")
+            # for name lookups; the RAW vector order is what correctly ranks
+            # "Casa Dell Arte" top (matches the admin semantic-search panel).
+            res = await self._compound.discover(region="", requirements=[q], rerank=False)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("hotel detection (vector) failed: {}", e)
+            self._trace_qdrant("detect", q, region="(all)", rerank=False, resolved="(error)")
+            return None
+        hotels = (res or {}).get("hotels") or []
+        if not hotels:
+            self._trace_qdrant("detect", q, region="(all)", rerank=False, resolved="(no hits)")
+            return None
+        top = hotels[0]
+        ts = float(top.get("score") or 0.0)
+        second = float(hotels[1].get("score") or 0.0) if len(hotels) > 1 else 0.0
+        # Confident single named hotel: strong absolute score AND a clear gap to
+        # the runner-up. A broad query returns several near-tied hotels → no peak.
+        # Accept when either (a) the top score is strong in absolute terms AND
+        # keeps at least a small lead — a confident name match — or (b) it clears
+        # the floor with a clear margin. (a) rescues near-tied same-name hotels
+        # that (b) would reject, while still refusing a generic near-PERFECT tie
+        # ("do they have spa?" → 0.827 vs 0.826) that would hijack the active hotel.
+        score_ok = (
+            ts >= _DETECT_STRONG_SCORE
+            and (len(hotels) == 1 or ts - second >= _DETECT_STRONG_MARGIN)
+        ) or (ts >= _DETECT_MIN_SCORE and (len(hotels) == 1 or ts - second >= _DETECT_MARGIN))
+        # The detected hotel's NAME must actually appear in the utterance — else a
+        # high score is just a content match (a "restaurants" query matching a
+        # restaurant-dense hotel) and would wrongly hijack the active hotel.
+        hotel_name = (top.get("payload") or {}).get("hotel_name") or ""
+        name_ok = _detected_name_in_utterance(hotel_name, utterance)
+        dominant = score_ok and name_ok
+        # Record what detection saw — top hotel, scores, and WHY it was accepted or
+        # rejected (score gate vs name-in-utterance check) — for the debug panel.
+        if not score_ok:
+            verdict = "rejected: weak/tied score"
+        elif not name_ok:
+            verdict = f"rejected: name {hotel_name!r} not in utterance"
+        else:
+            verdict = "accepted"
+        self._trace_qdrant(
+            "detect",
+            q,
+            region="(all)",
+            rerank=False,
+            resolved=f"{top.get('hotel_id')} ({ts:.3f}, 2nd={second:.3f}, {verdict})",
+        )
+        if dominant:
+            logger.info(
+                "detected named hotel {!r} via vector store (score={:.3f}) — LLM missed it",
+                top.get("hotel_id"),
+                ts,
+            )
+            return top.get("hotel_id")
+        return None
+
+    async def _semantic_fallback(
+        self,
+        utterance: str,
+        decomposition: dict[str, Any],
+        session: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Search the raw utterance when the structured path returned nothing.
+
+        Uses the same CompoundAndDiscovery but with the FULL utterance as the
+        single requirement, so the hotel name / full context survives. Returns
+        the result tagged ``reason="semantic_fallback"`` if it found any hotels,
+        else None. Region scope is inherited (empty == all regions).
+        """
+        if self._compound is None:
+            return None
+        q = (utterance or "").strip()
+        if not q:
+            return None
+        region = decomposition.get("region") or session.get("active_region") or ""
+        self._trace_qdrant("fallback", q, region=region, rerank=True)
+        try:
+            result = await self._compound.discover(region=region, requirements=[q])
+        except Exception as e:  # noqa: BLE001
+            logger.warning("semantic fallback failed: {}", e)
+            return None
+        if (result or {}).get("hotels"):
+            result["reason"] = "semantic_fallback"
+            logger.info(
+                "semantic fallback recovered {} hotel(s) for {!r}",
+                len(result["hotels"]),
+                q,
+            )
+            return result
+        return None
 
     async def _render(
         self,
@@ -434,12 +1546,16 @@ class ConciergePipeline:
         hotels = (retrieval or {}).get("hotels") or []
         if not hotels:
             lang = (decomposition.get("language") or session.get("language") or "en").lower()
-            region = (
-                decomposition.get("region")
-                or decomposition.get("city")
-                or session.get("active_region")
-                or ""
-            )
+            # Respect the user's "All regions" override for the no-match message.
+            if getattr(self, "_user_region_override", None) is not None:
+                region = self._user_region_override
+            else:
+                region = (
+                    decomposition.get("region")
+                    or decomposition.get("city")
+                    or session.get("active_region")
+                    or ""
+                )
             return _no_match_answer(lang, region)
         if self._render_fn is None:
             names = ", ".join(
@@ -453,6 +1569,7 @@ class ConciergePipeline:
                     "region": decomposition.get("region") or session.get("active_region"),
                     "decomposition": decomposition,
                     "retrieval": retrieval or {},
+                    "transcript": build_transcript(session.get("history")),
                 }
             )
         except Exception as e:  # noqa: BLE001
@@ -488,6 +1605,7 @@ class ConciergePipeline:
             "retrieval": retrieval,
             "answer": answer,
             "timings": timings,
+            "trace": getattr(self, "_trace", {"qdrant": [], "es": []}),
         }
         self._log_query(result)
         return result
@@ -498,25 +1616,33 @@ class ConciergePipeline:
             log_dir = Path(os.environ.get("CONCIERGE_LOG_DIR", "logs"))
             log_dir.mkdir(parents=True, exist_ok=True)
             today = datetime.now(UTC).strftime("%Y-%m-%d")
-            log_file = log_dir / f"concierge-{today}.jsonl"
-            # Compact retrieval: keep hotel_ids + scores but drop full evidence text
+            log_file = log_dir / f"travel_agent_consierge-{today}.jsonl"
+            # Full debug record: keep everything needed to replay a turn from the
+            # log alone — the dialog, the decomposition, the store trace (what was
+            # sent to Qdrant/ES/web and what came back), and timings. Hotel
+            # evidence is kept as ids+scores+names (full chunk text dropped to
+            # keep lines manageable; it's reproducible from the hotel_id).
             retrieval = result.get("retrieval") or {}
             hotels_summary = [
                 {
                     "hotel_id": h.get("hotel_id"),
                     "score": round(float(h.get("score", 0)), 3),
                     "name": (h.get("payload") or {}).get("hotel_name"),
+                    "evidence_categories": list((h.get("evidence") or {}).keys()),
                 }
                 for h in retrieval.get("hotels", [])
             ]
+            web = retrieval.get("web") or {}
             record = {
                 "ts": datetime.now(UTC).isoformat(),
                 "session_id": result.get("session_id"),
                 "utterance": result.get("utterance"),
+                "answer": result.get("answer"),
                 "path": result.get("path"),
                 "reason": result.get("reason"),
                 "decomposition": result.get("decomposition"),
                 "router": result.get("router"),
+                "trace": result.get("trace"),
                 "retrieval_summary": {
                     "hotels": hotels_summary,
                     "count": len(hotels_summary),
@@ -524,7 +1650,16 @@ class ConciergePipeline:
                     "missing_requirements": retrieval.get("missing_requirements", []),
                     "reason": retrieval.get("reason"),
                 },
-                "answer_length": len(result.get("answer") or ""),
+                "web": {
+                    "query": web.get("query"),
+                    "answer": web.get("answer"),
+                    "sources": [s.get("url") for s in (web.get("sources") or [])],
+                    "elapsed_ms": web.get("elapsed_ms"),
+                }
+                if web
+                else None,
+                "clarification": result.get("clarification"),
+                "escalation": result.get("escalation"),
                 "timings": result.get("timings"),
             }
             with open(log_file, "a", encoding="utf-8") as f:

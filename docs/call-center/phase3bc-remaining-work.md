@@ -1,6 +1,15 @@
 # Phase 3bc — Remaining Work
 
-**Branch:** `feat/VOX-concierge-ui-timings`
+**Branch:** `feat/VOX-concierge-ui-timings` (historical; current work is on `feat/VOX-triage-decomposition`)
+
+> **Reconciliation note (2026-06-05).** This doc still describes the concierge
+> accurately on the items below — chat-only / non-streaming, no rate-limit gate
+> on `/api/concierge`, per-request event loop, debug drawer exposes raw JSON —
+> all confirmed in code. **One item is now stale:** the cross-encoder re-rank
+> (§ "Phase 3a") is **no longer deferred — it is built and wired**
+> (`reranker.py`, `BAAI/bge-reranker-v2-m3`, used in `discovery.py`).
+> Work done since this doc and not reflected here lives in:
+> `phase3-latency-tuning.md`, `conversation-eval.md`, `fast-lane-design.md`.
 
 ---
 
@@ -31,9 +40,12 @@ phase because:
   `GET /api/concierge/regions` endpoint that reads from the hotels
   config / Qdrant).
 
-### Phase 3a — Cross-encoder re-rank (still deferred from Phase 3)
+### Phase 3a — Cross-encoder re-rank — ✅ DONE (was deferred)
 
-Not touched by 3bc. Tracking the same backlog item.
+~~Not touched by 3bc. Tracking the same backlog item.~~ **Built since this doc:**
+`reranker.py` runs `BAAI/bge-reranker-v2-m3` over the Qdrant candidates, wired
+into `discovery.py` behind `RAG_RERANK_ENABLED` (defaults on), with
+`RERANK_MIN_SCORE` / `RERANK_RELATIVE_MARGIN` thresholds in `kb_config.py`.
 
 ## Small follow-ups (nice-to-have, not blocking)
 

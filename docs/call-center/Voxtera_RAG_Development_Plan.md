@@ -15,8 +15,66 @@ This document defines the phased development plan for the Voxtera RAG system. Th
 - **Destination KB** (Qdrant) — country and city knowledge, semi-static
 - **Web Search** — events, local operators, real-time conditions, dynamic
 
-**Stack:** Elasticsearch · Qdrant · Redis · multilingual-e5-large · Claude Sonnet · FastAPI
-**Voice stack (Phase 6 only):** Gladia Solaria-1 · Pipecat · Telnyx · Chirp 3 HD
+**Stack (as built):** Elasticsearch · Qdrant · Redis · multilingual-e5-large · **BAAI/bge-reranker-v2-m3** (cross-encoder) · **Claude Haiku 4.5** (decompose + render) · **gpt-4.1-nano** (escalation classifier) · Python **`http.server`** demo (not FastAPI)
+**Voice stack (Phase 6):** Gladia Solaria-1 · Pipecat · **Daily** (PSTN/WebRTC) · Chirp 3 HD
+
+> The original plan listed *Claude Sonnet · FastAPI · Telnyx*. The build
+> diverged: Haiku is fast/cheap enough for decompose+render, the demo server is
+> a lightweight `http.server` handler, and PSTN runs through Daily. See
+> **Build Status** and **Divergences** below.
+
+---
+
+## Build Status — as of 2026-06-05
+
+> This section was added to reconcile the original plan (below, intact) with the
+> code as actually built. The phase deliverable checklists further down were
+> **not** updated checkbox-by-checkbox — use this table as the source of truth
+> for what exists.
+
+| Phase | Status | Notes |
+|---|---|---|
+| 0 — Infrastructure | ✅ built | ES + Qdrant (`hotel_kb`) + Redis + e5-large all live; demo server is `http.server`, not FastAPI |
+| 1 — Hotel Resolver | ✅ built | `resolver.py` — ES BM25, 0.85/0.55 thresholds, fuzzy; Turkish suffix handling via ES analyzer |
+| 2a — Scoped search | ✅ built | `kb_retriever.py` (`HotelKBRetriever`) |
+| 2b — Broad discovery | ✅ built | `discovery.py` (`BroadHotelDiscovery`) |
+| 2c — Compound AND + relative margin | ✅ built | `compound.py`; `RELATIVE_MARGIN=0.05`, `DEFAULT_MIN_SCORE=0.70` in `kb_config.py` |
+| 2d — Budget + geo filters | ❌ not built | no `price_tier` / `geo_radius` filter wired |
+| 2e — Dual / comparison retriever | ❌ not built | no `DualScopedRetriever`; `comparison` query_type routes to broad |
+| 2f — Ingestion + **confidence** + cache | ⚠️ partial / diverged | ingestion + Redis session cache exist; **4-band confidence replaced by relative-margin + cross-encoder rerank** (see Divergences) |
+| 3 — Triage + Decomposition | ✅ built | `decompose.py` · `triage.py` · `router.py` · `classifier.py` · `session.py` — the current working area |
+| 3a — Cross-encoder rerank | ✅ built | `reranker.py` (`BAAI/bge-reranker-v2-m3`), wired into `discovery.py` (`RAG_RERANK_ENABLED`) — **was listed as deferred** |
+| 4 — Web search | ❌ not built | router has `PATH_WEB` but pipeline returns a placeholder; no Brave/SerpAPI client |
+| 5 — Chat assembly | ⚠️ partial | concierge chat UI + debug panel built (`demo-hotel/`); **progressive narrowing not built**; single-gap triage only |
+| 6 — Voice pipeline | ❌ not built (for call-center RAG) | concierge is text-only/non-streaming; a *separate* single-hotel voice bot exists. Integration path: see `fast-lane-design.md` |
+
+**Recent work not in the original plan** (newer docs):
+`phase3-latency-tuning.md` (latency + conversation-state bug fixes),
+`conversation-eval.md` (Tier 1/Tier 2 evals), `fast-lane-design.md`
+(voice-dialog latency architecture).
+
+## Divergences from this plan
+
+Deliberate design changes made during the build that the plan text above does
+**not** reflect:
+
+1. **Confidence handling: 4-band → relative-margin + reranker.** The plan's
+   Phase 2f confidence bands (≥0.82 answer / 0.65 caveat / 0.50 limited / <0.50
+   human) were **not** implemented. Live Qdrant smoke showed e5-large cosine
+   scores are too compressed for absolute thresholds (real matches 0.77–0.82,
+   pure nonsense 0.76–0.77). We use a **relative-margin filter** (keep chunks
+   within `RELATIVE_MARGIN` of the per-query top score) plus a **cross-encoder
+   reranker** (`bge-reranker-v2-m3`) instead. Documented in `kb_config.py` /
+   `reranker.py`.
+2. **Models.** Decompose + render run on **Claude Haiku 4.5** (not Sonnet);
+   the escalation classifier is **gpt-4.1-nano** (OpenAI, not Claude). A live
+   eval confirmed Haiku beats nano on decomposition quality — see
+   `conversation-eval.md` §7.
+3. **Demo server.** A Python `http.server` handler (`demo-hotel/serve.py`), not
+   FastAPI.
+4. **PSTN.** Daily, not Telnyx.
+5. **Cross-encoder rerank shipped earlier than planned** (Phase 3a was marked
+   deferred; it's built and wired).
 
 ---
 
@@ -241,7 +299,7 @@ Full design: [phase2-user-story.md](phase2-user-story.md) · [phase2-development
 - [ ] Unit suite + mock smoke + thin `/api/kb/compound` endpoint
 - [ ] Update `phase2a-test-report.md` §8 and `phase2b-test-report.md` §8 with re-run numbers showing the margin's effect
 
-**Exit criteria.** 
+**Exit criteria.**
 1. Given 6 compound queries (including the canonical "luxury hotel with spa for my wife AND scuba diving for me"), all 6 either return a correctly-intersected hotel list or correctly flag `partial_match_only` with the right missing requirement.
 2. Live smoke re-run: real-match scenarios in Phase 2a/2b harnesses keep top match(es) within the margin; nonsense queries are unchanged at the single-retriever level but compound-AND intersection across multiple nonsense requirements collapses to `partial_match_only` (proves the margin's value in the compound path).
 3. `RELATIVE_MARGIN` value justified by score distribution captured in Phase 2a/2b live smoke (target: 0.05, document if changed).

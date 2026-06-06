@@ -69,6 +69,10 @@ _DESTINATION_INTENTS = {
 
 
 def _has_geography(decomposition: dict[str, Any], session: dict[str, Any] | None) -> bool:
+    # An explicit "all regions" choice is a satisfied geography decision —
+    # route the broad search across all regions instead of asking for one.
+    if session and session.get("all_regions"):
+        return True
     for k in ("city", "region", "district", "hotel_mention"):
         v = decomposition.get(k)
         if isinstance(v, str) and v.strip():
@@ -166,6 +170,18 @@ def _decide(
                 "needs": "hotel_resolve",
             }
         if hotel_id:
+            # A scoped question about the active hotel whose answer lives on the
+            # WEB, not in the guide — reviews, ratings, current prices, live
+            # availability. The decomposer signals this by adding "web" to
+            # source_required. Route to HYBRID (keep the hotel context AND search
+            # the web) instead of dead-ending in the KB, which never has reviews.
+            if "web" in (decomposition.get("source_required") or []):
+                return {
+                    "path": PATH_HYBRID,
+                    "sources": ["hotel_kb", "web"],
+                    "reason": "hotel_needs_web",
+                    "needs": None,
+                }
             # No new mention → genuine follow-up about the hotel locked into this
             # session ("what are the standard rooms?").
             return {

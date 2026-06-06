@@ -40,6 +40,7 @@ import json
 import os
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -88,6 +89,55 @@ def _empty_verdict(model: str, latency_ms: float) -> dict[str, Any]:
     }
 
 
+# ── Fast gate: skip the LLM for obviously benign turns ──────────────────────
+# Escalations are rare and lexically loud ("book", "cancel", "şikayet",
+# "doktor", "acil"...). If the utterance contains NONE of the stems from the
+# external JSON, we skip the LLM classify entirely (~1-1.9s saved on the
+# typical Q&A turn). If ANY stem matches, the LLM still makes the real
+# decision — the gate never decides an escalation itself, it only decides
+# whether the question is worth asking. The multilingual decomposer
+# (query_type="escalate") remains an independent second net for phrasings the
+# stem list doesn't know. The list lives in prompts/escalation_stems.json so
+# it can be edited without touching code; edits are picked up automatically
+# (mtime check). If the file is missing or corrupt we FAIL OPEN: the gate
+# disables itself and every turn runs the LLM, exactly as before.
+_STEMS_DEFAULT_PATH = Path(__file__).resolve().parent / "prompts" / "escalation_stems.json"
+_stems_cache: dict[str, Any] = {"path": None, "mtime": None, "stems": None}
+
+
+def _load_escalation_stems() -> tuple[str, ...] | None:
+    """Load (and hot-reload on change) the stem list. None = gate disabled."""
+    path_str = os.environ.get("ESCALATION_STEMS_PATH", "").strip()
+    path = Path(path_str) if path_str else _STEMS_DEFAULT_PATH
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        if _stems_cache["stems"] is not None or _stems_cache["path"] != str(path):
+            logger.warning("escalation stems file missing ({}) — fast gate disabled", path)
+        _stems_cache.update({"path": str(path), "mtime": None, "stems": None})
+        return None
+    if _stems_cache["path"] == str(path) and _stems_cache["mtime"] == mtime:
+        return _stems_cache["stems"]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        stems = tuple(
+            s.strip().lower()
+            for key, values in data.items()
+            if not key.startswith("_") and isinstance(values, list)
+            for s in values
+            if isinstance(s, str) and s.strip()
+        )
+        if not stems:
+            raise ValueError("no stems found")
+        _stems_cache.update({"path": str(path), "mtime": mtime, "stems": stems})
+        logger.info("escalation fast-gate loaded {} stems from {}", len(stems), path.name)
+        return stems
+    except Exception as e:  # noqa: BLE001 — fail open, never break classification
+        logger.warning("escalation stems file unreadable ({}): {} — fast gate disabled", path, e)
+        _stems_cache.update({"path": str(path), "mtime": mtime, "stems": None})
+        return None
+
+
 class EscalationClassifier:
     """LLM-backed escalation classifier with Redis-backed result cache."""
 
@@ -112,6 +162,13 @@ class EscalationClassifier:
         utterance = (utterance or "").strip()
         if not utterance:
             return _empty_verdict(self._model, 0.0)
+
+        # Fast gate: no escalation stem anywhere in the utterance → skip the LLM.
+        stems = _load_escalation_stems()
+        if stems is not None:
+            low = utterance.lower()
+            if not any(stem in low for stem in stems):
+                return _empty_verdict("fast_gate", 0.0)
 
         # Cache lookup.
         if self._cache_get is not None:
@@ -138,7 +195,9 @@ class EscalationClassifier:
         if self._cache_set is not None:
             try:
                 await self._cache_set(
-                    _cache_key(utterance), json.dumps(verdict), self._cache_ttl,
+                    _cache_key(utterance),
+                    json.dumps(verdict),
+                    self._cache_ttl,
                 )
             except Exception as e:  # noqa: BLE001
                 logger.warning("EscalationClassifier cache_set failed: {}", e)
@@ -152,10 +211,7 @@ class EscalationClassifier:
         except (TypeError, ValueError):
             confidence = 0.0
         signal = raw.get("signal")
-        if isinstance(signal, str):
-            signal = signal.strip() or None
-        else:
-            signal = None
+        signal = signal.strip() or None if isinstance(signal, str) else None
 
         if category not in VALID_TYPES:
             return {
@@ -179,6 +235,7 @@ class EscalationClassifier:
 
 
 # ----------------- default OpenAI-backed classifier -----------------
+
 
 def _build_openai_classify(model: str) -> ClassifyFn:
     """Build a classify_fn that calls OpenAI and parses strict JSON.

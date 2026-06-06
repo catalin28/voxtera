@@ -4,16 +4,24 @@
     "name": "Munamar Beach Residence",
     "url": "https://www.munamarbeachresidence.com",
     "status": "redirect_suspicious",
-    "final_url": "  ",
+    "final_url": "https://elitetravelni.net/",
     "title": "AgenPlay88: Login Terbaru Slot Gacor Gratis Demo Slot Dana Qris Pulsa",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "redirects to a gambling site",
+    "corrected_url": "",
+    "url_confidence": "low",
+    "url_note": "no official site found; only OTA pages (Club Munamar Beach Resort, Icmeler)",
+    "url_resolved": false
   },
   {
     "hotel_id": "parafly_995",
     "name": "D Maris Bay",
     "url": "https://www.dhotel.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.dhotel.com.tr:443 ssl:False [Connection reset by peer]"
+    "reason": "Cannot connect to host www.dhotel.com.tr:443 ssl:False [Connection reset by peer]",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1264450",
@@ -21,13 +29,17 @@
     "url": "https://www.merithotels.com/tur/merit-park-hotel",
     "status": "unreachable",
     "reason": "HTTP 500",
-    "status_code": 500
+    "status_code": 500,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_378452",
     "name": "Concorde Luxury Resort & Casino & Convention & SPA",
     "url": "https://www.concordehotel.com.tr",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_1023974",
@@ -36,7 +48,13 @@
     "status": "redirect_suspicious",
     "final_url": "https://jurahotelsadabeach.com/",
     "title": "Jura Hotels Ada Beach Kuşadası | Jura Group Hotels",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "resolves to Jura Ada Beach (different hotel)",
+    "corrected_url": "https://zeydahotellara.com/",
+    "url_confidence": "high",
+    "url_note": "current official site (Lara/Kundu Antalya)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_1025441",
@@ -45,23 +63,32 @@
     "status": "ssl_error",
     "title": "Jura Hotels Ada Beach Kuşadası | Jura Group Hotels",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "no",
+    "match_reason": "shows Jura Ada Beach Kusadasi, not the Bodrum resort",
+    "corrected_url": "https://www.jurahotelsbodrum.com/",
+    "url_confidence": "high",
+    "url_note": "official Jura Group Bodrum-Ortakent site",
+    "url_resolved": true
   },
-
   {
     "hotel_id": "parafly_227",
     "name": "Novum Garden Side Hotel",
     "url": "http://www.novumhotels.com/novum-garden-side/tr/index.php",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_847",
     "name": "Justiniano Deluxe Resort",
     "url": "https://www.justinianohotels.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.justinianohotels.com.tr:443 ssl:False [nodename nor servname provided, or"
+    "reason": "Cannot connect to host www.justinianohotels.com.tr:443 ssl:False [nodename nor servname provided, or",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_308356",
@@ -69,7 +96,9 @@
     "url": "http://www.famehotels.com/hotel.asp",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_712",
@@ -77,14 +106,18 @@
     "url": "http://www.marti.com.tr/en/marti-hemithea/general-overview",
     "status": "parked",
     "title": "",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_1025429",
     "name": "Club & Hotel Letoonia Fethiye",
     "url": "https://letoonia@letoonia.com",
     "status": "invalid_url",
-    "reason": "Malformed URL"
+    "reason": "Malformed URL",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (invalid_url)"
   },
   {
     "hotel_id": "parafly_145",
@@ -93,7 +126,13 @@
     "status": "ssl_error",
     "title": "The Karia Hotel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "uncertain",
+    "match_reason": "'The Karia Hotel' - possibly different/rebranded property",
+    "corrected_url": "https://thekariahotel.com/",
+    "url_confidence": "high",
+    "url_note": "rebranded Karia Princess -> The Karia Hotel",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_1018416",
@@ -102,7 +141,9 @@
     "status": "ssl_error",
     "title": "Ana Sayfa - English - Casa Fora Hotel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Casa Fora Hotel"
   },
   {
     "hotel_id": "parafly_1239875",
@@ -110,7 +151,9 @@
     "url": "https://www.limakhotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_1024011",
@@ -118,7 +161,13 @@
     "url": "https://aydinbeyhotels.com/",
     "status": "mismatch",
     "title": "Aydınbey Hotels",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "resolves to Aydinbey Hotels (different brand)",
+    "corrected_url": "https://www.siucollection.com/",
+    "url_confidence": "high",
+    "url_note": "official; Aydinbey Group, Beldibi/Kemer",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_891018",
@@ -126,21 +175,27 @@
     "url": "https://www.elaresort.com",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_166",
     "name": "Hapimag Sea Garden Resort Bodrum",
     "url": "https://www.hapimag-seagarden.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.hapimag-seagarden.com.tr:443 ssl:False [nodename nor servname provided, o"
+    "reason": "Cannot connect to host www.hapimag-seagarden.com.tr:443 ssl:False [nodename nor servname provided, o",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_377920",
     "name": "Kahya Resort Aqua & Spa",
     "url": "https://www.kahyaresort.com",
     "status": "ssl_error",
-    "reason": "Cannot connect to host www.kahyaresort.com:443 ssl:False [[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 unrec"
+    "reason": "Cannot connect to host www.kahyaresort.com:443 ssl:False [[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 unrec",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_322",
@@ -148,7 +203,9 @@
     "url": "https://www.whitecityhotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_414938",
@@ -156,7 +213,13 @@
     "url": "https://www.sezergroup.com",
     "status": "mismatch",
     "title": "Sezer Group Hotels - Antalya Side",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "Sezer Group Hotels portal; property not named",
+    "corrected_url": "https://www.sezergroup.com/EN/Club-Grand-Aqua/",
+    "url_confidence": "high",
+    "url_note": "official Sezer Group page, Side-Colakli",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_203586",
@@ -164,7 +227,9 @@
     "url": "https://www.askahotels.com",
     "status": "mismatch",
     "title": "Antalya Aska Hotels Sizler İçin, Sizlerle Beraber | Aska Hotels",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "yes",
+    "match_reason": "Aska Hotels (Lara is an Aska property)"
   },
   {
     "hotel_id": "parafly_281",
@@ -172,13 +237,17 @@
     "url": "https://yalikavakmarina.com.tr",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_672986",
     "name": "Innvista Belek Antalya",
     "url": "https://www.innvistahotels.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_592657",
@@ -187,14 +256,18 @@
     "status": "ssl_error",
     "title": "elexushotel.com",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "elexushotel.com"
   },
   {
     "hotel_id": "parafly_427",
     "name": "CPAnkara Hotel",
     "url": "https://www.cpankara.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.cpankara.com.tr:443 ssl:False [nodename nor servname provided, or not kno"
+    "reason": "Cannot connect to host www.cpankara.com.tr:443 ssl:False [nodename nor servname provided, or not kno",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_142870",
@@ -202,7 +275,9 @@
     "url": "https://www.aydinbeyhotels.com.tr",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_33",
@@ -211,13 +286,17 @@
     "status": "ssl_error",
     "title": "Orange County Hotels",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Orange County Hotels brand"
   },
   {
     "hotel_id": "parafly_273",
     "name": "Green Garden Resort Hotel",
     "url": "https://www.greengardenapart.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_97975",
@@ -226,7 +305,9 @@
     "status": "ssl_error",
     "title": "",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_593734",
@@ -235,14 +316,18 @@
     "status": "ssl_error",
     "title": "",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_295074",
     "name": "Concordia Celes Hotel",
     "url": "https://www.concordiaceles.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.concordiaceles.com.tr:443 ssl:False [nodename nor servname provided, or n"
+    "reason": "Cannot connect to host www.concordiaceles.com.tr:443 ssl:False [nodename nor servname provided, or n",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_414826",
@@ -251,27 +336,35 @@
     "status": "ssl_error",
     "title": "alkoclar.com.tr &#8211; Alkoçlar Hotel &amp; Resorts",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Alkoclar Hotel & Resorts brand"
   },
   {
     "hotel_id": "parafly_82",
     "name": "Hilton Bodrum Turkbuku Resort & Spa - All Inclusive",
     "url": "https://www.bodrumturkbuku.hilton.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.bodrumturkbuku.hilton.com:443 ssl:False [Connect call failed ('167.187.20"
+    "reason": "Cannot connect to host www.bodrumturkbuku.hilton.com:443 ssl:False [Connect call failed ('167.187.20",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_205254",
     "name": "Selectum Family Resort Didim ExAsteria Venüs Didim",
     "url": "https://familyresortdidim.selectumhotels.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host familyresortdidim.selectumhotels.com:443 ssl:False [nodename nor servname pro"
+    "reason": "Cannot connect to host familyresortdidim.selectumhotels.com:443 ssl:False [nodename nor servname pro",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_402",
     "name": "Selectum Family Resort",
     "url": "https://www.letooniaresorts.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_878102",
@@ -279,21 +372,27 @@
     "url": "https://www.megasarayhotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_378040",
     "name": "Greenblue Hotel Patara",
     "url": "https://greenbluehotel.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host greenbluehotel.com:443 ssl:False [nodename nor servname provided, or not know"
+    "reason": "Cannot connect to host greenbluehotel.com:443 ssl:False [nodename nor servname provided, or not know",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_445",
     "name": "Juju Premier Palace",
     "url": "https://rezervasyon@premierpalace.com.tr",
     "status": "invalid_url",
-    "reason": "Malformed URL"
+    "reason": "Malformed URL",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (invalid_url)"
   },
   {
     "hotel_id": "parafly_627016",
@@ -302,14 +401,18 @@
     "status": "ssl_error",
     "title": "The Marilis Hill Resort &amp; Spa",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Marilis Hill Resort & Spa"
   },
   {
     "hotel_id": "parafly_776",
     "name": "Bella Resort & Spa",
     "url": "https://www.bellaresorthotels.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.bellaresorthotels.com:443 ssl:False [nodename nor servname provided, or n"
+    "reason": "Cannot connect to host www.bellaresorthotels.com:443 ssl:False [nodename nor servname provided, or n",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_592521",
@@ -318,7 +421,9 @@
     "status": "ssl_error",
     "title": "Xoria Deluxe",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Xoria Deluxe"
   },
   {
     "hotel_id": "parafly_416542",
@@ -327,7 +432,9 @@
     "status": "ssl_error",
     "title": "Haydarpasha Palace",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Haydarpasha Palace"
   },
   {
     "hotel_id": "parafly_139488",
@@ -335,7 +442,9 @@
     "url": "https://www.sunishotels.com",
     "status": "mismatch",
     "title": "Sunis Hotels &#8211; Sonsuza kadar Sürecek Anılar",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "yes",
+    "match_reason": "Sunis Hotels (Elita Beach is a Sunis property)"
   },
   {
     "hotel_id": "parafly_874",
@@ -343,7 +452,9 @@
     "url": "http://www.saphirhotels.com.tr/saphirresortspa/default.aspx",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_616",
@@ -352,7 +463,9 @@
     "status": "ssl_error",
     "title": "Daima Hotels - RESMİ WEB SİTESİ",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Daima Hotels"
   },
   {
     "hotel_id": "parafly_416",
@@ -360,14 +473,18 @@
     "url": "https://www.ihg.com/crowneplaza/hotels/us/en/kayseri/asrks/hoteldetail",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_781348",
     "name": "Elamir Beach Bungalow Hotel",
     "url": "https://elamirbeachbungalow.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host elamirbeachbungalow.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host elamirbeachbungalow.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1298823",
@@ -375,7 +492,13 @@
     "url": "https://www.doubletreebyhiltonsarikamis.com",
     "status": "mismatch",
     "title": "isimtescil.net | Türkiye'nin Domain ve Hosting Lideri | Hoş geldiniz",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "domain reseller/parking page (isimtescil.net)",
+    "corrected_url": "https://www.hilton.com/en/hotels/ksyutdi-doubletree-kars-sarikamis/",
+    "url_confidence": "high",
+    "url_note": "official Hilton brand page",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_834",
@@ -384,14 +507,18 @@
     "status": "ssl_error",
     "title": "Belconti Resort Hotel | Antalya Belek 5 Yıldızlı Denize Sıfır Otel | Belek Otelleri",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Belconti Resort Hotel"
   },
   {
     "hotel_id": "parafly_1199739",
     "name": "Rox Resort Hotel",
     "url": "https://www.roxroyal.com",
     "status": "unreachable",
-    "reason": "0, message='', url='https://www.roxroyal.com'"
+    "reason": "0, message='', url='https://www.roxroyal.com'",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_781690",
@@ -400,7 +527,9 @@
     "status": "ssl_error",
     "title": "Maia Luxury Beach Hotel &amp; Spa - Resmi Otel Sitesi",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Maia Luxury Beach Hotel & Spa"
   },
   {
     "hotel_id": "parafly_873037",
@@ -408,7 +537,13 @@
     "url": "https://www.crystalhotels.com",
     "status": "mismatch",
     "title": "Crystal Mountain Hotel | Cozy & Stylish Alpine Escape",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "shows Crystal Mountain (alpine), not World of Colours Belek",
+    "corrected_url": "https://colours-tr.crystalhotels.com.tr/",
+    "url_confidence": "high",
+    "url_note": "correct domain is crystalhotels.com.tr",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_64148",
@@ -417,20 +552,26 @@
     "status": "ssl_error",
     "title": "Fantasia De Luxe Kuşadası",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Fantasia De Luxe Kusadasi"
   },
   {
     "hotel_id": "parafly_1264274",
     "name": "Alaiye Resort & Spa Hotel",
     "url": "https://www.alaiyehotels.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_308288",
     "name": "Megasaray Club Belek",
     "url": "https://www.clubmegasaray.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.clubmegasaray.com.tr:443 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.clubmegasaray.com.tr:443 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1264289",
@@ -438,7 +579,9 @@
     "url": "https://www.aydinbeyhotels.com.tr",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_877646",
@@ -447,7 +590,9 @@
     "status": "ssl_error",
     "title": "SunThalia Hotel ve Resorts",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "SunThalia Hotel & Resorts"
   },
   {
     "hotel_id": "parafly_208575",
@@ -456,7 +601,9 @@
     "status": "ssl_error",
     "title": "Club Resort Atlantis | İzmir Sığacık Otel & Denize Sıfır Aile Oteli",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Club Resort Atlantis Izmir"
   },
   {
     "hotel_id": "parafly_1264339",
@@ -465,14 +612,18 @@
     "status": "ssl_error",
     "title": "Kirman Premium | Completes You!",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Kirman Premium"
   },
   {
     "hotel_id": "parafly_1428",
     "name": "Royal Alhambra Palace Hotel",
     "url": "https://rezervasyon4@stonegrouphotels.com",
     "status": "invalid_url",
-    "reason": "Malformed URL"
+    "reason": "Malformed URL",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (invalid_url)"
   },
   {
     "hotel_id": "parafly_18",
@@ -480,21 +631,27 @@
     "url": "https://www.limakhotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_1017495",
     "name": "Stella Elite Resort & Spa +16",
     "url": "https://www.sidestellaeite.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.sidestellaeite.com:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host www.sidestellaeite.com:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_567",
     "name": "Larissa Mare Beach Hotel",
     "url": "http://marebeach.larissahotels.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host marebeach.larissahotels.com:80 ssl:False [nodename nor servname provided, or "
+    "reason": "Cannot connect to host marebeach.larissahotels.com:80 ssl:False [nodename nor servname provided, or ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1285108",
@@ -502,7 +659,13 @@
     "url": "https://www.cratospremium.com",
     "status": "mismatch",
     "title": "3CX Webclient",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "3CX phone-system login page, not a hotel site",
+    "corrected_url": "https://www.cratospremium.com.tr/",
+    "url_confidence": "high",
+    "url_note": "correct domain is .com.tr (Kyrenia, N.Cyprus)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_1242191",
@@ -510,7 +673,9 @@
     "url": "https://www.merithotels.com/tur/merit-royal-hotel",
     "status": "unreachable",
     "reason": "HTTP 500",
-    "status_code": 500
+    "status_code": 500,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1242088",
@@ -518,7 +683,9 @@
     "url": "https://www.merithotels.com/tur/merit-lefkosa-hotel",
     "status": "unreachable",
     "reason": "HTTP 500",
-    "status_code": 500
+    "status_code": 500,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_2471822",
@@ -526,7 +693,9 @@
     "url": "https://www.merithotels.com/tur/merit-royal-premium-hotel",
     "status": "unreachable",
     "reason": "HTTP 500",
-    "status_code": 500
+    "status_code": 500,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_28",
@@ -534,7 +703,9 @@
     "url": "https://www.limakhotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_859697",
@@ -542,7 +713,9 @@
     "url": "https://www.sianjilife.com",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1023577",
@@ -550,7 +723,9 @@
     "url": "https://www.megasarayhotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_1024219",
@@ -558,7 +733,9 @@
     "url": "https://www.tarhanserenity.com",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_101847",
@@ -567,7 +744,9 @@
     "status": "ssl_error",
     "title": "Sultan of Side | Resmi Websitesi",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Sultan of Side"
   },
   {
     "hotel_id": "parafly_874780",
@@ -575,7 +754,9 @@
     "url": "https://www.marvistahotel.com",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_3379",
@@ -584,7 +765,9 @@
     "status": "redirect_suspicious",
     "final_url": "https://findresultshub.com/?dn=labrandahotels.com",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (redirect_suspicious)"
   },
   {
     "hotel_id": "parafly_2917456",
@@ -592,7 +775,9 @@
     "url": "https://www.corendonhotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_1264288",
@@ -600,7 +785,9 @@
     "url": "https://www.aydinbeyhotels.com.tr",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_377885",
@@ -609,7 +796,9 @@
     "status": "ssl_error",
     "title": "Horus Paradise Luxury Resort Hotel | Horus Paradise Luxury Resort Hotel'e gelirken, sadece deniz kum güneş ya da enfes lezzetler için gelmezsiniz. Eski Mısır kültürüne atıfta bulunan mekanları ve özgü",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Horus Paradise Luxury Resort"
   },
   {
     "hotel_id": "parafly_628",
@@ -617,7 +806,13 @@
     "url": "https://www.tthotels.com",
     "status": "mismatch",
     "title": "TUI Hotels & Resorts Turkey",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "TUI Turkey operator portal; Kairaba property not named",
+    "corrected_url": "https://www.kairaba-hotels.com/bodrum-imperial",
+    "url_confidence": "medium",
+    "url_note": "official Kairaba page; may be rebranding to Selectum",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_21133",
@@ -625,7 +820,9 @@
     "url": "https://www.maritim.de/de/hotels/tuerkei/pine-beach-resort-belek/uebersicht#hotel_content",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_45252",
@@ -633,7 +830,9 @@
     "url": "https://www.euphoriahotels.com",
     "status": "unreachable",
     "reason": "HTTP 523",
-    "status_code": 523
+    "status_code": 523,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1238697",
@@ -642,7 +841,9 @@
     "status": "ssl_error",
     "title": "Orange County Hotels",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Orange County Hotels brand"
   },
   {
     "hotel_id": "parafly_228",
@@ -651,7 +852,9 @@
     "status": "ssl_error",
     "title": "",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_45",
@@ -659,7 +862,9 @@
     "url": "http://www.temizel.com.tr",
     "status": "mismatch",
     "title": "Temizel Turistik Tesisleri Sanayi",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "yes",
+    "match_reason": "Temizel (Grand Hotel Temizel operator)"
   },
   {
     "hotel_id": "parafly_147661",
@@ -667,7 +872,13 @@
     "url": "https://www.mukarnashotel.com",
     "status": "mismatch",
     "title": "Home -",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "generic 'Home -' placeholder",
+    "corrected_url": "https://mukarnashotel.com/",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_295302",
@@ -676,14 +887,18 @@
     "status": "ssl_error",
     "title": "Azura Deluxe Hotel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Azura Deluxe Hotel"
   },
   {
     "hotel_id": "parafly_1200279",
     "name": "Grand Belish Hotel",
     "url": "http://wwwgrandbelish.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host wwwgrandbelish.com:80 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host wwwgrandbelish.com:80 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_64648",
@@ -691,7 +906,9 @@
     "url": "https://www.hilton.com/en/hotels/bjvtrdi-doubletree-bodrum-isil-club-resort",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1367",
@@ -699,14 +916,22 @@
     "url": "https://www.tthotels.com",
     "status": "mismatch",
     "title": "TUI Hotels & Resorts Turkey",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "TUI Turkey operator portal; AQI property not named",
+    "corrected_url": "https://www.tthotels.com/en/hotel/aqi-pegasos-royal",
+    "url_confidence": "high",
+    "url_note": "official TT Hotels/AQI page",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_963",
     "name": "Bodrum Skylife Hotel",
     "url": "https://bodrumskylifehotel.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host bodrumskylifehotel.com:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host bodrumskylifehotel.com:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_148645",
@@ -714,7 +939,9 @@
     "url": "http://www.saphirhotels.com.tr/saphirresortspa/default.aspx",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_217728",
@@ -722,7 +949,9 @@
     "url": "http://www.orfeushotels.com/park/",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1023969",
@@ -731,7 +960,13 @@
     "status": "redirect_suspicious",
     "final_url": "https://expireddomains.com/domain/jurahotelskemer.com?utm_source=redi",
     "title": "Domain Not Found",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "no",
+    "match_reason": "domain expired / for sale (expireddomains.com)",
+    "corrected_url": "https://www.jurahotelskemer.com/",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_844",
@@ -739,7 +974,9 @@
     "url": "https://www.limakhotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_1164",
@@ -748,7 +985,9 @@
     "status": "ssl_error",
     "title": "",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_116289",
@@ -757,14 +996,18 @@
     "status": "ssl_error",
     "title": "",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_873138",
     "name": "La Hoya Beach Hotel",
     "url": "https://www.lahoyabeachhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.lahoyabeachhotel.com:443 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.lahoyabeachhotel.com:443 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_26",
@@ -772,7 +1015,9 @@
     "url": "http://www.justinianohotels.com/tr/hotel/deluxe-resort/",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_208854",
@@ -781,7 +1026,13 @@
     "status": "redirect_suspicious",
     "final_url": "https://derinyikama.com.tr/kadikoy-koltuk-yikama",
     "title": "Profesyonel Kadıköy Koltuk Yıkama Hizmetleri - En iyi yıkama",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "redirects to a sofa-cleaning business",
+    "corrected_url": "",
+    "url_confidence": "low",
+    "url_note": "no official site found; only OTA aggregators (Golden Beach Resort & Spa Bodrum)",
+    "url_resolved": false
   },
   {
     "hotel_id": "parafly_1199251",
@@ -789,7 +1040,9 @@
     "url": "https://www.whitecityhotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_374",
@@ -797,14 +1050,18 @@
     "url": "https://www.gardeniahotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_128912",
     "name": "Justiniano Club Alanya",
     "url": "https://www.justinianohotels.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.justinianohotels.com.tr:443 ssl:False [nodename nor servname provided, or"
+    "reason": "Cannot connect to host www.justinianohotels.com.tr:443 ssl:False [nodename nor servname provided, or",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_781396",
@@ -812,13 +1069,21 @@
     "url": "https://www.botanikresorthotel.com",
     "status": "mismatch",
     "title": "botanikresorthotel.com",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "resolves to Botanik Resort Hotel (different)",
+    "corrected_url": "https://elamirmagicdreamhotel.com/",
+    "url_confidence": "high",
+    "url_note": "official site (Kemer)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_874395",
     "name": "Ring Downtown Hotel",
     "url": "https://www.ringdowntownhotel.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_344",
@@ -827,7 +1092,9 @@
     "status": "ssl_error",
     "title": "",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_1779",
@@ -836,7 +1103,9 @@
     "status": "ssl_error",
     "title": "Hoşgeldiniz / Dosi Hotel - Side - Antalya",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Dosi Hotel Side"
   },
   {
     "hotel_id": "parafly_324955",
@@ -844,28 +1113,40 @@
     "url": "https://www.bluehotel.com",
     "status": "mismatch",
     "title": "Web Server's Default Page",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "unconfigured web-server default page",
+    "corrected_url": "",
+    "url_confidence": "low",
+    "url_note": "could not confirm a Marmaris 'Blue Sky Hotel & Suites'; possible location mismatch",
+    "url_resolved": false
   },
   {
     "hotel_id": "parafly_416580",
     "name": "Design Plus Seya Beach Hotel",
     "url": "https://www.labranda.com/de/hotel/seya-beach-hotel.html",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.labranda.com:443 ssl:False [nodename nor servname provided, or not known]"
+    "reason": "Cannot connect to host www.labranda.com:443 ssl:False [nodename nor servname provided, or not known]",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_54283",
     "name": "Klas Dom Hotel",
     "url": "https://www.klasshotels.net",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.klasshotels.net:443 ssl:False [nodename nor servname provided, or not kno"
+    "reason": "Cannot connect to host www.klasshotels.net:443 ssl:False [nodename nor servname provided, or not kno",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_119556",
     "name": "Marbel Hotel By Palmwings",
     "url": "https://ww. marbelpalmwings.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host ww. marbelpalmwings.com.tr:443 ssl:False [nodename nor servname provided, or "
+    "reason": "Cannot connect to host ww. marbelpalmwings.com.tr:443 ssl:False [nodename nor servname provided, or ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_116285",
@@ -874,21 +1155,27 @@
     "status": "ssl_error",
     "title": "Club Hotel Mirabell",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Club Hotel Mirabell"
   },
   {
     "hotel_id": "parafly_1022385",
     "name": "Duqqan Deluxe Hotel",
     "url": "https://www.dabaklarhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.dabaklarhotel.com:443 ssl:False [nodename nor servname provided, or not k"
+    "reason": "Cannot connect to host www.dabaklarhotel.com:443 ssl:False [nodename nor servname provided, or not k",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_96931",
     "name": "Anatolian Houses Cave Hotel & Spa",
     "url": "https://www.anatoliahouses.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.anatoliahouses.com.tr:443 ssl:False [nodename nor servname provided, or n"
+    "reason": "Cannot connect to host www.anatoliahouses.com.tr:443 ssl:False [nodename nor servname provided, or n",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_415521",
@@ -896,14 +1183,18 @@
     "url": "https://orfeushotels.com/queen/",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_872578",
     "name": "Venüs Termal Boutique",
     "url": "https://info@venushotels.com.tr",
     "status": "invalid_url",
-    "reason": "Malformed URL"
+    "reason": "Malformed URL",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (invalid_url)"
   },
   {
     "hotel_id": "parafly_113333",
@@ -911,7 +1202,9 @@
     "url": "http://www.alestayachthotel.com/",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_875",
@@ -919,14 +1212,18 @@
     "url": "https://www.mehtapotel.com",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1025386",
     "name": "Thermemaris Thermal & Spa Resort",
     "url": "http://www.thermemaris.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.thermemaris.com:80 ssl:False [nodename nor servname provided, or not know"
+    "reason": "Cannot connect to host www.thermemaris.com:80 ssl:False [nodename nor servname provided, or not know",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_308319",
@@ -934,21 +1231,27 @@
     "url": "https://www.bodrumbayresorthotel.com",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1122",
     "name": "Carelta Beach",
     "url": "https://www.careltabeachotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.careltabeachotel.com:443 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.careltabeachotel.com:443 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_226392",
     "name": "Mini Saray Hotel",
     "url": "http://www.minisarayhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.minisarayhotel.com:80 ssl:False [nodename nor servname provided, or not k"
+    "reason": "Cannot connect to host www.minisarayhotel.com:80 ssl:False [nodename nor servname provided, or not k",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_649",
@@ -957,35 +1260,45 @@
     "status": "redirect_suspicious",
     "final_url": "https://www.sundiabyliberty.com/otellerimiz/sundia-by-liberty-suncity/",
     "title": "Sundia By Liberty Suncity – Fethiye Ölüdeniz’de Unutulmaz Bir Tatil",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "yes",
+    "match_reason": "rebranded Sundia by Liberty Suncity (same property)"
   },
   {
     "hotel_id": "parafly_207599",
     "name": "Club Antiphellos",
     "url": "http://www.clubantiphellos.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.clubantiphellos.com:80 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host www.clubantiphellos.com:80 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_299",
     "name": "Adrasan Klados Hotel",
     "url": "https://www.adrasankladoshotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.adrasankladoshotel.com:443 ssl:False [nodename nor servname provided, or "
+    "reason": "Cannot connect to host www.adrasankladoshotel.com:443 ssl:False [nodename nor servname provided, or ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1198",
     "name": "Yalıhan Una Hotel",
     "url": "https://info@yalihan.com.tr",
     "status": "invalid_url",
-    "reason": "Malformed URL"
+    "reason": "Malformed URL",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (invalid_url)"
   },
   {
     "hotel_id": "parafly_877597",
     "name": "Anita Sunpark Beach",
     "url": "https://sunpark.anitahotels.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host sunpark.anitahotels.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host sunpark.anitahotels.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_146224",
@@ -994,7 +1307,9 @@
     "status": "ssl_error",
     "title": "Blue Star Hotel | Alanya | +90 242 510 06 00",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Blue Star Hotel Alanya"
   },
   {
     "hotel_id": "parafly_1019941",
@@ -1002,7 +1317,13 @@
     "url": "https://bodrumoscarseasidehotel.com/",
     "status": "parked",
     "title": "Coming Soon",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "'Coming Soon' placeholder",
+    "corrected_url": "https://www.oscarseasidehotel.com/en/",
+    "url_confidence": "high",
+    "url_note": "official (Bodrum-Guvercinlik)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_689",
@@ -1010,7 +1331,13 @@
     "url": "https://www.elvinobodrum.com",
     "status": "mismatch",
     "title": "Web sitemiz yakında geliyor",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "'site coming soon' placeholder",
+    "corrected_url": "https://elvinobodrum.com/",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_1025275",
@@ -1018,7 +1345,9 @@
     "url": "https://www.hotelmarinavista.com",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1023995",
@@ -1027,7 +1356,9 @@
     "status": "ssl_error",
     "title": "SL La Perla Hotel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "SL La Perla Hotel"
   },
   {
     "hotel_id": "parafly_1902",
@@ -1036,7 +1367,9 @@
     "status": "ssl_error",
     "title": "ROBINSON Cluburlaub: die besten Angebote",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Robinson Club brand (Sarigerme is a Robinson club)"
   },
   {
     "hotel_id": "parafly_324646",
@@ -1044,14 +1377,22 @@
     "url": "https://www.tthotels.com",
     "status": "mismatch",
     "title": "TUI Hotels & Resorts Turkey",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "TUI Turkey operator portal; AQI property not named",
+    "corrected_url": "https://www.tthotels.com/en/hotel/aqi-pegasos-world",
+    "url_confidence": "high",
+    "url_note": "official AQI/TT Hotels page",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_987",
     "name": "Alaiye Kleopatra Hotel",
     "url": "https://www.alaiyehotels.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.alaiyehotels.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host www.alaiyehotels.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_342",
@@ -1059,7 +1400,9 @@
     "url": "https://www.gardeniahotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_3891",
@@ -1067,7 +1410,9 @@
     "url": "http://www.dalamanairportlykiaresorthotel.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_378050",
@@ -1075,7 +1420,9 @@
     "url": "https://www.facebook.com/laberna.hotel/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_126919",
@@ -1083,14 +1430,18 @@
     "url": "http://www.famehotels.com/tr/anasayfagoynuk.php",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_881886",
     "name": "Fun Hill Resort Hotel",
     "url": "https://funhillresorthotel.com.tr/",
     "status": "unreachable",
-    "reason": "Cannot connect to host funhillresorthotel.com.tr:443 ssl:False [nodename nor servname provided, or n"
+    "reason": "Cannot connect to host funhillresorthotel.com.tr:443 ssl:False [nodename nor servname provided, or n",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_136646",
@@ -1099,7 +1450,9 @@
     "status": "ssl_error",
     "title": "Veltur Small Beach Hotel | Turgutreis Bodrum | Rezervasyon +90 252 382 28 33",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Veltur Small Beach Hotel Turgutreis"
   },
   {
     "hotel_id": "parafly_1021510",
@@ -1108,7 +1461,9 @@
     "status": "redirect_suspicious",
     "final_url": "https://www.iboshotels.com/",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (redirect_suspicious)"
   },
   {
     "hotel_id": "parafly_1025245",
@@ -1116,14 +1471,18 @@
     "url": "https://www.marti.com.tr",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_1025443",
     "name": "The Rest Port Argento",
     "url": "https://www.therestportbodrum.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.therestportbodrum.com:443 ssl:False [nodename nor servname provided, or n"
+    "reason": "Cannot connect to host www.therestportbodrum.com:443 ssl:False [nodename nor servname provided, or n",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_137065",
@@ -1131,7 +1490,9 @@
     "url": "https://www.marinahotelkusadasi.com",
     "status": "unreachable",
     "reason": "HTTP 500",
-    "status_code": 500
+    "status_code": 500,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_139785",
@@ -1139,7 +1500,13 @@
     "url": "https://www.feriahotels.com",
     "status": "mismatch",
     "title": "Feria Hotels &#8211; OFFICIAL WEBSITE",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "Feria Hotels group; property not named",
+    "corrected_url": "https://kleopatraroyalpalmhotel.com/En",
+    "url_confidence": "high",
+    "url_note": "own official domain (Alanya)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_266",
@@ -1148,14 +1515,18 @@
     "status": "ssl_error",
     "title": "Viento Hotel Alaçatı | Luxury Hotel Alaçatı",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Viento Hotel Alacati"
   },
   {
     "hotel_id": "parafly_378462",
     "name": "Elamir Grand Lukullus",
     "url": "https://info@lukullushotel.com",
     "status": "invalid_url",
-    "reason": "Malformed URL"
+    "reason": "Malformed URL",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (invalid_url)"
   },
   {
     "hotel_id": "parafly_593536",
@@ -1164,14 +1535,22 @@
     "status": "ssl_error",
     "title": "omorfigardenresort.com",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "uncertain",
+    "match_reason": "resolves to Omorfi Garden Resort - possible rebrand",
+    "corrected_url": "",
+    "url_confidence": "low",
+    "url_note": "no official site (ex-Monna Roza, Goynuk/Kemer); only OTAs/Facebook",
+    "url_resolved": false
   },
   {
     "hotel_id": "parafly_789505",
     "name": "Le Monde Beach Resort & Spa",
     "url": "https://www.halicparkresort.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.halicparkresort.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.halicparkresort.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1002",
@@ -1180,7 +1559,9 @@
     "status": "ssl_error",
     "title": "Assos Eden Group Hotels, Hotels Assos, Assos Otelleri",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Assos Eden Group (Gardens is a property)"
   },
   {
     "hotel_id": "parafly_593759",
@@ -1188,7 +1569,21 @@
     "url": "https://www.moyohotel.com/iletisim",
     "status": "mismatch",
     "title": "Visit Turkey. Book your dream hotel from Istanbul to the sunny coast.",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "generic 'Visit Turkey' travel portal",
+    "corrected_url": "https://www.moyohotel.com/",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct (Torba/Bodrum)",
+    "url_resolved": true
+  },
+  {
+    "hotel_id": "parafly_378039",
+    "name": "Green Blue Hotels Bodrum",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_416509",
@@ -1196,7 +1591,9 @@
     "url": "http://www.tthotels.com",
     "status": "mismatch",
     "title": "TUI Hotels & Resorts Turkey",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "yes",
+    "match_reason": "TUI Blue brand matches"
   },
   {
     "hotel_id": "parafly_765",
@@ -1205,14 +1602,18 @@
     "status": "ssl_error",
     "title": "Alya Hotels",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Alya Hotels brand"
   },
   {
     "hotel_id": "parafly_881907",
     "name": "Elitium Dizayn Termal Otel",
     "url": "https://www.elitiumdizayntermalhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.elitiumdizayntermalhotel.com:443 ssl:False [nodename nor servname provide"
+    "reason": "Cannot connect to host www.elitiumdizayntermalhotel.com:443 ssl:False [nodename nor servname provide",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_946045",
@@ -1220,21 +1621,27 @@
     "url": "https://www.radissonhotels.com/tr-tr/oteller/radisson-blu-kas",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_872834",
     "name": "Get Enjoy Hotel",
     "url": "https://www.getenjoyhotels.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.getenjoyhotels.com:443 ssl:False [Connect call failed ('192.248.176.78', "
+    "reason": "Cannot connect to host www.getenjoyhotels.com:443 ssl:False [Connect call failed ('192.248.176.78', ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_593535",
     "name": "Monna Roza Beach Resort Hotel",
     "url": "https://www.monnarozabeach.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.monnarozabeach.com:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host www.monnarozabeach.com:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_234",
@@ -1243,35 +1650,45 @@
     "status": "ssl_error",
     "title": "",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_1303122",
     "name": "Ramira City Hotel",
     "url": "https://www.ramiracityhotels.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.ramiracityhotels.com:443 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.ramiracityhotels.com:443 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_592777",
     "name": "Likya Road Resort Hotel",
     "url": "https://www.likyaroad.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.likyaroad.com:443 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host www.likyaroad.com:443 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_212",
     "name": "Julian Forest Suites",
     "url": "https://julianforest.julianhotels.com",
     "status": "ssl_error",
-    "reason": "Cannot connect to host julianforest.julianhotels.com:443 ssl:False [[SSL: TLSV1_ALERT_INTERNAL_ERROR"
+    "reason": "Cannot connect to host julianforest.julianhotels.com:443 ssl:False [[SSL: TLSV1_ALERT_INTERNAL_ERROR",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_586",
     "name": "Sesin Hotel",
     "url": "https://www.sesinhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.sesinhotel.com:443 ssl:False [nodename nor servname provided, or not know"
+    "reason": "Cannot connect to host www.sesinhotel.com:443 ssl:False [nodename nor servname provided, or not know",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_17",
@@ -1279,7 +1696,13 @@
     "url": "https://www.foreverclub.com",
     "status": "mismatch",
     "title": "Turhost hosting altyapısında barınmaktadır.",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "hosting provider parking page (Turhost)",
+    "corrected_url": "http://www.foreverclub.com.tr/",
+    "url_confidence": "high",
+    "url_note": "correct domain is .com.tr (Icmeler/Bodrum)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_108547",
@@ -1288,7 +1711,9 @@
     "status": "ssl_error",
     "title": "",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_968",
@@ -1296,7 +1721,9 @@
     "url": "https://www.cettia.com",
     "status": "mismatch",
     "title": "Cettia Otelleri & Resorts | Marmaris / TÜRKİYE",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "yes",
+    "match_reason": "Cettia Otelleri Marmaris"
   },
   {
     "hotel_id": "parafly_418366",
@@ -1305,14 +1732,18 @@
     "status": "ssl_error",
     "title": "",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_247",
     "name": "Fortuna Beach Hotel",
     "url": "https://www.fortunabeachhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.fortunabeachhotel.com:443 ssl:False [nodename nor servname provided, or n"
+    "reason": "Cannot connect to host www.fortunabeachhotel.com:443 ssl:False [nodename nor servname provided, or n",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1264881",
@@ -1320,7 +1751,9 @@
     "url": "http://www.azmakhan.com.tr/azmakhan/",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_982",
@@ -1329,7 +1762,9 @@
     "status": "ssl_error",
     "title": "Assos Eden Group Hotels, Hotels Assos, Assos Otelleri",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Assos Eden Group (Beach is a property)"
   },
   {
     "hotel_id": "parafly_159109",
@@ -1337,7 +1772,9 @@
     "url": "http://www.azakbeach.com/tr",
     "status": "parked",
     "title": "",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_144934",
@@ -1345,21 +1782,31 @@
     "url": "https://www.isis.com.tr",
     "status": "mismatch",
     "title": "isis.com.tr",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "resolves to isis.com.tr - likely different hotel",
+    "corrected_url": "https://gumbetakvaryum.com/",
+    "url_confidence": "high",
+    "url_note": "real site is gumbetakvaryum.com (Gumbet/Bodrum)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_1589",
     "name": "Iko Melisa Garden Hotel - Kemer",
     "url": "https://www.ikomelisagarden.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.ikomelisagarden.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.ikomelisagarden.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_150654",
     "name": "Skys Beach Hotel",
     "url": "https://www.skyshotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.skyshotel.com:443 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host www.skyshotel.com:443 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1210524",
@@ -1367,7 +1814,9 @@
     "url": "https://www.moscesme.com",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_45341",
@@ -1375,35 +1824,45 @@
     "url": "http://www.dalyanresort.com/english/index.php",
     "status": "parked",
     "title": "",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_784810",
     "name": "Saadet Otel",
     "url": "https://www.hotelsaadet.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.hotelsaadet.com:443 ssl:False [Connection reset by peer]"
+    "reason": "Cannot connect to host www.hotelsaadet.com:443 ssl:False [Connection reset by peer]",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_151693",
     "name": "Pera Hotel Alanya",
     "url": "https://www.perahotelalanya.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.perahotelalanya.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.perahotelalanya.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_74762",
     "name": "Sunday Beach Hotel",
     "url": "https://www.sundaybeachhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.sundaybeachhotel.com:443 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.sundaybeachhotel.com:443 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_859380",
     "name": "Altınsaray Hotel",
     "url": "https://www.hotelaltinsaray.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.hotelaltinsaray.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.hotelaltinsaray.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1023539",
@@ -1412,35 +1871,45 @@
     "status": "ssl_error",
     "title": "Elite World Hotels & Resorts",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Elite World Hotels brand"
   },
   {
     "hotel_id": "parafly_88",
     "name": "Yeniçeri City Hotel",
     "url": "https://wwwyenicerihotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host wwwyenicerihotel.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host wwwyenicerihotel.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_247173",
     "name": "Kleopatra Aydın Otel",
     "url": "https://kleopatraaydinhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host kleopatraaydinhotel.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host kleopatraaydinhotel.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1018588",
     "name": "Avalon Hotel Kuşadası",
     "url": "https://www.avalonotel.com",
     "status": "ssl_error",
-    "reason": "Cannot connect to host www.avalonotel.com:443 ssl:False [[SSL: TLSV1_ALERT_INTERNAL_ERROR] tlsv1 ale"
+    "reason": "Cannot connect to host www.avalonotel.com:443 ssl:False [[SSL: TLSV1_ALERT_INTERNAL_ERROR] tlsv1 ale",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_878049",
     "name": "Kalkan Sultan Hotel",
     "url": "https://kalkansultanhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host kalkansultanhotel.com:443 ssl:False [nodename nor servname provided, or not k"
+    "reason": "Cannot connect to host kalkansultanhotel.com:443 ssl:False [nodename nor servname provided, or not k",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1261",
@@ -1448,7 +1917,9 @@
     "url": "http://www.salinashotelbodrum.com/",
     "status": "unreachable",
     "reason": "HTTP 503",
-    "status_code": 503
+    "status_code": 503,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_54182",
@@ -1457,28 +1928,36 @@
     "status": "ssl_error",
     "title": "Monte Carlo Hotel | Resmi Websitesi",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Monte Carlo Hotel"
   },
   {
     "hotel_id": "parafly_294799",
     "name": "Grand Atilla Hotel",
     "url": "https://www.grandatillaotel.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.grandatillaotel.com.tr:443 ssl:False [nodename nor servname provided, or "
+    "reason": "Cannot connect to host www.grandatillaotel.com.tr:443 ssl:False [nodename nor servname provided, or ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_378031",
     "name": "Golden Star Hotel",
     "url": "http://www.goldenstarhoteldn.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.goldenstarhoteldn.com:80 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.goldenstarhoteldn.com:80 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1210808",
     "name": "De Mare Family Hotel",
     "url": "https://www.demarehotel.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.demarehotel.com.tr:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host www.demarehotel.com.tr:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1308",
@@ -1486,14 +1965,18 @@
     "url": "https://www.nagibeachbodrum.com",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_104",
     "name": "Ova Resort",
     "url": "https://www.ovaresorthotel.com",
     "status": "unreachable",
-    "reason": "Server disconnected"
+    "reason": "Server disconnected",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_874398",
@@ -1501,7 +1984,9 @@
     "url": "https://prensessealinebelekbeachhotel.business.site/",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_874396",
@@ -1510,14 +1995,30 @@
     "status": "redirect_suspicious",
     "final_url": "https://www.antalyatravestii.com/",
     "title": "Antalya Travesti – Gay Travestileri – Travesti Antalya",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "hijacked to adult-content site",
+    "corrected_url": "https://ramonakale.com/en/home-2/",
+    "url_confidence": "medium",
+    "url_note": "domain live; verify city (search suggests Antalya not Pamukkale)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_782229",
     "name": "Hotel Palm Beach Arsuz",
     "url": "https://www.palmbeacharsuz.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.palmbeacharsuz.com:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host www.palmbeacharsuz.com:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_783676",
+    "name": "Can Pansiyon Bodrum",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_873704",
@@ -1525,28 +2026,44 @@
     "url": "https://www.villaephesus.com",
     "status": "unreachable",
     "reason": "HTTP 500",
-    "status_code": 500
+    "status_code": 500,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_294740",
     "name": "Ayvalık Beach Hotel (Ex. Ivy Sailing Resort Hotel)",
     "url": "https://www.ivyotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.ivyotel.com:443 ssl:False [nodename nor servname provided, or not known]"
+    "reason": "Cannot connect to host www.ivyotel.com:443 ssl:False [nodename nor servname provided, or not known]",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_1047",
+    "name": "Belle Vue Hotel",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_877951",
     "name": "Palmet Family Bianco Hotel",
     "url": "https://www.palmethotels.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.palmethotels.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host www.palmethotels.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_959",
     "name": "Tenda Hotel",
     "url": "http://www.tendahotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.tendahotel.com:80 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host www.tendahotel.com:80 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_783557",
@@ -1554,28 +2071,36 @@
     "url": "https://dreamsbodrumhotel.business.site",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_640800",
     "name": "BVS Bosphorus Resort Hotel & Spa",
     "url": "https://www.bvsbosphorus.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.bvsbosphorus.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host www.bvsbosphorus.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1871",
     "name": "Knidos Butik Otel",
     "url": "http://www.knidosbutik.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.knidosbutik.com:80 ssl:False [nodename nor servname provided, or not know"
+    "reason": "Cannot connect to host www.knidosbutik.com:80 ssl:False [nodename nor servname provided, or not know",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1586",
     "name": "Eden Pyara Hotel Turunc",
     "url": "https://www.oteleden.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.oteleden.com:443 ssl:False [nodename nor servname provided, or not known]"
+    "reason": "Cannot connect to host www.oteleden.com:443 ssl:False [nodename nor servname provided, or not known]",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1765",
@@ -1583,14 +2108,18 @@
     "url": "https://www.facebook.com/dalianelitehotel/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_781133",
     "name": "Semt Luna Beach Hotel",
     "url": "https://www.alanyalunabeach.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.alanyalunabeach.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.alanyalunabeach.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_187116",
@@ -1598,7 +2127,9 @@
     "url": "https://www.selvibeach.com",
     "status": "mismatch",
     "title": "Selvi Bodrum Otel: Göltürkbükü Denize Sıfır Konaklama | En İyi Fiyat",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "yes",
+    "match_reason": "Selvi (Bodrum/Golturkbuku) same property"
   },
   {
     "hotel_id": "parafly_646559",
@@ -1607,7 +2138,9 @@
     "status": "ssl_error",
     "title": "Aslan City Hotel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Aslan City Hotel"
   },
   {
     "hotel_id": "parafly_415304",
@@ -1615,7 +2148,13 @@
     "url": "https://www.hoteldorisaytur.com",
     "status": "mismatch",
     "title": "Slot QRIS: Situs Slot Deposit QRIS Resmi dan Terpercaya Gampang Menang Hari Ini",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "gambling site (Slot QRIS)",
+    "corrected_url": "https://doris-aytur.mediterraneanhotels-tr.com/en/",
+    "url_confidence": "low",
+    "url_note": "OTA fallback; no own domain; listed Mahmutlar/Alanya (possible mismatch)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_876572",
@@ -1623,21 +2162,31 @@
     "url": "https://www.sefinehotel.com.tr/",
     "status": "mismatch",
     "title": "Yapım Aşamasında!",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "'under construction' placeholder",
+    "corrected_url": "",
+    "url_confidence": "low",
+    "url_note": "could not locate a Sefine hotel in Ayvalik/Cunda; may be closed/renamed",
+    "url_resolved": false
   },
   {
     "hotel_id": "parafly_1023965",
     "name": "Mojo Boutique Hotel",
     "url": "https://www.mojoboutiqueotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.mojoboutiqueotel.com:443 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.mojoboutiqueotel.com:443 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1025302",
     "name": "Kahveci Alibey Hotel",
     "url": "http://kahvecialibeyhotel.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host kahvecialibeyhotel.com:80 ssl:False [nodename nor servname provided, or not k"
+    "reason": "Cannot connect to host kahvecialibeyhotel.com:80 ssl:False [nodename nor servname provided, or not k",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_946062",
@@ -1645,7 +2194,9 @@
     "url": "https://www.maliburesorthotel.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_114",
@@ -1653,14 +2204,18 @@
     "url": "http://www.karbelsun.com/tr/anasayfa/",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_592535",
     "name": "Bora Bora Butik Hotel",
     "url": "https://info@boraborabutik.com",
     "status": "invalid_url",
-    "reason": "Malformed URL"
+    "reason": "Malformed URL",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (invalid_url)"
   },
   {
     "hotel_id": "parafly_313675",
@@ -1668,7 +2223,13 @@
     "url": "https://www.larissahotels.com",
     "status": "mismatch",
     "title": "Larissa Hotels",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "Larissa Hotels portal (possibly Larissa Sapphire)",
+    "corrected_url": "https://funsunsaphire.com/en/",
+    "url_confidence": "high",
+    "url_note": "own official site (Tekirova/Kemer)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_872579",
@@ -1676,7 +2237,13 @@
     "url": "https://www.erdeksunbeachhotel.com/",
     "status": "mismatch",
     "title": "Redirecting...",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "bare 'Redirecting...' page",
+    "corrected_url": "https://erdektaliabeachotel.com/",
+    "url_confidence": "high",
+    "url_note": "own official site (Erdek)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_1018546",
@@ -1684,7 +2251,13 @@
     "url": "https://www.karaozlighthouse.com",
     "status": "mismatch",
     "title": "Redirecting...",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "bare 'Redirecting...' page",
+    "corrected_url": "https://www.karaozlighthouse.com/",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_1292",
@@ -1692,7 +2265,9 @@
     "url": "https://www.tthotels.com",
     "status": "mismatch",
     "title": "TUI Hotels & Resorts Turkey",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "yes",
+    "match_reason": "TUI Blue brand matches"
   },
   {
     "hotel_id": "parafly_873441",
@@ -1700,7 +2275,9 @@
     "url": "https://www.viebleuhotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_1025330",
@@ -1708,7 +2285,9 @@
     "url": "https://www.manzarahotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_45189",
@@ -1716,28 +2295,36 @@
     "url": "http://www.suitelaguna.com/tr",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_783708",
     "name": "Armağan Apart Otel",
     "url": "https://armaganapartbodrum.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host armaganapartbodrum.com:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host armaganapartbodrum.com:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_872633",
     "name": "Yoncalı Termal Otel",
     "url": "https://www.yoncali.termalresort.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.yoncali.termalresort.com:443 ssl:False [nodename nor servname provided, o"
+    "reason": "Cannot connect to host www.yoncali.termalresort.com:443 ssl:False [nodename nor servname provided, o",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_64235",
     "name": "Albano Hotel",
     "url": "https://:www.cesmealbanohotel.com.tr",
     "status": "unreachable",
-    "reason": "https://:www.cesmealbanohotel.com.tr"
+    "reason": "https://:www.cesmealbanohotel.com.tr",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_876615",
@@ -1746,14 +2333,18 @@
     "status": "ssl_error",
     "title": "Türkay Hotel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Turkay Hotel"
   },
   {
     "hotel_id": "parafly_872784",
     "name": "Sarıgerme New Gate Hotel",
     "url": "https://www.sarigermenewgatehotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.sarigermenewgatehotel.com:443 ssl:False [nodename nor servname provided, "
+    "reason": "Cannot connect to host www.sarigermenewgatehotel.com:443 ssl:False [nodename nor servname provided, ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_415061",
@@ -1762,21 +2353,31 @@
     "status": "redirect_suspicious",
     "final_url": "https://www.abakerschoice.com/",
     "title": "RAJA88JP: Situs Slot Online Gampang JP Link Gacor Agen Slot88 Paling Top",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "gambling site (RAJA88JP)",
+    "corrected_url": "http://www.sidemiamibeach.com/?lang=en",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_872781",
     "name": "Amfora Hotel",
     "url": "https://amforahotel.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host amforahotel.com:443 ssl:False [nodename nor servname provided, or not known]"
+    "reason": "Cannot connect to host amforahotel.com:443 ssl:False [nodename nor servname provided, or not known]",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_874414",
     "name": "Amsterdam Otel & Suites",
     "url": "https://www.amsterdambutikotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.amsterdambutikotel.com:443 ssl:False [nodename nor servname provided, or "
+    "reason": "Cannot connect to host www.amsterdambutikotel.com:443 ssl:False [nodename nor servname provided, or ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_784569",
@@ -1785,14 +2386,18 @@
     "status": "ssl_error",
     "title": "Assos Troy Beach Hotel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Assos Troy Beach Hotel"
   },
   {
     "hotel_id": "parafly_414912",
     "name": "Side Sunberk Hotel",
     "url": "https://sidesunberkhotel.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host sidesunberkhotel.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host sidesunberkhotel.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_785336",
@@ -1801,7 +2406,9 @@
     "status": "ssl_error",
     "title": "Yakamoz Hotel - Yakamoz Home",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Yakamoz Hotel"
   },
   {
     "hotel_id": "parafly_140885",
@@ -1809,14 +2416,22 @@
     "url": "http://www.hotelbalim.com/",
     "status": "mismatch",
     "title": "独身女性の平均貯金額とお金事情 - おひとりさま貯金してる？",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "Japanese finance spam page",
+    "corrected_url": "https://www.marmaris-travel.com/balimhotel.htm",
+    "url_confidence": "low",
+    "url_note": "no live own site; third-party Marmaris listing fallback",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_1828",
     "name": "Lara Hadrianus Hotel",
     "url": "https://www.larahadrianushotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.larahadrianushotel.com:443 ssl:False [nodename nor servname provided, or "
+    "reason": "Cannot connect to host www.larahadrianushotel.com:443 ssl:False [nodename nor servname provided, or ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_80767",
@@ -1824,14 +2439,18 @@
     "url": "https://www.hotelcachet.com",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_640758",
     "name": "Cleopatra Tac Hotel",
     "url": "https://www.cleopatrajourney.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.cleopatrajourney.com:443 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.cleopatrajourney.com:443 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_295325",
@@ -1840,7 +2459,9 @@
     "status": "ssl_error",
     "title": "Marbas Select Beach Hotel - İçmeler",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Marbas Select Beach Icmeler"
   },
   {
     "hotel_id": "parafly_418645",
@@ -1848,13 +2469,21 @@
     "url": "http://urgupkonak.com/index.html",
     "status": "mismatch",
     "title": "404",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "bare '404' page",
+    "corrected_url": "https://urgupkonak.com/",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_945963",
     "name": "Holiday Inn Express Ankara - Airport",
     "url": "https://www.hiexankaraairport.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_64157",
@@ -1862,7 +2491,13 @@
     "url": "https://www.selinotelspabelek.com",
     "status": "mismatch",
     "title": "Sex Viet69 - Kho Phim Sex Việt Full XXX Không Che",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "adult-content spam page",
+    "corrected_url": "http://www.selinotelspabelek.com/",
+    "url_confidence": "medium",
+    "url_note": "old domain live (Selin Hotel Spa Belek); selinotelbelek.com also exists",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_414844",
@@ -1870,20 +2505,30 @@
     "url": "https://www.otelgoldensun.com/",
     "status": "mismatch",
     "title": "AKDENİZİ HİSSEDİN",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "generic slogan page, hotel name not shown",
+    "corrected_url": "https://www.otelgoldensun.com/",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct (Beldibi/Kemer)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_416890",
     "name": "Vespera Hotel",
     "url": "https://www.alacativespera.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_592766",
     "name": "Zeytin Apart Otel & Aquapark",
     "url": "https://www.zeytinapartaquapark.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.zeytinapartaquapark.com:443 ssl:False [nodename nor servname provided, or"
+    "reason": "Cannot connect to host www.zeytinapartaquapark.com:443 ssl:False [nodename nor servname provided, or",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_45382",
@@ -1892,7 +2537,13 @@
     "status": "redirect_suspicious",
     "final_url": "https://pintarbersamapayakumbuh.org/paket-bimbel/program-khusus-tembus-ui-itb/",
     "title": "Toto Macau : Togel Macau, Pengeluaran Macau, Data Macau Hari Ini Serta Live Draw Macau Pools",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "gambling site (Toto Macau)",
+    "corrected_url": "",
+    "url_confidence": "low",
+    "url_note": "old domain hijacked to gambling spam; no legit official site found (Icmeler adults-only)",
+    "url_resolved": false
   },
   {
     "hotel_id": "parafly_1126",
@@ -1900,7 +2551,9 @@
     "url": "https://www.theparkmarmaris.com",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_416925",
@@ -1908,7 +2561,9 @@
     "url": "http://www.hotelpelin.com.tr/english",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_225280",
@@ -1917,7 +2572,9 @@
     "status": "ssl_error",
     "title": "&#x130;llusion Beach Club Hotel | Resmi Websitesi",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Illusion Beach Club Hotel"
   },
   {
     "hotel_id": "parafly_672442",
@@ -1926,7 +2583,9 @@
     "status": "redirect_suspicious",
     "final_url": "http://www.larenseasidehotel.com/",
     "title": "Redirecting...",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "yes",
+    "match_reason": "redirects to larenseasidehotel.com (own domain)"
   },
   {
     "hotel_id": "parafly_1447",
@@ -1934,14 +2593,22 @@
     "url": "https://www.ramaotel.com",
     "status": "mismatch",
     "title": "Plesk Obsidian 18.0.76",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "Plesk server default page",
+    "corrected_url": "https://clubotelrama.com/",
+    "url_confidence": "high",
+    "url_note": "live site is clubotelrama.com (Beldibi/Kemer)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_513",
     "name": "Navy Hotel",
     "url": "https://www.nayvhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.nayvhotel.com:443 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host www.nayvhotel.com:443 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_781113",
@@ -1950,21 +2617,47 @@
     "status": "ssl_error",
     "title": "Aslan City Hotel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "uncertain",
+    "match_reason": "shows Aslan City Hotel, not Aslan Corner (same brand, diff property)",
+    "corrected_url": "https://corner.aslanhotels.com/en",
+    "url_confidence": "high",
+    "url_note": "official Aslan Hotels subdomain for the Corner property (Alanya)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_541",
     "name": "Bitez Garden Life Hotel & Suites",
     "url": "https://www.bitezgardenlife.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.bitezgardenlife.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.bitezgardenlife.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_872729",
+    "name": "Dem Butik Otel Alacati",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_681",
     "name": "Golden Life Resort Hotel & Spa",
     "url": "https://www.goldenlifehotels.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.goldenlifehotels.com:443 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.goldenlifehotels.com:443 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_109513",
+    "name": "Hadrian Hotel",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_239927",
@@ -1973,7 +2666,13 @@
     "status": "redirect_suspicious",
     "final_url": "https://www.olympostoprakevleri.com/",
     "title": "Olympos Toprak Evleri | Deniz ile aranızda ormanın içinden yürüyeceğiniz, kısa bir mesafe var!",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "resolves to Olympos Toprak Evleri (different property)",
+    "corrected_url": "https://olymposvillage.com/en",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct (Cirali/Olympos)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_161977",
@@ -1981,21 +2680,27 @@
     "url": "https://www.antalyahoteltwenty.com",
     "status": "unreachable",
     "reason": "HTTP 502",
-    "status_code": 502
+    "status_code": 502,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1023633",
     "name": "Adrasan La Casita Boutique Hotel",
     "url": "http://lacasitaadrasan.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host lacasitaadrasan.com:80 ssl:False [nodename nor servname provided, or not know"
+    "reason": "Cannot connect to host lacasitaadrasan.com:80 ssl:False [nodename nor servname provided, or not know",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1020769",
     "name": "Nova Butik Hotel",
     "url": "https://www.novabutikhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.novabutikhotel.com:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host www.novabutikhotel.com:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_663114",
@@ -2003,14 +2708,22 @@
     "url": "https://www.alderotel.com",
     "status": "mismatch",
     "title": "Domain Default page",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "domain default page",
+    "corrected_url": "https://www.alderotels.com/",
+    "url_confidence": "medium",
+    "url_note": "real site alderotels.com (trailing s); Ayvalik/Sarimsakli not Istanbul",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_417438",
     "name": "Delta Hotels By Marriott Yalıkavak",
     "url": "https://www.marriottdeltabodrum.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.marriottdeltabodrum.com:443 ssl:False [nodename nor servname provided, or"
+    "reason": "Cannot connect to host www.marriottdeltabodrum.com:443 ssl:False [nodename nor servname provided, or",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1024256",
@@ -2019,7 +2732,9 @@
     "status": "ssl_error",
     "title": "İda Natura Otel - Kazdağları Otelleri - Akçay Otelleri - Bungalov",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Ida Natura Otel Kazdaglari"
   },
   {
     "hotel_id": "parafly_378750",
@@ -2027,7 +2742,9 @@
     "url": "https://www.facebook.com/tumayhotelbitez/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_417090",
@@ -2035,7 +2752,25 @@
     "url": "https://www.facebook.com/thehotelalacati/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_782055",
+    "name": "Belinda Apart Hotel",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
+  },
+  {
+    "hotel_id": "parafly_873310",
+    "name": "Latino Hotel",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_419039",
@@ -2043,21 +2778,27 @@
     "url": "https://www.facebook.com/alacatinoonbir/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_880",
     "name": "Aspat Hotel Bodrum",
     "url": "https://www.aspatotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.aspatotel.com:443 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host www.aspatotel.com:443 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_415241",
     "name": "Bamont Villas",
     "url": "https://www.bamontvillas.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.bamontvillas.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host www.bamontvillas.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_190815",
@@ -2066,7 +2807,9 @@
     "status": "ssl_error",
     "title": "Sar�msakl� Ahmeda Apart",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Sarimsakli Ahmeda Apart"
   },
   {
     "hotel_id": "parafly_417310",
@@ -2074,7 +2817,9 @@
     "url": "https://www.facebook.com/109503625130272",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_415437",
@@ -2082,7 +2827,9 @@
     "url": "http://www.facebook.com/nuris.beach",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_592838",
@@ -2091,7 +2838,9 @@
     "status": "ssl_error",
     "title": "Bay Nihat 1978 &#8211; Cunda Adası &#8211; Restoran &amp; Otel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Bay Nihat 1978 Cunda (same)"
   },
   {
     "hotel_id": "parafly_419372",
@@ -2099,14 +2848,18 @@
     "url": "https://www.facebook.com/p/Kutlug%C3%BCn-Sahil-Otel-100068175579881/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_673731",
     "name": "Selenes Pansiyon",
     "url": "https://www.selenespansion.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.selenespansion.com:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host www.selenespansion.com:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_415051",
@@ -2114,14 +2867,34 @@
     "url": "https://www.facebook.com/MERTPANSiYONBELDiBi/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_781557",
     "name": "Esmeralda Butik Hotel",
     "url": "https://esmeraldabutik.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host esmeraldabutik.com:443 ssl:False [nodename nor servname provided, or not know"
+    "reason": "Cannot connect to host esmeraldabutik.com:443 ssl:False [nodename nor servname provided, or not know",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_593543",
+    "name": "Maldives Hotel",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
+  },
+  {
+    "hotel_id": "parafly_673124",
+    "name": "Turkuaz Pansiyon",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_672913",
@@ -2130,7 +2903,9 @@
     "status": "redirect_suspicious",
     "final_url": "https://www.novvakas.com/denizfenerilighthouse",
     "title": "",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (redirect_suspicious)"
   },
   {
     "hotel_id": "parafly_109427",
@@ -2138,7 +2913,9 @@
     "url": "https://www.nurotel.com",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_416650",
@@ -2147,42 +2924,54 @@
     "status": "ssl_error",
     "title": "Daphnis Hotel - G�lt�rkb�k� Oteli",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Daphnis Hotel"
   },
   {
     "hotel_id": "parafly_146524",
     "name": "Has Cave Konak",
     "url": "https://info@hassecavekonak.com",
     "status": "invalid_url",
-    "reason": "Malformed URL"
+    "reason": "Malformed URL",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (invalid_url)"
   },
   {
     "hotel_id": "parafly_416637",
     "name": "Caretta Caretta Hotel",
     "url": "https://www.carettacarettadalyan.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.carettacarettadalyan.com:443 ssl:False [nodename nor servname provided, o"
+    "reason": "Cannot connect to host www.carettacarettadalyan.com:443 ssl:False [nodename nor servname provided, o",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_416906",
     "name": "Günay Hotel",
     "url": "https://www.bodrumgunayotel.com",
     "status": "ssl_error",
-    "reason": "Cannot connect to host www.bodrumgunayotel.com:443 ssl:False [[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 u"
+    "reason": "Cannot connect to host www.bodrumgunayotel.com:443 ssl:False [[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 u",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_1785",
     "name": "The Hotel 48",
     "url": "https://www.costacentralebodrum.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.costacentralebodrum.com:443 ssl:False [nodename nor servname provided, or"
+    "reason": "Cannot connect to host www.costacentralebodrum.com:443 ssl:False [nodename nor servname provided, or",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_672838",
     "name": "Marma Beach Hotel",
     "url": "https://www.hotelmarmabeach.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.hotelmarmabeach.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.hotelmarmabeach.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_81956",
@@ -2191,7 +2980,9 @@
     "status": "redirect_suspicious",
     "final_url": "https://rhapsodyhotels.com/en/index.php?page=kas_tanitim&amp;title=Ka%C5%9F%20Rhapsody%20Hotel",
     "title": "404 Not Found",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "yes",
+    "match_reason": "rhapsodyhotels.com Kas page (official site)"
   },
   {
     "hotel_id": "parafly_417500",
@@ -2199,14 +2990,18 @@
     "url": "https://www.facebook.com/BeyazEvAlacati/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_415222",
     "name": "Antalya Dream Time Hotel",
     "url": "https://www.antalyadreams.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.antalyadreams.com:443 ssl:False [nodename nor servname provided, or not k"
+    "reason": "Cannot connect to host www.antalyadreams.com:443 ssl:False [nodename nor servname provided, or not k",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_873574",
@@ -2215,14 +3010,26 @@
     "status": "ssl_error",
     "title": "Rizom Village Assos | 444 6 495 | Muhafazkâr Villa Tatil Köyü",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Rizom Village Assos (same)"
   },
   {
     "hotel_id": "parafly_417074",
     "name": "Umut Otel Ve Beach",
     "url": "http://www.selimiyeumutotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.selimiyeumutotel.com:80 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.selimiyeumutotel.com:80 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_416785",
+    "name": "7 Art Fesleğen Hotel By Egeos",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_416841",
@@ -2231,14 +3038,18 @@
     "status": "ssl_error",
     "title": "M Suite Butik Apart Hotel Bodrum Gümbet",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "M Suite Apart Hotel Bodrum"
   },
   {
     "hotel_id": "parafly_672931",
     "name": "İnce Hotel",
     "url": "https://www.incehotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.incehotel.com:443 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host www.incehotel.com:443 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_415487",
@@ -2247,14 +3058,18 @@
     "status": "ssl_error",
     "title": "Çıralı Zakkum Bungalow - Çıralı Villa Bungalow Zakkum Bungalow ciralizakkumbungalow.com +90 534 516 77 07",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Cirali Zakkum Bungalow"
   },
   {
     "hotel_id": "parafly_416887",
     "name": "Windtown Deluxe Alaçatı",
     "url": "https://windtowndeluxealacati.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host windtowndeluxealacati.com:443 ssl:False [nodename nor servname provided, or n"
+    "reason": "Cannot connect to host windtowndeluxealacati.com:443 ssl:False [nodename nor servname provided, or n",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_416613",
@@ -2262,7 +3077,9 @@
     "url": "http://savrabodrum.com/",
     "status": "unreachable",
     "reason": "HTTP 521",
-    "status_code": 521
+    "status_code": 521,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_379203",
@@ -2270,21 +3087,27 @@
     "url": "https://www.facebook.com/delphinaparthotel/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1020733",
     "name": "Light House Hotel",
     "url": "https://www.lighthousebodrum.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.lighthousebodrum.com.tr:443 ssl:False [nodename nor servname provided, or"
+    "reason": "Cannot connect to host www.lighthousebodrum.com.tr:443 ssl:False [nodename nor servname provided, or",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1559",
     "name": "The Best Life Hotel Bodrum Center",
     "url": "https://www.thebestlifehotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.thebestlifehotel.com:443 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.thebestlifehotel.com:443 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1264322",
@@ -2292,21 +3115,27 @@
     "url": "http://www.famehotels.com/tr/anasayfa.php",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1264335",
     "name": "Oz Hotels İncekum Beach Resort",
     "url": "https://www.incekumbeachresort.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.incekumbeachresort.com:443 ssl:False [None]"
+    "reason": "Cannot connect to host www.incekumbeachresort.com:443 ssl:False [None]",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1264712",
     "name": "Ladonia Hotels Zemda Boutique",
     "url": "http://www.zemdahotel.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.zemdahotel.com:80 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host www.zemdahotel.com:80 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1298852",
@@ -2314,7 +3143,9 @@
     "url": "https://www.ruinshotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_1284558",
@@ -2322,21 +3153,27 @@
     "url": "https://www.costasariyazhotel.com",
     "status": "parked",
     "title": "Costa Sarıyaz Hotel - Bodrum",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "yes",
+    "match_reason": "Costa Sariyaz Hotel Bodrum"
   },
   {
     "hotel_id": "parafly_1284863",
     "name": "CK Hotel",
     "url": "https://ckkonaklama.com.tr/",
     "status": "unreachable",
-    "reason": "Cannot connect to host ckkonaklama.com.tr:443 ssl:False [nodename nor servname provided, or not know"
+    "reason": "Cannot connect to host ckkonaklama.com.tr:443 ssl:False [nodename nor servname provided, or not know",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1298787",
     "name": "Arsuz Jumanah Premium",
     "url": "https://jumanahotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host jumanahotel.com:443 ssl:False [nodename nor servname provided, or not known]"
+    "reason": "Cannot connect to host jumanahotel.com:443 ssl:False [nodename nor servname provided, or not known]",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_377971",
@@ -2344,14 +3181,18 @@
     "url": "http://www.asfiyaseaviewhotel.com/contact-us/",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_212429",
     "name": "Annabella Park Hotel",
     "url": "https://www.anabellahotels.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.anabellahotels.com:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host www.anabellahotels.com:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_593501",
@@ -2359,35 +3200,45 @@
     "url": "https://www.silvanusotel.com",
     "status": "unreachable",
     "reason": "HTTP 503",
-    "status_code": 503
+    "status_code": 503,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1403",
     "name": "Akyalı Butik Otel",
     "url": "https://www.akyaliotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.akyaliotel.com:443 ssl:False [nodename nor servname provided, or not know"
+    "reason": "Cannot connect to host www.akyaliotel.com:443 ssl:False [nodename nor servname provided, or not know",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_378205",
     "name": "Top Hotel",
     "url": "https://www.tophotel.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.tophotel.com.tr:443 ssl:False [nodename nor servname provided, or not kno"
+    "reason": "Cannot connect to host www.tophotel.com.tr:443 ssl:False [nodename nor servname provided, or not kno",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_872803",
     "name": "Bella Garden Boutique Hotel",
     "url": "https://www.bellagardenboutiquehotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.bellagardenboutiquehotel.com:443 ssl:False [nodename nor servname provide"
+    "reason": "Cannot connect to host www.bellagardenboutiquehotel.com:443 ssl:False [nodename nor servname provide",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_876021",
     "name": "Ala Grand Residence",
     "url": "https://www.alagrandresidence.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.alagrandresidence.com:443 ssl:False [nodename nor servname provided, or n"
+    "reason": "Cannot connect to host www.alagrandresidence.com:443 ssl:False [nodename nor servname provided, or n",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_877954",
@@ -2395,21 +3246,35 @@
     "url": "https://zuluadrasanotel.com/iletisim",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1017498",
     "name": "Golden Rose Otel",
     "url": "https://www.goldenrosehotelkas.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.goldenrosehotelkas.com:443 ssl:False [nodename nor servname provided, or "
+    "reason": "Cannot connect to host www.goldenrosehotelkas.com:443 ssl:False [nodename nor servname provided, or ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_1017856",
+    "name": "Cappadocia Old Houses",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_874383",
     "name": "Maison Green Hill",
     "url": "https://www.maisongreenhill.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.maisongreenhill.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.maisongreenhill.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_782918",
@@ -2417,28 +3282,44 @@
     "url": "https://www.begonvilbyaliki.com",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_876515",
     "name": "Ephesus Hitit Hotel",
     "url": "https://www.hitithotel.com.tr/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.hitithotel.com.tr:443 ssl:False [nodename nor servname provided, or not k"
+    "reason": "Cannot connect to host www.hitithotel.com.tr:443 ssl:False [nodename nor servname provided, or not k",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_874011",
+    "name": "Villa Mirada",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_1017451",
     "name": "Apella Hotel",
     "url": "http://www.sevenseasonshotels.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.sevenseasonshotels.com:80 ssl:False [nodename nor servname provided, or n"
+    "reason": "Cannot connect to host www.sevenseasonshotels.com:80 ssl:False [nodename nor servname provided, or n",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_876471",
     "name": "Side Bay Hotel",
     "url": "https://www.sidebayhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.sidebayhotel.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host www.sidebayhotel.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_785150",
@@ -2447,7 +3328,9 @@
     "status": "ssl_error",
     "title": "karlikcave.com",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "karlikcave.com (Karlik Cave Suite)"
   },
   {
     "hotel_id": "parafly_1017501",
@@ -2456,14 +3339,18 @@
     "status": "ssl_error",
     "title": "Qinn Hotels Antalya - Hayallerinizin Ötesinde Bir Tatil",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Qinn Hotels Antalya"
   },
   {
     "hotel_id": "parafly_877957",
     "name": "Rios Latte Beach Hotel",
     "url": "https://www.latteriosbeach.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.latteriosbeach.com:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host www.latteriosbeach.com:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1020859",
@@ -2471,7 +3358,13 @@
     "url": "https://www.kahyahotels.com",
     "status": "mismatch",
     "title": "Plesk Obsidian 18.0.78",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "Plesk server default page",
+    "corrected_url": "https://www.kahyahotel.com/en",
+    "url_confidence": "medium",
+    "url_note": "property site kahyahotel.com (Cleopatra Beach, Alanya)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_873721",
@@ -2480,7 +3373,9 @@
     "status": "ssl_error",
     "title": "Santana Villas",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Santana (Gocek) - Santana Villas"
   },
   {
     "hotel_id": "parafly_1025432",
@@ -2488,7 +3383,9 @@
     "url": "https://www.astridhotels.com",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_876336",
@@ -2497,28 +3394,36 @@
     "status": "ssl_error",
     "title": "Yetişkinlere Özel Antalya'da Lüks Butik Otel | Perge Hotels - Resmi site",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Perge Hotels"
   },
   {
     "hotel_id": "parafly_781593",
     "name": "Elanis Suites Hotel",
     "url": "https://www.elanissuiteshotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.elanissuiteshotel.com:443 ssl:False [nodename nor servname provided, or n"
+    "reason": "Cannot connect to host www.elanissuiteshotel.com:443 ssl:False [nodename nor servname provided, or n",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_872927",
     "name": "Le Bleu Hotel & Resort",
     "url": "https://www.lebleuhotel.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.lebleuhotel.com.tr:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host www.lebleuhotel.com.tr:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_872974",
     "name": "Ebruli Pansiyon Cunda",
     "url": "https://www.cundamarinahotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.cundamarinahotel.com:443 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.cundamarinahotel.com:443 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_876376",
@@ -2526,7 +3431,9 @@
     "url": "https://www.facebook.com/sureyyahnmbutikotel/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_874581",
@@ -2535,28 +3442,36 @@
     "status": "ssl_error",
     "title": "Kestanbol Kaplıcaları - ALEXANDRIA TROAS TERMAL OTEL",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Alexandria Troas Termal Otel"
   },
   {
     "hotel_id": "parafly_873716",
     "name": "Monje Alaçatı",
     "url": "https://www.monjehotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.monjehotel.com:443 ssl:False [nodename nor servname provided, or not know"
+    "reason": "Cannot connect to host www.monjehotel.com:443 ssl:False [nodename nor servname provided, or not know",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_876491",
     "name": "The Erzurum Hotel",
     "url": "https://info@theerzurumhotel.com",
     "status": "invalid_url",
-    "reason": "Malformed URL"
+    "reason": "Malformed URL",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (invalid_url)"
   },
   {
     "hotel_id": "parafly_872739",
     "name": "Tuana Otel",
     "url": "https://www.tuanahotel.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.tuanahotel.com:443 ssl:False [Connect call failed ('154.93.150.197', 443)"
+    "reason": "Cannot connect to host www.tuanahotel.com:443 ssl:False [Connect call failed ('154.93.150.197', 443)",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_872961",
@@ -2564,7 +3479,9 @@
     "url": "https://www.elementahotels.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_873689",
@@ -2573,35 +3490,53 @@
     "status": "ssl_error",
     "title": "Zoe | Luxury Boutique Hotel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Zoe boutique hotel Alacati"
   },
   {
     "hotel_id": "parafly_873700",
     "name": "Ces Club Hotel",
     "url": "https://www.cesclubhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.cesclubhotel.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host www.cesclubhotel.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_875266",
+    "name": "Babel Residence Kemer",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_873086",
     "name": "Chingene Glamping",
     "url": "https://www.chingeneglamping.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.chingeneglamping.com:443 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.chingeneglamping.com:443 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_871903",
     "name": "Letoon Plus Hotel",
     "url": "https://www.didimletoonotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.didimletoonotel.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.didimletoonotel.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1210943",
     "name": "Pedasya Apart Otel",
     "url": "https://pedasyaaparthotel.com",
     "status": "ssl_error",
-    "reason": "Cannot connect to host pedasyaaparthotel.com:443 ssl:False [[SSL: TLSV1_ALERT_INTERNAL_ERROR] tlsv1 "
+    "reason": "Cannot connect to host pedasyaaparthotel.com:443 ssl:False [[SSL: TLSV1_ALERT_INTERNAL_ERROR] tlsv1 ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_1025270",
@@ -2609,7 +3544,9 @@
     "url": "https://www.costavivabodrum.com",
     "status": "parked",
     "title": "Costa Viva - Bodrum",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "yes",
+    "match_reason": "Costa Viva Bodrum"
   },
   {
     "hotel_id": "parafly_1023581",
@@ -2617,28 +3554,40 @@
     "url": "https://kamkatotel.com/",
     "status": "mismatch",
     "title": "Loading...",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "bare 'Loading...' page",
+    "corrected_url": "https://kamkatotel.com.tr/",
+    "url_confidence": "high",
+    "url_note": "primary domain is .com.tr (Goynuk/Kemer)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_416709",
     "name": "Alfa Apart Otel",
     "url": "https://alfaapart.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host alfaapart.com:443 ssl:False [None]"
+    "reason": "Cannot connect to host alfaapart.com:443 ssl:False [None]",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_874696",
     "name": "Panjur Hotel Çeşme",
     "url": "https://cesme.panjurs.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host cesme.panjurs.com:443 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host cesme.panjurs.com:443 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1210713",
     "name": "Lulu İnn Çeşme",
     "url": "https://www.luluinhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.luluinhotel.com:443 ssl:False [nodename nor servname provided, or not kno"
+    "reason": "Cannot connect to host www.luluinhotel.com:443 ssl:False [nodename nor servname provided, or not kno",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1020771",
@@ -2646,41 +3595,53 @@
     "url": "http://www.alakonakalacati.com/index.html",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1020770",
     "name": "Laledan Hotel",
     "url": "https://WWW.LALEDANOTEL.COM",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.laledanotel.com:443 ssl:False [nodename nor servname provided, or not kno"
+    "reason": "Cannot connect to host www.laledanotel.com:443 ssl:False [nodename nor servname provided, or not kno",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_626055",
     "name": "Mr. Crane Hotel",
     "url": "https://www.craneotel.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_640865",
     "name": "Villa Antiphellos B",
     "url": "https://www.clubantiphellos.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.clubantiphellos.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.clubantiphellos.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_781267",
     "name": "3 House Apart",
     "url": "https://www.apart3house.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.apart3house.com:443 ssl:False [nodename nor servname provided, or not kno"
+    "reason": "Cannot connect to host www.apart3house.com:443 ssl:False [nodename nor servname provided, or not kno",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_871790",
     "name": "Medis Resort Hotel",
     "url": "http://www.medisresorthotel.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.medisresorthotel.com:80 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.medisresorthotel.com:80 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_419280",
@@ -2689,28 +3650,36 @@
     "status": "ssl_error",
     "title": "Fragrante Hotel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Fragrante Hotel"
   },
   {
     "hotel_id": "parafly_200687",
     "name": "Tal Beach Hotel",
     "url": "https://www.talbeachhotel.com",
     "status": "ssl_error",
-    "reason": "Cannot connect to host www.talbeachhotel.com:443 ssl:False [[SSL: TLSV1_ALERT_INTERNAL_ERROR] tlsv1 "
+    "reason": "Cannot connect to host www.talbeachhotel.com:443 ssl:False [[SSL: TLSV1_ALERT_INTERNAL_ERROR] tlsv1 ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_181699",
     "name": "Kleopatra Suit Otel",
     "url": "https://www.kleopatrasuit.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.kleopatrasuit.com.tr:443 ssl:False [nodename nor servname provided, or no"
+    "reason": "Cannot connect to host www.kleopatrasuit.com.tr:443 ssl:False [nodename nor servname provided, or no",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_640848",
     "name": "Anemonia Hotel",
     "url": "https://hotelanemonia.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host hotelanemonia.com:443 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host hotelanemonia.com:443 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_640925",
@@ -2718,7 +3687,13 @@
     "url": "http://www.kaslindahotel.com/lindabeach/default.asp",
     "status": "parked",
     "title": "kaslindahotel.com&nbsp;-&nbsp;kaslindahotel Resources and Information.",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "parked/for-sale placeholder (kaslindahotel.com)",
+    "corrected_url": "http://www.kaslindahotel.com/",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct (Kas)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_416831",
@@ -2727,14 +3702,18 @@
     "status": "redirect_suspicious",
     "final_url": "https://rogotravel.com/red.php?url=https://www.stay22.com/allez/roam?aid%3Dmms%26campaign%3Did933%26hotelname%3DAksu%2520Hotel%2520Alacati%26lat%3D38.290070199999995%26lng%3D26.3799589%26address%3D16006%2520Sok%2520No%253A19%252C%2520Ala%25C3%25A7at%25C4%25B1%252C%2520%25C3%2587e%25C5%259Fme%252C%252035937%252C%2520%25C4%25B0zmir",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (redirect_suspicious)"
   },
   {
     "hotel_id": "parafly_640813",
     "name": "Monna Roza Maxx Apart",
     "url": "http://www.monnarozagroup.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.monnarozagroup.com:80 ssl:False [nodename nor servname provided, or not k"
+    "reason": "Cannot connect to host www.monnarozagroup.com:80 ssl:False [nodename nor servname provided, or not k",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_663147",
@@ -2743,14 +3722,18 @@
     "status": "ssl_error",
     "title": "Premium Park Apart",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Premium Park Apart"
   },
   {
     "hotel_id": "parafly_415650",
     "name": "Casa De Sirena Apart Hotel",
     "url": "https://www.casadesirena.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.casadesirena.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host www.casadesirena.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_417388",
@@ -2759,7 +3742,9 @@
     "status": "ssl_error",
     "title": "Casa Caria Suites &#8211; Bodrum",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Casa Caria Suites Bodrum"
   },
   {
     "hotel_id": "parafly_416719",
@@ -2767,33 +3752,47 @@
     "url": "https://www.cocopalmalacati.com",
     "status": "mismatch",
     "title": "Online Casino στην Ελλάδα | Σύγκριση, μπόνους και αναλήψεις",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "online casino site",
+    "corrected_url": "http://cocopalmalacati.com/",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct (Alacati)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_780912",
     "name": "BoraBora Apart",
     "url": "https://www.boraapart.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_783696",
     "name": "Trendlife Hotels Torba",
     "url": "http://www.micasabeach.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.micasabeach.com:80 ssl:False [nodename nor servname provided, or not know"
+    "reason": "Cannot connect to host www.micasabeach.com:80 ssl:False [nodename nor servname provided, or not know",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_419547",
     "name": "Cunda Mavi Otel",
     "url": "http://www.cundamavi.com/",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_789680",
     "name": "Kaya Apartments",
     "url": "https://info@kayaapartmentskalkan.com",
     "status": "invalid_url",
-    "reason": "Malformed URL"
+    "reason": "Malformed URL",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (invalid_url)"
   },
   {
     "hotel_id": "parafly_1017806",
@@ -2801,7 +3800,9 @@
     "url": "https://www.facebook.com/meubodrumhotel/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1017524",
@@ -2809,14 +3810,18 @@
     "url": "https://www.facebook.com/arzumpansiyonolimpos/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_327061",
     "name": "Elit Life Hotel",
     "url": "https://www.besobeachhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.besobeachhotel.com:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host www.besobeachhotel.com:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1025343",
@@ -2825,7 +3830,13 @@
     "status": "ssl_error",
     "title": "Alya Villas",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "uncertain",
+    "match_reason": "shows Alya Villas (same brand, different product)",
+    "corrected_url": "https://alyasierrabodrum.com/",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct (Torba/Bodrum)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_1210682",
@@ -2833,7 +3844,13 @@
     "url": "http://alacati.panjurs.com/",
     "status": "mismatch",
     "title": "Index of /",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "'Index of /' directory listing, no site",
+    "corrected_url": "https://alacati.panjurs.com/",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct (Alacati +16)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_1210643",
@@ -2841,7 +3858,9 @@
     "url": "https://www.zuzuubeachhotel.com",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_877961",
@@ -2850,7 +3869,9 @@
     "status": "ssl_error",
     "title": "Luxury Shelters",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "The Luxury Shelters"
   },
   {
     "hotel_id": "parafly_1019523",
@@ -2859,14 +3880,26 @@
     "status": "ssl_error",
     "title": "Ma-Si Urla Otel | Şimdi Urla Zamanı !",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Ma-Si Urla Otel"
+  },
+  {
+    "hotel_id": "parafly_1023598",
+    "name": "Bodrum Bargilya Villaları",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_1019533",
     "name": "Morino Alaçatı",
     "url": "https://morinoalacati.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host morinoalacati.com:443 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host morinoalacati.com:443 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1210691",
@@ -2875,27 +3908,35 @@
     "status": "ssl_error",
     "title": "sunfirehotel.com",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "sunfirehotel.com"
   },
   {
     "hotel_id": "parafly_1210807",
     "name": "Asfiya Loft Apartments",
     "url": "https://asfiyalofts.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_1210910",
     "name": "Ride And Stay Hotel",
     "url": "https://www.ridestayhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.ridestayhotel.com:443 ssl:False [Connect call failed ('52.213.114.86', 44"
+    "reason": "Cannot connect to host www.ridestayhotel.com:443 ssl:False [Connect call failed ('52.213.114.86', 44",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1298750",
     "name": "Pyxis Point Hotel",
     "url": "https://www.pyxispointhotel.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.pyxispointhotel.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.pyxispointhotel.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1210652",
@@ -2904,7 +3945,9 @@
     "status": "ssl_error",
     "title": "Irmak Boutique Hotel Restaurant | Bodrum Ortakent",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Irmak Boutique Hotel Bodrum"
   },
   {
     "hotel_id": "parafly_1210719",
@@ -2912,14 +3955,22 @@
     "url": "https://milagrecavehotel.com",
     "status": "mismatch",
     "title": "-",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "empty '-' title",
+    "corrected_url": "https://milagrecavehotel.com/en/index.html",
+    "url_confidence": "high",
+    "url_note": "old domain confirmed live & correct (Cavusin/Cappadocia)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_1210702",
     "name": "Hotella Resort & Spa",
     "url": "https://www.hotella.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.hotella.com.tr:443 ssl:False [nodename nor servname provided, or not know"
+    "reason": "Cannot connect to host www.hotella.com.tr:443 ssl:False [nodename nor servname provided, or not know",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1264338",
@@ -2928,7 +3979,13 @@
     "status": "ssl_error",
     "title": "Kirman Premium | Completes You!",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "uncertain",
+    "match_reason": "shows Kirman Premium, not Belazur (same brand, diff property)",
+    "corrected_url": "https://www.belazur.com.tr/en",
+    "url_confidence": "high",
+    "url_note": "property-specific site belazur.com.tr (Belek/Bogazkent)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_592373",
@@ -2937,7 +3994,9 @@
     "status": "ssl_error",
     "title": "miradorhotels.com",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "miradorhotels.com (Mirador Resort)"
   },
   {
     "hotel_id": "parafly_378052",
@@ -2945,7 +4004,9 @@
     "url": "https://www.euphoriahotels.com",
     "status": "unreachable",
     "reason": "HTTP 523",
-    "status_code": 523
+    "status_code": 523,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_935",
@@ -2954,28 +4015,44 @@
     "status": "ssl_error",
     "title": "Anasayfa | Club Dedeman Bodrum Tatil Köyü",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Club Dedeman Bodrum"
   },
   {
     "hotel_id": "parafly_789782",
     "name": "Eco Farm Boutique Hotel",
     "url": "https://ecofarmbodrum.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host ecofarmbodrum.com:443 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host ecofarmbodrum.com:443 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_875138",
+    "name": "Villa Lizya",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_592821",
     "name": "Neopol Hotel Deluxe",
     "url": "https://www.neopolhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.neopolhotel.com:443 ssl:False [nodename nor servname provided, or not kno"
+    "reason": "Cannot connect to host www.neopolhotel.com:443 ssl:False [nodename nor servname provided, or not kno",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_593612",
     "name": "Huzur Royal Otel",
     "url": "https://www.huzurroyalotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.huzurroyalotel.com:443 ssl:False [Connect call failed ('185.111.232.27', "
+    "reason": "Cannot connect to host www.huzurroyalotel.com:443 ssl:False [Connect call failed ('185.111.232.27', ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_593649",
@@ -2983,7 +4060,9 @@
     "url": "https://www.facebook.com/reyhanhanimkonaklari/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_592299",
@@ -2992,21 +4071,27 @@
     "status": "redirect_suspicious",
     "final_url": "https://www.dionysosvillagehotel.com/",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (redirect_suspicious)"
   },
   {
     "hotel_id": "parafly_876343",
     "name": "Cunda Paradise Otel",
     "url": "https://www.cundaparadiseotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.cundaparadiseotel.com:443 ssl:False [nodename nor servname provided, or n"
+    "reason": "Cannot connect to host www.cundaparadiseotel.com:443 ssl:False [nodename nor servname provided, or n",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_143022",
     "name": "Cunda Nesos Otel",
     "url": "http://www.nesosotel.com.tr/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.nesosotel.com.tr:80 ssl:False [nodename nor servname provided, or not kno"
+    "reason": "Cannot connect to host www.nesosotel.com.tr:80 ssl:False [nodename nor servname provided, or not kno",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_221486",
@@ -3015,14 +4100,18 @@
     "status": "ssl_error",
     "title": "Çınarlar Apart",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Cinarlar Apart"
   },
   {
     "hotel_id": "parafly_873637",
     "name": "Toros Otel Didim",
     "url": "https://www.toroshoteldidim.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.toroshoteldidim.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.toroshoteldidim.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_663268",
@@ -3030,7 +4119,9 @@
     "url": "https://anemonhotels.com/hotel/anemon-diyarbakir-suit-rezidans/",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1264382",
@@ -3039,7 +4130,13 @@
     "status": "redirect_suspicious",
     "final_url": "https://www.rixos.com/de",
     "title": "Willkommen bei Rixos All-inclusive Resorts",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "Rixos group portal; property not named",
+    "corrected_url": "https://www.rixos.com/hotel-resort/rixos-downtown-antalya-land-legends-access",
+    "url_confidence": "high",
+    "url_note": "official Rixos property page",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_1001",
@@ -3048,7 +4145,9 @@
     "status": "ssl_error",
     "title": "World of Sunrise | Antalya Otel | Side Otel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Sunrise brand (World of Sunrise, Side)"
   },
   {
     "hotel_id": "parafly_701",
@@ -3056,14 +4155,22 @@
     "url": "https://www.corendonhotels.com.tr",
     "status": "mismatch",
     "title": "Corendon Hotels &amp; Resorts Türkiye | Corendon Hotels &amp; Resort Türkiye",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "no",
+    "match_reason": "resolves to Corendon Hotels (different brand)",
+    "corrected_url": "https://www.corendonhotels.com/grand-park-lara/",
+    "url_confidence": "high",
+    "url_note": "official Corendon property page (.com not .com.tr)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_784107",
     "name": "The Beachfront Hotel (+16)",
     "url": "https://www.beachfront.sunprime.net",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.beachfront.sunprime.net:443 ssl:False [nodename nor servname provided, or"
+    "reason": "Cannot connect to host www.beachfront.sunprime.net:443 ssl:False [nodename nor servname provided, or",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1284283",
@@ -3071,14 +4178,18 @@
     "url": "https://www.radissonblu.com.tr",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_565",
     "name": "Sunpoint Hotel Bodrum",
     "url": "https://www.sunpointfamilyhotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.sunpointfamilyhotel.com:443 ssl:False [nodename nor servname provided, or"
+    "reason": "Cannot connect to host www.sunpointfamilyhotel.com:443 ssl:False [nodename nor servname provided, or",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1284463",
@@ -3086,28 +4197,36 @@
     "url": "https://www.bitezadamotel.com",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1264841",
     "name": "Royal Towers Hotel Kiriş",
     "url": "https://www.palmethotels.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.palmethotels.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host www.palmethotels.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1284489",
     "name": "Marin Hotel",
     "url": "https://www.marin.com.tr",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.marin.com.tr:443 ssl:False [nodename nor servname provided, or not known]"
+    "reason": "Cannot connect to host www.marin.com.tr:443 ssl:False [nodename nor servname provided, or not known]",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_873694",
     "name": "Adrasan Eldorado Butik",
     "url": "https://www.eldoradootel.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.eldoradootel.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host www.eldoradootel.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_783593",
@@ -3116,7 +4235,9 @@
     "status": "ssl_error",
     "title": "Mare Garden Otel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Mare Garden Otel"
   },
   {
     "hotel_id": "parafly_780939",
@@ -3125,13 +4246,17 @@
     "status": "ssl_error",
     "title": "Bozcaada Vitis Hotel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Bozcaada Vitis Hotel"
   },
   {
     "hotel_id": "parafly_663263",
     "name": "Cunda Bal Konak",
     "url": "https://cundabalkonak.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_378306",
@@ -3139,13 +4264,17 @@
     "url": "https://vivabeachalanya.com",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_663198",
     "name": "Villa Kaş Bohem",
     "url": "https://villakasbohem.com/?lang=tr",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_871787",
@@ -3154,7 +4283,9 @@
     "status": "ssl_error",
     "title": "Ramira Hotels",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Ramira Hotels brand"
   },
   {
     "hotel_id": "parafly_946033",
@@ -3163,7 +4294,9 @@
     "status": "ssl_error",
     "title": "",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_871870",
@@ -3172,7 +4305,9 @@
     "status": "ssl_error",
     "title": "NFK THE HOUSE HOTEL",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "NFK The House Hotel"
   },
   {
     "hotel_id": "parafly_872714",
@@ -3181,27 +4316,43 @@
     "status": "ssl_error",
     "title": "�ren Konak Apart Otel",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "Oren Konak Apart Otel"
   },
   {
     "hotel_id": "parafly_874434",
     "name": "Silver Tower Residence Kuşadası",
     "url": "https://www.silvertowerresidence.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.silvertowerresidence.com:443 ssl:False [nodename nor servname provided, o"
+    "reason": "Cannot connect to host www.silvertowerresidence.com:443 ssl:False [nodename nor servname provided, o",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_876403",
     "name": "Mavi Beyaz Otel Datça ( Merkez )",
     "url": "https://www.louiseinkonagi.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.louiseinkonagi.com:443 ssl:False [nodename nor servname provided, or not "
+    "reason": "Cannot connect to host www.louiseinkonagi.com:443 ssl:False [nodename nor servname provided, or not ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_1020965",
+    "name": "Quasar Suites",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_1331",
     "name": "Susona Bodrum, LXR Hotels & Resorts",
     "url": "https://www.nikkibeachhotels.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_875538",
@@ -3209,28 +4360,44 @@
     "url": "http://www.via-perla-butik-otel.business.site",
     "status": "unreachable",
     "reason": "HTTP 404",
-    "status_code": 404
+    "status_code": 404,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1020746",
     "name": "Olsen Hotel",
     "url": "https://olsenhotels.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host olsenhotels.com:443 ssl:False [nodename nor servname provided, or not known]"
+    "reason": "Cannot connect to host olsenhotels.com:443 ssl:False [nodename nor servname provided, or not known]",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
+  },
+  {
+    "hotel_id": "parafly_1017528",
+    "name": "Magesa Terra Apart Hotel",
+    "url": "",
+    "status": "no_url",
+    "hotel_match": "no_url",
+    "match_reason": "no URL on record"
   },
   {
     "hotel_id": "parafly_785115",
     "name": "Roca Cappadocia",
     "url": "https://info@rocacappadocia.com",
     "status": "invalid_url",
-    "reason": "Malformed URL"
+    "reason": "Malformed URL",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (invalid_url)"
   },
   {
     "hotel_id": "parafly_1020944",
     "name": "Çeşme Flowers Otel",
     "url": "https://www.cesmeflowers.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.cesmeflowers.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host www.cesmeflowers.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_878108",
@@ -3239,14 +4406,18 @@
     "status": "ssl_error",
     "title": "havasupark.com Hoş Geldiniz",
     "status_code": 200,
-    "reason": "Invalid/expired SSL certificate"
+    "reason": "Invalid/expired SSL certificate",
+    "hotel_match": "yes",
+    "match_reason": "havasupark.com"
   },
   {
     "hotel_id": "parafly_878418",
     "name": "Akar Palace Resort Hotel",
     "url": "https://www.akarpalaceresort.com",
     "status": "ssl_error",
-    "reason": "Cannot connect to host www.akarpalaceresort.com:443 ssl:False [[SSL: TLSV1_ALERT_INTERNAL_ERROR] tls"
+    "reason": "Cannot connect to host www.akarpalaceresort.com:443 ssl:False [[SSL: TLSV1_ALERT_INTERNAL_ERROR] tls",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (ssl_error)"
   },
   {
     "hotel_id": "parafly_877356",
@@ -3254,28 +4425,36 @@
     "url": "https://www.rootredrock.com",
     "status": "parked",
     "title": "",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (parked)"
   },
   {
     "hotel_id": "parafly_1019558",
     "name": "Armi Alaçatı +13",
     "url": "https://armibutikotel.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host armibutikotel.com:443 ssl:False [nodename nor servname provided, or not known"
+    "reason": "Cannot connect to host armibutikotel.com:443 ssl:False [nodename nor servname provided, or not known",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1017724",
     "name": "Monreve Alaçatı",
     "url": "https://www.alacati.monrevehotels.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.alacati.monrevehotels.com:443 ssl:False [nodename nor servname provided, "
+    "reason": "Cannot connect to host www.alacati.monrevehotels.com:443 ssl:False [nodename nor servname provided, ",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1017726",
     "name": "Rikas Alaçatı",
     "url": "https://www.rikasalacati.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.rikasalacati.com:443 ssl:False [nodename nor servname provided, or not kn"
+    "reason": "Cannot connect to host www.rikasalacati.com:443 ssl:False [nodename nor servname provided, or not kn",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_890895",
@@ -3283,20 +4462,26 @@
     "url": "https://www.facebook.com/ellaalacatiotel/",
     "status": "unreachable",
     "reason": "HTTP 400",
-    "status_code": 400
+    "status_code": 400,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_1020776",
     "name": "Sevilla Otel Alaçatı",
     "url": "https://www.sevillaotel.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.sevillaotel.com:443 ssl:False [nodename nor servname provided, or not kno"
+    "reason": "Cannot connect to host www.sevillaotel.com:443 ssl:False [nodename nor servname provided, or not kno",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_890933",
     "name": "That's Alaçatı",
     "url": "https://www.thatsalacati.com",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_780955",
@@ -3304,14 +4489,18 @@
     "url": "https://www.apartozgun.com",
     "status": "unreachable",
     "reason": "HTTP 403",
-    "status_code": 403
+    "status_code": 403,
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_785399",
     "name": "Villa Köknar Pansiyon",
     "url": "https://villakoknar.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host villakoknar.com:443 ssl:False [nodename nor servname provided, or not known]"
+    "reason": "Cannot connect to host villakoknar.com:443 ssl:False [nodename nor servname provided, or not known]",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_377935",
@@ -3319,13 +4508,21 @@
     "url": "http://www.arkinpalmbeach.com",
     "status": "mismatch",
     "title": "Sorry, the website has been stopped",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "'website has been stopped' (hosting suspended)",
+    "corrected_url": "https://www.arkingroup.com/palmbeachhotel",
+    "url_confidence": "medium",
+    "url_note": "official Arkin Group page (Famagusta, N.Cyprus)",
+    "url_resolved": true
   },
   {
     "hotel_id": "parafly_377878",
     "name": "Trendy Hotels Palm Beach",
     "url": "https://www.trendyhotels.com.tr",
-    "status": "timeout"
+    "status": "timeout",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (timeout)"
   },
   {
     "hotel_id": "parafly_1413",
@@ -3333,20 +4530,30 @@
     "url": "https://www.temenoshotel.com",
     "status": "mismatch",
     "title": "Redirecting...",
-    "status_code": 200
+    "status_code": 200,
+    "hotel_match": "uncertain",
+    "match_reason": "bare 'Redirecting...' page",
+    "corrected_url": "",
+    "url_confidence": "low",
+    "url_note": "Faralya/Fethiye Temenos appears down/closed; only a different Bodrum 'Temenos' exists",
+    "url_resolved": false
   },
   {
     "hotel_id": "parafly_416992",
     "name": "Bodrum Greenport Hotel",
     "url": "https://www.bodrumgreenport.com",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.bodrumgreenport.com:443 ssl:False [nodename nor servname provided, or not"
+    "reason": "Cannot connect to host www.bodrumgreenport.com:443 ssl:False [nodename nor servname provided, or not",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   },
   {
     "hotel_id": "parafly_884",
     "name": "Likya Pavilion Hotel",
     "url": "http://www.likyapavilionhotel.com/",
     "status": "unreachable",
-    "reason": "Cannot connect to host www.likyapavilionhotel.com:80 ssl:False [nodename nor servname provided, or n"
+    "reason": "Cannot connect to host www.likyapavilionhotel.com:80 ssl:False [nodename nor servname provided, or n",
+    "hotel_match": "cant_load",
+    "match_reason": "page did not load (unreachable)"
   }
 ]

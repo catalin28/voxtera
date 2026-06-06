@@ -1,0 +1,450 @@
+hotel_match,hotel_id,name,url,final_url,status,title,match_reason
+no,parafly_140885,Balim Hotel,http://www.hotelbalim.com/,,mismatch,独身女性の平均貯金額とお金事情 - おひとりさま貯金してる？,Japanese finance spam page
+no,parafly_45382,Blue Sea Garden (Adults Only),http://www.hotelblueseagarden.com,https://pintarbersamapayakumbuh.org/paket-bimbel/program-khusus-tembus-ui-itb/,redirect_suspicious,"Toto Macau : Togel Macau, Pengeluaran Macau, Data Macau Hari Ini Serta Live Draw Macau Pools",gambling site (Toto Macau)
+no,parafly_208854,Bodrum Golden Beach Hotel,https://www.goldenbeachbodrum.com,https://derinyikama.com.tr/kadikoy-koltuk-yikama,redirect_suspicious,Profesyonel Kadıköy Koltuk Yıkama Hizmetleri - En iyi yıkama,redirects to a sofa-cleaning business
+no,parafly_416719,Cocopalm Boutique Hotel Alaçatı,https://www.cocopalmalacati.com,,mismatch,"Online Casino στην Ελλάδα | Σύγκριση, μπόνους και αναλήψεις",online casino site
+no,parafly_1285108,Cratos Premium Hotel,https://www.cratospremium.com,,mismatch,3CX Webclient,"3CX phone-system login page, not a hotel site"
+no,parafly_873037,Crystal Club World Of Colours,https://www.crystalhotels.com,,mismatch,Crystal Mountain Hotel | Cozy & Stylish Alpine Escape,"shows Crystal Mountain (alpine), not World of Colours Belek"
+no,parafly_415304,Doris Aytur Otel,https://www.hoteldorisaytur.com,,mismatch,Slot QRIS: Situs Slot Deposit QRIS Resmi dan Terpercaya Gampang Menang Hari Ini,gambling site (Slot QRIS)
+no,parafly_1298823,DoubleTree by Hilton Kars Sarıkamış,https://www.doubletreebyhiltonsarikamis.com,,mismatch,isimtescil.net | Türkiye'nin Domain ve Hosting Lideri | Hoş geldiniz,domain reseller/parking page (isimtescil.net)
+no,parafly_781396,Elamir Magic Dream Hotel,https://www.botanikresorthotel.com,,mismatch,botanikresorthotel.com,resolves to Botanik Resort Hotel (different)
+no,parafly_17,Forever Club (14+),https://www.foreverclub.com,,mismatch,Turhost hosting altyapısında barınmaktadır.,hosting provider parking page (Turhost)
+no,parafly_701,Grand Park Lara,https://www.corendonhotels.com.tr,,mismatch,Corendon Hotels &amp; Resorts Türkiye | Corendon Hotels &amp; Resort Türkiye,resolves to Corendon Hotels (different brand)
+no,parafly_1025441,Jura Hotels Bodrum Resort,https://www.jurahotels.com.tr,,ssl_error,Jura Hotels Ada Beach Kuşadası | Jura Group Hotels,"shows Jura Ada Beach Kusadasi, not the Bodrum resort"
+no,parafly_1023969,Jura Hotels Kemer Resort,https://www.jurahotelskemer.com,https://expireddomains.com/domain/jurahotelskemer.com?utm_source=redi,redirect_suspicious,Domain Not Found,domain expired / for sale (expireddomains.com)
+no,parafly_640925,Linda Beach Hotel,http://www.kaslindahotel.com/lindabeach/default.asp,,parked,kaslindahotel.com&nbsp;-&nbsp;kaslindahotel Resources and Information.,parked/for-sale placeholder (kaslindahotel.com)
+no,parafly_593759,Moyo Luxury Hotel & Beach,https://www.moyohotel.com/iletisim,,mismatch,Visit Turkey. Book your dream hotel from Istanbul to the sunny coast.,generic 'Visit Turkey' travel portal
+no,parafly_175126,Munamar Beach Residence,https://www.munamarbeachresidence.com,https://elitetravelni.net/,redirect_suspicious,AgenPlay88: Login Terbaru Slot Gacor Gratis Demo Slot Dana Qris Pulsa,redirects to a gambling site
+no,parafly_239927,Olympos Village Relaxury Hotel,https://www.olymposvillage.com,https://www.olympostoprakevleri.com/,redirect_suspicious,"Olympos Toprak Evleri | Deniz ile aranızda ormanın içinden yürüyeceğiniz, kısa bir mesafe var!",resolves to Olympos Toprak Evleri (different property)
+no,parafly_874396,Ramona Kale Hotel,https://www.ramonakale.com,https://www.antalyatravestii.com/,redirect_suspicious,Antalya Travesti – Gay Travestileri – Travesti Antalya,hijacked to adult-content site
+no,parafly_64157,Selin' s Otel River,https://www.selinotelspabelek.com,,mismatch,Sex Viet69 - Kho Phim Sex Việt Full XXX Không Che,adult-content spam page
+no,parafly_415061,Side Miami Beach,https://www.sidemiamibeach.com,https://www.abakerschoice.com/,redirect_suspicious,RAJA88JP: Situs Slot Online Gampang JP Link Gacor Agen Slot88 Paling Top,gambling site (RAJA88JP)
+no,parafly_1024011,Siu Collection,https://aydinbeyhotels.com/,,mismatch,Aydınbey Hotels,resolves to Aydinbey Hotels (different brand)
+no,parafly_1023974,Zeyda Lara Hotel,https://www.jurahotels.com.tr,https://jurahotelsadabeach.com/,redirect_suspicious,Jura Hotels Ada Beach Kuşadası | Jura Group Hotels,resolves to Jura Ada Beach (different hotel)
+uncertain,parafly_1367,AQI Pegasos Royal,https://www.tthotels.com,,mismatch,TUI Hotels & Resorts Turkey,TUI Turkey operator portal; AQI property not named
+uncertain,parafly_324646,AQI Pegasos World,https://www.tthotels.com,,mismatch,TUI Hotels & Resorts Turkey,TUI Turkey operator portal; AQI property not named
+uncertain,parafly_144934,Akvaryum Hotel,https://www.isis.com.tr,,mismatch,isis.com.tr,resolves to isis.com.tr - likely different hotel
+uncertain,parafly_663114,Alder Hotel,https://www.alderotel.com,,mismatch,Domain Default page,domain default page
+uncertain,parafly_1025343,Alya Sierra Bodrum,https://www.alyasierrabodrum.com,,ssl_error,Alya Villas,"shows Alya Villas (same brand, different product)"
+uncertain,parafly_377935,Arkın Palm Beach Hotel,http://www.arkinpalmbeach.com,,mismatch,"Sorry, the website has been stopped",'website has been stopped' (hosting suspended)
+uncertain,parafly_781113,Aslan Corner Otel,https://www.aslanhotels.com,,ssl_error,Aslan City Hotel,"shows Aslan City Hotel, not Aslan Corner (same brand, diff property)"
+uncertain,parafly_593536,Beralisa Family Garden Resort - All inclusive,https://www.omorfigardenresort.com,,ssl_error,omorfigardenresort.com,resolves to Omorfi Garden Resort - possible rebrand
+uncertain,parafly_324955,Blue Sky Hotel & Suites,https://www.bluehotel.com,,mismatch,Web Server's Default Page,unconfigured web-server default page
+uncertain,parafly_414938,Club Grand Aqua,https://www.sezergroup.com,,mismatch,Sezer Group Hotels - Antalya Side,Sezer Group Hotels portal; property not named
+uncertain,parafly_1447,Club Hotel Rama,https://www.ramaotel.com,,mismatch,Plesk Obsidian 18.0.76,Plesk server default page
+uncertain,parafly_689,El Vino Hotels & Suites,https://www.elvinobodrum.com,,mismatch,Web sitemiz yakında geliyor,'site coming soon' placeholder
+uncertain,parafly_872579,Erdek Talia Beach Hotel,https://www.erdeksunbeachhotel.com/,,mismatch,Redirecting...,bare 'Redirecting...' page
+uncertain,parafly_313675,Fun & Sun Family Club Saphire,https://www.larissahotels.com,,mismatch,Larissa Hotels,Larissa Hotels portal (possibly Larissa Sapphire)
+uncertain,parafly_414844,Hotel Golden Sun +12 Adult Only,https://www.otelgoldensun.com/,,mismatch,AKDENİZİ HİSSEDİN,"generic slogan page, hotel name not shown"
+uncertain,parafly_1020859,Kahya Hotel Kleopatra,https://www.kahyahotels.com,,mismatch,Plesk Obsidian 18.0.78,Plesk server default page
+uncertain,parafly_628,Kairaba Bodrum Imperial,https://www.tthotels.com,,mismatch,TUI Hotels & Resorts Turkey,TUI Turkey operator portal; Kairaba property not named
+uncertain,parafly_1023581,Kamkat Otel,https://kamkatotel.com/,,mismatch,Loading...,bare 'Loading...' page
+uncertain,parafly_1018546,Karaoz Light House,https://www.karaozlighthouse.com,,mismatch,Redirecting...,bare 'Redirecting...' page
+uncertain,parafly_1264338,Kirman Belazur Resort & SPA,https://www.kirmanhotels.com.tr,,ssl_error,Kirman Premium | Completes You!,"shows Kirman Premium, not Belazur (same brand, diff property)"
+uncertain,parafly_139785,Kleopatra Royal Palm Hotel,https://www.feriahotels.com,,mismatch,Feria Hotels &#8211; OFFICIAL WEBSITE,Feria Hotels group; property not named
+uncertain,parafly_1210719,Milagre Cave Cappadocia,https://milagrecavehotel.com,,mismatch,-,empty '-' title
+uncertain,parafly_147661,Mukarnas Spa Resort,https://www.mukarnashotel.com,,mismatch,Home -,generic 'Home -' placeholder
+uncertain,parafly_1019941,Oscar Seaside Hotel & Spa,https://bodrumoscarseasidehotel.com/,,parked,Coming Soon,'Coming Soon' placeholder
+uncertain,parafly_1210682,Panjur Alaçatı,http://alacati.panjurs.com/,,mismatch,Index of /,"'Index of /' directory listing, no site"
+uncertain,parafly_1264382,Rixos Downtown Antalya - The Land Of Legends Access,http://de.rixos.com/contact/list-acardion/contact/439/315/0,https://www.rixos.com/de,redirect_suspicious,Willkommen bei Rixos All-inclusive Resorts,Rixos group portal; property not named
+uncertain,parafly_876572,Sefine Otel,https://www.sefinehotel.com.tr/,,mismatch,Yapım Aşamasında!,'under construction' placeholder
+uncertain,parafly_1413,Temenos Luxury Hotel & Spa,https://www.temenoshotel.com,,mismatch,Redirecting...,bare 'Redirecting...' page
+uncertain,parafly_145,The Karia Princess Hotel,https://www.kariaprincess.com,,ssl_error,The Karia Hotel,'The Karia Hotel' - possibly different/rebranded property
+uncertain,parafly_418645,Ürgüp Konak Hotel,http://urgupkonak.com/index.html,,mismatch,404,bare '404' page
+cant_load,parafly_781267,3 House Apart,https://www.apart3house.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_873694,Adrasan Eldorado Butik,https://www.eldoradootel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_299,Adrasan Klados Hotel,https://www.adrasankladoshotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1023633,Adrasan La Casita Boutique Hotel,http://lacasitaadrasan.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_3891,Agrovela Hotel,http://www.dalamanairportlykiaresorthotel.com,,parked,,page did not load (parked)
+cant_load,parafly_878418,Akar Palace Resort Hotel,https://www.akarpalaceresort.com,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_1403,Akyalı Butik Otel,https://www.akyaliotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_876021,Ala Grand Residence,https://www.alagrandresidence.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1020771,Ala Konak Alaçatı,http://www.alakonakalacati.com/index.html,,unreachable,,page did not load (unreachable)
+cant_load,parafly_987,Alaiye Kleopatra Hotel,https://www.alaiyehotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1264274,Alaiye Resort & Spa Hotel,https://www.alaiyehotels.com,,timeout,,page did not load (timeout)
+cant_load,parafly_782918,Alaçatı Begonvil By Aliki,https://www.begonvilbyaliki.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_64235,Albano Hotel,https://:www.cesmealbanohotel.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_113333,Alesta Yacht Hotel,http://www.alestayachthotel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_416709,Alfa Apart Otel,https://alfaapart.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_859380,Altınsaray Hotel,https://www.hotelaltinsaray.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_872781,Amfora Hotel,https://amforahotel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_874414,Amsterdam Otel & Suites,https://www.amsterdambutikotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_96931,Anatolian Houses Cave Hotel & Spa,https://www.anatoliahouses.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_663268,Anemon Diyarbakır Suit Hotel,https://anemonhotels.com/hotel/anemon-diyarbakir-suit-rezidans/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_640848,Anemonia Hotel,https://hotelanemonia.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_877597,Anita Sunpark Beach,https://sunpark.anitahotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_212429,Annabella Park Hotel,https://www.anabellahotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_415222,Antalya Dream Time Hotel,https://www.antalyadreams.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1017451,Apella Hotel,http://www.sevenseasonshotels.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_783708,Armağan Apart Otel,https://armaganapartbodrum.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1019558,Armi Alaçatı +13,https://armibutikotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1298787,Arsuz Jumanah Premium,https://jumanahotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1210807,Asfiya Loft Apartments,https://asfiyalofts.com,,timeout,,page did not load (timeout)
+cant_load,parafly_377971,Asfiya Sea View Hotel,http://www.asfiyaseaviewhotel.com/contact-us/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_880,Aspat Hotel Bodrum,https://www.aspatotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1025432,Astrid Hotel Bodrum,https://www.astridhotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1018588,Avalon Hotel Kuşadası,https://www.avalonotel.com,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_1264288,Aydınbey Famous Resort,https://www.aydinbeyhotels.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_142870,Aydınbey Gold Dreams,https://www.aydinbeyhotels.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1264289,Aydınbey Kings Palace & Spa,https://www.aydinbeyhotels.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_294740,Ayvalık Beach Hotel (Ex. Ivy Sailing Resort Hotel),https://www.ivyotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_159109,Azak Beach Hotel (+16 Adult Only),http://www.azakbeach.com/tr,,parked,,page did not load (parked)
+cant_load,parafly_640800,BVS Bosphorus Resort Hotel & Spa,https://www.bvsbosphorus.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_415241,Bamont Villas,https://www.bamontvillas.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_872803,Bella Garden Boutique Hotel,https://www.bellagardenboutiquehotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_776,Bella Resort & Spa,https://www.bellaresorthotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1284463,Bitez Adam Otel,https://www.bitezadamotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_541,Bitez Garden Life Hotel & Suites,https://www.bitezgardenlife.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1164,Blue Pine Hotel,https://www.larissahotels.com.tr,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_308319,Bodrum Bay Resort & Spa,https://www.bodrumbayresorthotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_416992,Bodrum Greenport Hotel,https://www.bodrumgreenport.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_963,Bodrum Skylife Hotel,https://bodrumskylifehotel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_592535,Bora Bora Butik Hotel,https://info@boraborabutik.com,,invalid_url,,page did not load (invalid_url)
+cant_load,parafly_780912,BoraBora Apart,https://www.boraapart.com,,timeout,,page did not load (timeout)
+cant_load,parafly_418366,Bozooğulları Hotel,https://www.hotelbozoogullari.com/,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_1284863,CK Hotel,https://ckkonaklama.com.tr/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_427,CPAnkara Hotel,https://www.cpankara.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1122,Carelta Beach,https://www.careltabeachotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_416637,Caretta Caretta Hotel,https://www.carettacarettadalyan.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_415650,Casa De Sirena Apart Hotel,https://www.casadesirena.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_873700,Ces Club Hotel,https://www.cesclubhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_873086,Chingene Glamping,https://www.chingeneglamping.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_640758,Cleopatra Tac Hotel,https://www.cleopatrajourney.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1025429,Club & Hotel Letoonia Fethiye,https://letoonia@letoonia.com,,invalid_url,,page did not load (invalid_url)
+cant_load,parafly_207599,Club Antiphellos,http://www.clubantiphellos.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_378452,Concorde Luxury Resort & Casino & Convention & SPA,https://www.concordehotel.com.tr,,timeout,,page did not load (timeout)
+cant_load,parafly_295074,Concordia Celes Hotel,https://www.concordiaceles.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_2917456,Corendon Hydros Club Kemer,https://www.corendonhotels.com,,parked,,page did not load (parked)
+cant_load,parafly_416,Crowne Plaza Kayseri,https://www.ihg.com/crowneplaza/hotels/us/en/kayseri/asrks/hoteldetail,,unreachable,,page did not load (unreachable)
+cant_load,parafly_663263,Cunda Bal Konak,https://cundabalkonak.com,,timeout,,page did not load (timeout)
+cant_load,parafly_419547,Cunda Mavi Otel,http://www.cundamavi.com/,,timeout,,page did not load (timeout)
+cant_load,parafly_143022,Cunda Nesos Otel,http://www.nesosotel.com.tr/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_876343,Cunda Paradise Otel,https://www.cundaparadiseotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_995,D Maris Bay,https://www.dhotel.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1765,Dalian Elite Hotel,https://www.facebook.com/dalianelitehotel/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_45341,Dalyan Resort Spa,http://www.dalyanresort.com/english/index.php,,parked,,page did not load (parked)
+cant_load,parafly_1210808,De Mare Family Hotel,https://www.demarehotel.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_379203,Delphin Apart Hotel,https://www.facebook.com/delphinaparthotel/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_417438,Delta Hotels By Marriott Yalıkavak,https://www.marriottdeltabodrum.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_416580,Design Plus Seya Beach Hotel,https://www.labranda.com/de/hotel/seya-beach-hotel.html,,unreachable,,page did not load (unreachable)
+cant_load,parafly_592299,Dionysos Village Hotel,https://www.dionysoshotel.com.tr,https://www.dionysosvillagehotel.com/,redirect_suspicious,,page did not load (redirect_suspicious)
+cant_load,parafly_1025275,DoubleTree By Hilton Bodrum Marina Vista,https://www.hotelmarinavista.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_64648,DoubleTree by Hilton Bodrum Işıl Club Ultra All Inclusive Resort,https://www.hilton.com/en/hotels/bjvtrdi-doubletree-bodrum-isil-club-resort,,unreachable,,page did not load (unreachable)
+cant_load,parafly_783557,Dreams Bodrum Otel,https://dreamsbodrumhotel.business.site,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1022385,Duqqan Deluxe Hotel,https://www.dabaklarhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_872974,Ebruli Pansiyon Cunda,https://www.cundamarinahotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_789782,Eco Farm Boutique Hotel,https://ecofarmbodrum.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1586,Eden Pyara Hotel Turunc,https://www.oteleden.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_891018,Ela Excellence Resort Belek,https://www.elaresort.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_781348,Elamir Beach Bungalow Hotel,https://elamirbeachbungalow.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_378462,Elamir Grand Lukullus,https://info@lukullushotel.com,,invalid_url,,page did not load (invalid_url)
+cant_load,parafly_781593,Elanis Suites Hotel,https://www.elanissuiteshotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_872961,Elementa Boutique Hotel,https://www.elementahotels.com,,parked,,page did not load (parked)
+cant_load,parafly_327061,Elit Life Hotel,https://www.besobeachhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_137065,Elite World Kuşadası,https://www.marinahotelkusadasi.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_874780,Elite World Resort Mersin Silifke,https://www.marvistahotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_881907,Elitium Dizayn Termal Otel,https://www.elitiumdizayntermalhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_890895,Ella Alaçatı Otel,https://www.facebook.com/ellaalacatiotel/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_876515,Ephesus Hitit Hotel,https://www.hitithotel.com.tr/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_781557,Esmeralda Butik Hotel,https://esmeraldabutik.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1017524,Esvida Arzum Bungalov Olimpos,https://www.facebook.com/arzumpansiyonolimpos/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_378052,Euphoria Palm Beach Resort,https://www.euphoriahotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_126919,Fame Residence Göynük,http://www.famehotels.com/tr/anasayfagoynuk.php,,unreachable,,page did not load (unreachable)
+cant_load,parafly_308356,Fame Residence Kemer,http://www.famehotels.com/hotel.asp,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1264322,Fame Residence Lara,http://www.famehotels.com/tr/anasayfa.php,,unreachable,,page did not load (unreachable)
+cant_load,parafly_247,Fortuna Beach Hotel,https://www.fortunabeachhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_946033,Fortunella Suites & Villas,https://www.finiketatili.com.tr,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_881886,Fun Hill Resort Hotel,https://funhillresorthotel.com.tr/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_342,Gardenia Beach Hotel,https://www.gardeniahotels.com,,parked,,page did not load (parked)
+cant_load,parafly_374,Gardenia Hotel,https://www.gardeniahotels.com,,parked,,page did not load (parked)
+cant_load,parafly_872834,Get Enjoy Hotel,https://www.getenjoyhotels.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_681,Golden Life Resort Hotel & Spa,https://www.goldenlifehotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1017498,Golden Rose Otel,https://www.goldenrosehotelkas.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_378031,Golden Star Hotel,http://www.goldenstarhoteldn.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_294799,Grand Atilla Hotel,https://www.grandatillaotel.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1200279,Grand Belish Hotel,http://wwwgrandbelish.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_273,Green Garden Resort Hotel,https://www.greengardenapart.com,,timeout,,page did not load (timeout)
+cant_load,parafly_378040,Greenblue Hotel Patara,https://greenbluehotel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_416906,Günay Hotel,https://www.bodrumgunayotel.com,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_166,Hapimag Sea Garden Resort Bodrum,https://www.hapimag-seagarden.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_146524,Has Cave Konak,https://info@hassecavekonak.com,,invalid_url,,page did not load (invalid_url)
+cant_load,parafly_82,Hilton Bodrum Turkbuku Resort & Spa - All Inclusive,https://www.bodrumturkbuku.hilton.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_228,Hilton Dalaman Sarıgerme Resort & Spa,https://www.hiltondalaman.com,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_945963,Holiday Inn Express Ankara - Airport,https://www.hiexankaraairport.com,,timeout,,page did not load (timeout)
+cant_load,parafly_873441,Hotel Bleu Nuit,https://www.viebleuhotels.com,,parked,,page did not load (parked)
+cant_load,parafly_80767,Hotel Cachet,https://www.hotelcachet.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_114,Hotel Karbel Sun,http://www.karbelsun.com/tr/anasayfa/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_782229,Hotel Palm Beach Arsuz,https://www.palmbeacharsuz.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_416925,Hotel Pelin,http://www.hotelpelin.com.tr/english,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1210702,Hotella Resort & Spa,https://www.hotella.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_593612,Huzur Royal Otel,https://www.huzurroyalotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1589,Iko Melisa Garden Hotel - Kemer,https://www.ikomelisagarden.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_672986,Innvista Belek Antalya,https://www.innvistahotels.com,,timeout,,page did not load (timeout)
+cant_load,parafly_445,Juju Premier Palace,https://rezervasyon@premierpalace.com.tr,,invalid_url,,page did not load (invalid_url)
+cant_load,parafly_212,Julian Forest Suites,https://julianforest.julianhotels.com,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_128912,Justiniano Club Alanya,https://www.justinianohotels.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_26,Justiniano Club Park Conti,http://www.justinianohotels.com/tr/hotel/deluxe-resort/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_847,Justiniano Deluxe Resort,https://www.justinianohotels.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1025302,Kahveci Alibey Hotel,http://kahvecialibeyhotel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_377920,Kahya Resort Aqua & Spa,https://www.kahyaresort.com,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_878049,Kalkan Sultan Hotel,https://kalkansultanhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_789680,Kaya Apartments,https://info@kayaapartmentskalkan.com,,invalid_url,,page did not load (invalid_url)
+cant_load,parafly_593734,Kemal Bay Hotel,https://www.atligroup.com,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_54283,Klas Dom Hotel,https://www.klasshotels.net,,unreachable,,page did not load (unreachable)
+cant_load,parafly_247173,Kleopatra Aydın Otel,https://kleopatraaydinhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_181699,Kleopatra Suit Otel,https://www.kleopatrasuit.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1871,Knidos Butik Otel,http://www.knidosbutik.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_419372,Kutlugün Sahil Otel,https://www.facebook.com/p/Kutlug%C3%BCn-Sahil-Otel-100068175579881/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_873138,La Hoya Beach Hotel,https://www.lahoyabeachhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_378050,Laberna Hotel,https://www.facebook.com/laberna.hotel/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_3379,Labranda TMT Bodrum Resort,https://www.labrandahotels.com,https://findresultshub.com/?dn=labrandahotels.com,redirect_suspicious,,page did not load (redirect_suspicious)
+cant_load,parafly_1264712,Ladonia Hotels Zemda Boutique,http://www.zemdahotel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1020770,Laledan Hotel,https://WWW.LALEDANOTEL.COM,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1828,Lara Hadrianus Hotel,https://www.larahadrianushotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_567,Larissa Mare Beach Hotel,http://marebeach.larissahotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_344,Larissa Sultans Beach,https://www.larissahotels.com.tr,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_872927,Le Bleu Hotel & Resort,https://www.lebleuhotel.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_789505,Le Monde Beach Resort & Spa,https://www.halicparkresort.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_871903,Letoon Plus Hotel,https://www.didimletoonotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1020733,Light House Hotel,https://www.lighthousebodrum.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_884,Likya Pavilion Hotel,http://www.likyapavilionhotel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_592777,Likya Road Resort Hotel,https://www.likyaroad.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1239875,Limak Atlantis De Luxe Hotel & Resort,https://www.limakhotels.com,,parked,,page did not load (parked)
+cant_load,parafly_28,Limak Lara Deluxe Hotel & Resort,https://www.limakhotels.com,,parked,,page did not load (parked)
+cant_load,parafly_844,Limak Limra Club Park Hotel,https://www.limakhotels.com,,parked,,page did not load (parked)
+cant_load,parafly_18,Limak Limra Hotels & Resort,https://www.limakhotels.com,,parked,,page did not load (parked)
+cant_load,parafly_1024219,Lucas Didim Resort,https://www.tarhanserenity.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1210713,Lulu İnn Çeşme,https://www.luluinhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_874383,Maison Green Hill,https://www.maisongreenhill.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_946062,Malibu Garden Resort Hotel,https://www.maliburesorthotel.com,,parked,,page did not load (parked)
+cant_load,parafly_1025330,Manzara Boutique Hotel,https://www.manzarahotels.com,,parked,,page did not load (parked)
+cant_load,parafly_119556,Marbel Hotel By Palmwings,https://ww. marbelpalmwings.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1284489,Marin Hotel,https://www.marin.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_672838,Marma Beach Hotel,https://www.hotelmarmabeach.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_712,Martı Hemithea Hotel,http://www.marti.com.tr/en/marti-hemithea/general-overview,,parked,,page did not load (parked)
+cant_load,parafly_1025245,Martı La Perla (+16),https://www.marti.com.tr,,parked,,page did not load (parked)
+cant_load,parafly_876403,Mavi Beyaz Otel Datça ( Merkez ),https://www.louiseinkonagi.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_871790,Medis Resort Hotel,http://www.medisresorthotel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_308288,Megasaray Club Belek,https://www.clubmegasaray.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1023577,Megasaray Resort Side,https://www.megasarayhotels.com,,parked,,page did not load (parked)
+cant_load,parafly_878102,Megasaray WestBeach Antalya,https://www.megasarayhotels.com,,parked,,page did not load (parked)
+cant_load,parafly_672913,Mekvin Hotels Deniz Feneri Lighthouse +12 Adult Only,https://www.mekvinhotels.com/denizfenerilighthouse,https://www.novvakas.com/denizfenerilighthouse,redirect_suspicious,,page did not load (redirect_suspicious)
+cant_load,parafly_1242088,Merit Lefkoşa Hotel & Casino,https://www.merithotels.com/tur/merit-lefkosa-hotel,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1264450,Merit Park Hotel & Casino,https://www.merithotels.com/tur/merit-park-hotel,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1242191,Merit Royal & Casino & Spa,https://www.merithotels.com/tur/merit-royal-hotel,,unreachable,,page did not load (unreachable)
+cant_load,parafly_2471822,Merit Royal Premium Hotel & Casino & Spa,https://www.merithotels.com/tur/merit-royal-premium-hotel,,unreachable,,page did not load (unreachable)
+cant_load,parafly_415051,Mert Hotel,https://www.facebook.com/MERTPANSiYONBELDiBi/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1017806,Meu La Boutique Otel,https://www.facebook.com/meubodrumhotel/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_226392,Mini Saray Hotel,http://www.minisarayhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1023965,Mojo Boutique Hotel,https://www.mojoboutiqueotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_873716,Monje Alaçatı,https://www.monjehotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_593535,Monna Roza Beach Resort Hotel,https://www.monnarozabeach.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_640813,Monna Roza Maxx Apart,http://www.monnarozagroup.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1017724,Monreve Alaçatı,https://www.alacati.monrevehotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1019533,Morino Alaçatı,https://morinoalacati.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1210524,Mos Otel Çeşme,https://www.moscesme.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_626055,Mr. Crane Hotel,https://www.craneotel.com,,timeout,,page did not load (timeout)
+cant_load,parafly_1308,Nagi Beach Hotel,https://www.nagibeachbodrum.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_513,Navy Hotel,https://www.nayvhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_592821,Neopol Hotel Deluxe,https://www.neopolhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_419039,No Onbir Alaçatı,https://www.facebook.com/alacatinoonbir/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1020769,Nova Butik Hotel,https://www.novabutikhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_227,Novum Garden Side Hotel,http://www.novumhotels.com/novum-garden-side/tr/index.php,,unreachable,,page did not load (unreachable)
+cant_load,parafly_109427,Nur Beach,https://www.nurotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_415437,Nuri's Beach Bungalow,http://www.facebook.com/nuris.beach,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1020746,Olsen Hotel,https://olsenhotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_217728,Orfeus Park Hotel,http://www.orfeushotels.com/park/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_415521,Orfeus Queen Hotel,https://orfeushotels.com/queen/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1264881,Otel Azmakhan,http://www.azmakhan.com.tr/azmakhan/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_417500,Otel Beyaz Ev,https://www.facebook.com/BeyazEvAlacati/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_593501,Otel Silvanus,https://www.silvanusotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_97975,Otium Family Stone Palace,https://www.larissahotels.com.tr,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_234,Otium Park Club Akman,https://www.larissahotels.com.tr,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_104,Ova Resort,https://www.ovaresorthotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1264335,Oz Hotels İncekum Beach Resort,https://www.incekumbeachresort.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_877951,Palmet Family Bianco Hotel,https://www.palmethotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_874696,Panjur Hotel Çeşme,https://cesme.panjurs.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1210943,Pedasya Apart Otel,https://pedasyaaparthotel.com,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_151693,Pera Hotel Alanya,https://www.perahotelalanya.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_21133,Pine Beach Belek,https://www.maritim.de/de/hotels/tuerkei/pine-beach-resort-belek/uebersicht#hotel_content,,unreachable,,page did not load (unreachable)
+cant_load,parafly_875,Point Beach Hotel,https://www.mehtapotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_874398,Prenses Sealine Beach Hotel,https://prensessealinebelekbeachhotel.business.site/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1298750,Pyxis Point Hotel,https://www.pyxispointhotel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_946045,Radisson Blu Hotel Kaş +12 Adult Only,https://www.radissonhotels.com/tr-tr/oteller/radisson-blu-kas,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1284283,Radisson Blu Resort & Spa Çeşme,https://www.radissonblu.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1303122,Ramira City Hotel,https://www.ramiracityhotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_593649,Reyhan Hanım Konakları,https://www.facebook.com/reyhanhanimkonaklari/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1210910,Ride And Stay Hotel,https://www.ridestayhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1017726,Rikas Alaçatı,https://www.rikasalacati.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_874395,Ring Downtown Hotel,https://www.ringdowntownhotel.com,,timeout,,page did not load (timeout)
+cant_load,parafly_877957,Rios Latte Beach Hotel,https://www.latteriosbeach.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_785115,Roca Cappadocia,https://info@rocacappadocia.com,,invalid_url,,page did not load (invalid_url)
+cant_load,parafly_877356,Root Redrock Yalıkavak,https://www.rootredrock.com,,parked,,page did not load (parked)
+cant_load,parafly_1199739,Rox Resort Hotel,https://www.roxroyal.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1428,Royal Alhambra Palace Hotel,https://rezervasyon4@stonegrouphotels.com,,invalid_url,,page did not load (invalid_url)
+cant_load,parafly_45252,Royal Diwa Tekirova Resort,https://www.euphoriahotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1264841,Royal Towers Hotel Kiriş,https://www.palmethotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1298852,Ruins Luxury Resort Bodrum,https://www.ruinshotels.com,,parked,,page did not load (parked)
+cant_load,parafly_784810,Saadet Otel,https://www.hotelsaadet.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1261,Salinas Hotel Bodrum,http://www.salinashotelbodrum.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_148645,Saphir Hotel & Villas,http://www.saphirhotels.com.tr/saphirresortspa/default.aspx,,unreachable,,page did not load (unreachable)
+cant_load,parafly_874,Saphir Resort & Spa,http://www.saphirhotels.com.tr/saphirresortspa/default.aspx,,unreachable,,page did not load (unreachable)
+cant_load,parafly_872784,Sarıgerme New Gate Hotel,https://www.sarigermenewgatehotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_416613,Savra Bodrum,http://savrabodrum.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_402,Selectum Family Resort,https://www.letooniaresorts.com,,timeout,,page did not load (timeout)
+cant_load,parafly_205254,Selectum Family Resort Didim ExAsteria Venüs Didim,https://familyresortdidim.selectumhotels.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_673731,Selenes Pansiyon,https://www.selenespansion.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_781133,Semt Luna Beach Hotel,https://www.alanyalunabeach.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_586,Sesin Hotel,https://www.sesinhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1020776,Sevilla Otel Alaçatı,https://www.sevillaotel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_859697,Sianji Well Being Resort,https://www.sianjilife.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_876471,Side Bay Hotel,https://www.sidebayhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_414912,Side Sunberk Hotel,https://sidesunberkhotel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_874434,Silver Tower Residence Kuşadası,https://www.silvertowerresidence.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_150654,Skys Beach Hotel,https://www.skyshotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1017495,Stella Elite Resort & Spa +16,https://www.sidestellaeite.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_45189,Suite Laguna Hotel,http://www.suitelaguna.com/tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_74762,Sunday Beach Hotel,https://www.sundaybeachhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_565,Sunpoint Hotel Bodrum,https://www.sunpointfamilyhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_416831,Surya Otel Alaçatı,https://www.suryabutikotelalacati.com,https://rogotravel.com/red.php?url=https://www.stay22.com/allez/roam?aid%3Dmms%26campaign%3Did933%26hotelname%3DAksu%2520Hotel%2520Alacati%26lat%3D38.290070199999995%26lng%3D26.3799589%26address%3D16006%2520Sok%2520No%253A19%252C%2520Ala%25C3%25A7at%25C4%25B1%252C%2520%25C3%2587e%25C5%259Fme%252C%252035937%252C%2520%25C4%25B0zmir,redirect_suspicious,,page did not load (redirect_suspicious)
+cant_load,parafly_1331,"Susona Bodrum, LXR Hotels & Resorts",https://www.nikkibeachhotels.com,,timeout,,page did not load (timeout)
+cant_load,parafly_876376,Süreyya Hanım Alaçatı,https://www.facebook.com/sureyyahnmbutikotel/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_200687,Tal Beach Hotel,https://www.talbeachhotel.com,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_959,Tenda Hotel,http://www.tendahotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_890933,That's Alaçatı,https://www.thatsalacati.com,,timeout,,page did not load (timeout)
+cant_load,parafly_784107,The Beachfront Hotel (+16),https://www.beachfront.sunprime.net,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1559,The Best Life Hotel Bodrum Center,https://www.thebestlifehotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_876491,The Erzurum Hotel,https://info@theerzurumhotel.com,,invalid_url,,page did not load (invalid_url)
+cant_load,parafly_1785,The Hotel 48,https://www.costacentralebodrum.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_417090,The Hotel Alaçatı,https://www.facebook.com/thehotelalacati/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1126,The Park Marmaris Hotel,https://www.theparkmarmaris.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1025443,The Rest Port Argento,https://www.therestportbodrum.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1025386,Thermemaris Thermal & Spa Resort,http://www.thermemaris.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_116289,Titan Club Hotel Ultra All Inclusive,https://www.titanhotels.com,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_378205,Top Hotel,https://www.tophotel.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_873637,Toros Otel Didim,https://www.toroshoteldidim.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_783696,Trendlife Hotels Torba,http://www.micasabeach.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_377878,Trendy Hotels Palm Beach,https://www.trendyhotels.com.tr,,timeout,,page did not load (timeout)
+cant_load,parafly_872739,Tuana Otel,https://www.tuanahotel.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_417310,Turgutreis Apart Otel,https://www.facebook.com/109503625130272,,unreachable,,page did not load (unreachable)
+cant_load,parafly_161977,Twenty Hotel,https://www.antalyahoteltwenty.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_378750,Tümay Hotel,https://www.facebook.com/tumayhotelbitez/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_417074,Umut Otel Ve Beach,http://www.selimiyeumutotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_872578,Venüs Termal Boutique,https://info@venushotels.com.tr,,invalid_url,,page did not load (invalid_url)
+cant_load,parafly_416890,Vespera Hotel,https://www.alacativespera.com,,timeout,,page did not load (timeout)
+cant_load,parafly_875538,Via Perla Butik Otel,http://www.via-perla-butik-otel.business.site,,unreachable,,page did not load (unreachable)
+cant_load,parafly_640865,Villa Antiphellos B,https://www.clubantiphellos.com/,,unreachable,,page did not load (unreachable)
+cant_load,parafly_873704,Villa Ephesus Hotel,https://www.villaephesus.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_663198,Villa Kaş Bohem,https://villakasbohem.com/?lang=tr,,timeout,,page did not load (timeout)
+cant_load,parafly_785399,Villa Köknar Pansiyon,https://villakoknar.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_378306,Viva Beach Hotel,https://vivabeachalanya.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1199251,White City Beach Hotel (+16),https://www.whitecityhotels.com,,parked,,page did not load (parked)
+cant_load,parafly_322,White City Resort Hotel & Spa,https://www.whitecityhotels.com,,parked,,page did not load (parked)
+cant_load,parafly_416887,Windtown Deluxe Alaçatı,https://windtowndeluxealacati.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_108547,Yalıhan Aspendos Hotel,https://www.yalihan.com.tr,,ssl_error,,page did not load (ssl_error)
+cant_load,parafly_1198,Yalıhan Una Hotel,https://info@yalihan.com.tr,,invalid_url,,page did not load (invalid_url)
+cant_load,parafly_281,Yalıkavak Marina Hotel by Social Living Collection,https://yalikavakmarina.com.tr,,unreachable,,page did not load (unreachable)
+cant_load,parafly_88,Yeniçeri City Hotel,https://wwwyenicerihotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_872633,Yoncalı Termal Otel,https://www.yoncali.termalresort.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_592766,Zeytin Apart Otel & Aquapark,https://www.zeytinapartaquapark.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_877954,Zulu Hotel,https://zuluadrasanotel.com/iletisim,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1210643,Zuzuu Beach & Hotel,https://www.zuzuubeachhotel.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1020944,Çeşme Flowers Otel,https://www.cesmeflowers.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_780955,Özgün Apart Otel Kuşadası,https://www.apartozgun.com,,unreachable,,page did not load (unreachable)
+cant_load,parafly_1021510,İbos Hotels İzmir,https://iboshotels.com.tr,https://www.iboshotels.com/,redirect_suspicious,,page did not load (redirect_suspicious)
+cant_load,parafly_672931,İnce Hotel,https://www.incehotel.com,,unreachable,,page did not load (unreachable)
+no_url,parafly_416785,7 Art Fesleğen Hotel By Egeos,,,no_url,,no URL on record
+no_url,parafly_875266,Babel Residence Kemer,,,no_url,,no URL on record
+no_url,parafly_782055,Belinda Apart Hotel,,,no_url,,no URL on record
+no_url,parafly_1047,Belle Vue Hotel,,,no_url,,no URL on record
+no_url,parafly_1023598,Bodrum Bargilya Villaları,,,no_url,,no URL on record
+no_url,parafly_783676,Can Pansiyon Bodrum,,,no_url,,no URL on record
+no_url,parafly_1017856,Cappadocia Old Houses,,,no_url,,no URL on record
+no_url,parafly_872729,Dem Butik Otel Alacati,,,no_url,,no URL on record
+no_url,parafly_378039,Green Blue Hotels Bodrum,,,no_url,,no URL on record
+no_url,parafly_109513,Hadrian Hotel,,,no_url,,no URL on record
+no_url,parafly_873310,Latino Hotel,,,no_url,,no URL on record
+no_url,parafly_1017528,Magesa Terra Apart Hotel,,,no_url,,no URL on record
+no_url,parafly_593543,Maldives Hotel,,,no_url,,no URL on record
+no_url,parafly_1020965,Quasar Suites,,,no_url,,no URL on record
+no_url,parafly_673124,Turkuaz Pansiyon,,,no_url,,no URL on record
+no_url,parafly_875138,Villa Lizya,,,no_url,,no URL on record
+no_url,parafly_874011,Villa Mirada,,,no_url,,no URL on record
+yes,parafly_190815,Ahmeda Apart Otel,https://www.sarimsakliahmedaapart.com/,,ssl_error,Sar�msakl� Ahmeda Apart,Sarimsakli Ahmeda Apart
+yes,parafly_874581,Alexandria Troas Termal Hotel,https://www.alexandriatroastermal.com,,ssl_error,Kestanbol Kaplıcaları - ALEXANDRIA TROAS TERMAL OTEL,Alexandria Troas Termal Otel
+yes,parafly_414826,Alkoçlar Kemer Exclusive,https://www.alkoclar.com.tr,,ssl_error,alkoclar.com.tr &#8211; Alkoçlar Hotel &amp; Resorts,Alkoclar Hotel & Resorts brand
+yes,parafly_203586,Aska Lara Resort & Spa,https://www.askahotels.com,,mismatch,"Antalya Aska Hotels Sizler İçin, Sizlerle Beraber | Aska Hotels",Aska Hotels (Lara is an Aska property)
+yes,parafly_646559,Aslan City Hotel,https://www.aslanhotels.com,,ssl_error,Aslan City Hotel,Aslan City Hotel
+yes,parafly_982,Assos Eden Beach Hotel,https://www.assosedengroup.com,,ssl_error,"Assos Eden Group Hotels, Hotels Assos, Assos Otelleri",Assos Eden Group (Beach is a property)
+yes,parafly_1002,Assos Eden Gardens Hotel,https://www.assosedengroup.com,,ssl_error,"Assos Eden Group Hotels, Hotels Assos, Assos Otelleri",Assos Eden Group (Gardens is a property)
+yes,parafly_784569,Assos Troy Beach Hotel,https://www.troyotel.com,,ssl_error,Assos Troy Beach Hotel,Assos Troy Beach Hotel
+yes,parafly_295302,Azura Deluxe Resort & Spa Hotel,https://www.azuradeluxe.com,,ssl_error,Azura Deluxe Hotel,Azura Deluxe Hotel
+yes,parafly_592838,Bay Nihat Lale Otel,https://www.baynihat.com.tr,,ssl_error,Bay Nihat 1978 &#8211; Cunda Adası &#8211; Restoran &amp; Otel,Bay Nihat 1978 Cunda (same)
+yes,parafly_834,Belconti Resort Hotel,https://www.belconti.com,,ssl_error,Belconti Resort Hotel | Antalya Belek 5 Yıldızlı Denize Sıfır Otel | Belek Otelleri,Belconti Resort Hotel
+yes,parafly_146224,Blue Star Hotel,https://www.bluestarhotel.com,,ssl_error,Blue Star Hotel | Alanya | +90 242 510 06 00,Blue Star Hotel Alanya
+yes,parafly_780939,Bozcaada Vitis Otel,https://www.bozcaadahotelvitis.com,,ssl_error,Bozcaada Vitis Hotel,Bozcaada Vitis Hotel
+yes,parafly_1264339,Calyptus Kirman Premium,https://www.kirmanhotels.com.tr,,ssl_error,Kirman Premium | Completes You!,Kirman Premium
+yes,parafly_417388,Casa Caria Boutique Hotel,https://casacaria.com.tr,,ssl_error,Casa Caria Suites &#8211; Bodrum,Casa Caria Suites Bodrum
+yes,parafly_1018416,Casa Fora Beach Resort,https://www.casaforahotel.com,,ssl_error,Ana Sayfa - English - Casa Fora Hotel,Casa Fora Hotel
+yes,parafly_208575,Club Resort Atlantis,https://www.clubresortatlantis.com,,ssl_error,Club Resort Atlantis | İzmir Sığacık Otel & Denize Sıfır Aile Oteli,Club Resort Atlantis Izmir
+yes,parafly_1284558,Costa Sarıyaz Hotel,https://www.costasariyazhotel.com,,parked,Costa Sarıyaz Hotel - Bodrum,Costa Sariyaz Hotel Bodrum
+yes,parafly_1025270,Costa Viva Bodrum,https://www.costavivabodrum.com,,parked,Costa Viva - Bodrum,Costa Viva Bodrum
+yes,parafly_616,Daima Biz Hotel,https://www.daimahotels.com,,ssl_error,Daima Hotels - RESMİ WEB SİTESİ,Daima Hotels
+yes,parafly_416650,Daphnis Hotel,https://www.daphnishotel.com,,ssl_error,Daphnis Hotel - G�lt�rkb�k� Oteli,Daphnis Hotel
+yes,parafly_935,Dedeman Club Bodrum,https://www.clubdedeman.com.tr,,ssl_error,Anasayfa | Club Dedeman Bodrum Tatil Köyü,Club Dedeman Bodrum
+yes,parafly_1779,Dosi Hotel,https://www.dosihotel.com,,ssl_error,Hoşgeldiniz / Dosi Hotel - Side - Antalya,Dosi Hotel Side
+yes,parafly_592657,Elexus Hotel Resort & Casino & Spa,https://www.elexushotel.com,,ssl_error,elexushotel.com,elexushotel.com
+yes,parafly_1023539,Elite World GO Van Edremit,https://www.eliteworldhotels.com.tr,,ssl_error,Elite World Hotels & Resorts,Elite World Hotels brand
+yes,parafly_64148,Fantasia De Luxe Kuşadası,https://www.fantasia.com.tr,,ssl_error,Fantasia De Luxe Kuşadası,Fantasia De Luxe Kusadasi
+yes,parafly_419280,Fragrante Hotel - Adult Only +13,https://www.fragrantehotel.com,,ssl_error,Fragrante Hotel,Fragrante Hotel
+yes,parafly_116285,Fun & Sun Smart Club Hotel Mirabell,https://www.mirabellotel.com.tr,,ssl_error,Club Hotel Mirabell,Club Hotel Mirabell
+yes,parafly_968,Grand Cettia Hotel,https://www.cettia.com,,mismatch,Cettia Otelleri & Resorts | Marmaris / TÜRKİYE,Cettia Otelleri Marmaris
+yes,parafly_45,Grand Hotel Temizel,http://www.temizel.com.tr,,mismatch,Temizel Turistik Tesisleri Sanayi,Temizel (Grand Hotel Temizel operator)
+yes,parafly_878108,Havasu Park Bungalow,https://www.havasupark.com,,ssl_error,havasupark.com Hoş Geldiniz,havasupark.com
+yes,parafly_416542,Haydarpasha Palace,https://www.haydarpashapalace.com,,ssl_error,Haydarpasha Palace,Haydarpasha Palace
+yes,parafly_377885,Horus Paradise Luxury Resort,https://www.horusparadise.com,,ssl_error,"Horus Paradise Luxury Resort Hotel | Horus Paradise Luxury Resort Hotel'e gelirken, sadece deniz kum güneş ya da enfes lezzetler için gelmezsiniz. Eski Mısır kültürüne atıfta bulunan mekanları ve özgü",Horus Paradise Luxury Resort
+yes,parafly_592521,Hotel Xoria Deluxe,https://www.xoriadeluxe.com/,,ssl_error,Xoria Deluxe,Xoria Deluxe
+yes,parafly_1210652,Irmak Boutique Hotel,https://www.irmakboutiquehotel.com,,ssl_error,Irmak Boutique Hotel Restaurant | Bodrum Ortakent,Irmak Boutique Hotel Bodrum
+yes,parafly_785150,Karlık Cave Suite,https://www.karlikcave.com/,,ssl_error,karlikcave.com,karlikcave.com (Karlik Cave Suite)
+yes,parafly_1024256,Kazdağları İda Natura Bungalov Otel,https://www.idanatura.com,,ssl_error,İda Natura Otel - Kazdağları Otelleri - Akçay Otelleri - Bungalov,Ida Natura Otel Kazdaglari
+yes,parafly_672442,Laren Seaside Hotel & Spa,http://www.larenbusinesshotel.com,http://www.larenseasidehotel.com/,redirect_suspicious,Redirecting...,redirects to larenseasidehotel.com (own domain)
+yes,parafly_416841,M Suite Hotel,https://www.msuitehotels.com/tr/,,ssl_error,M Suite Butik Apart Hotel Bodrum Gümbet,M Suite Apart Hotel Bodrum
+yes,parafly_1019523,Ma-Si Urla Hotel,https://siurla.com,,ssl_error,Ma-Si Urla Otel | Şimdi Urla Zamanı !,Ma-Si Urla Otel
+yes,parafly_781690,Maia Luxury Beach Hotel & Spa,https://www.maiabeachhotel.com,,ssl_error,Maia Luxury Beach Hotel &amp; Spa - Resmi Otel Sitesi,Maia Luxury Beach Hotel & Spa
+yes,parafly_295325,Marbas Select Beach +14,https://www.marbashotel.com,,ssl_error,Marbas Select Beach Hotel - İçmeler,Marbas Select Beach Icmeler
+yes,parafly_783593,Mare Garden Hotel,https://www.maregarden.com,,ssl_error,Mare Garden Otel,Mare Garden Otel
+yes,parafly_592373,Mirador Resort & Spa,https://www.miradorhotels.com,,ssl_error,miradorhotels.com,miradorhotels.com (Mirador Resort)
+yes,parafly_54182,Monte Carlo Hotel,https://www.otelmontecarlo.com,,ssl_error,Monte Carlo Hotel | Resmi Websitesi,Monte Carlo Hotel
+yes,parafly_871870,NFK The House Hotel,https://www.nfkthehousehotel.com,,ssl_error,NFK THE HOUSE HOTEL,NFK The House Hotel
+yes,parafly_1238697,Orange County Alanya,https://www.orangecounty.com.tr,,ssl_error,Orange County Hotels,Orange County Hotels brand
+yes,parafly_33,Orange County Kemer,https://www.orangecounty.com.tr,,ssl_error,Orange County Hotels,Orange County Hotels brand
+yes,parafly_876336,Perge Hotels Adult Only +18,https://www.pergehotels.com/tr,,ssl_error,Yetişkinlere Özel Antalya'da Lüks Butik Otel | Perge Hotels - Resmi site,Perge Hotels
+yes,parafly_663147,Premium Park Apart Otel,https://www.premiumparkapart.com,,ssl_error,Premium Park Apart,Premium Park Apart
+yes,parafly_1017501,Qinn Otel,https://www.qinnhotels.com,,ssl_error,Qinn Hotels Antalya - Hayallerinizin Ötesinde Bir Tatil,Qinn Hotels Antalya
+yes,parafly_871787,Ramira Joy Hotel,https://www.ramirahotels.com,,ssl_error,Ramira Hotels,Ramira Hotels brand
+yes,parafly_81956,Rhapsody Hotel Kas,http://www.rhapsodyhotel.com/en/index.php?page=kas_tanitim&amp;title=Ka%C5%9F%20Rhapsody%20Hotel,https://rhapsodyhotels.com/en/index.php?page=kas_tanitim&amp;title=Ka%C5%9F%20Rhapsody%20Hotel,redirect_suspicious,404 Not Found,rhapsodyhotels.com Kas page (official site)
+yes,parafly_873574,Rizom Tatil Koyu,https://www.rizomtatilkoyu.com/,,ssl_error,Rizom Village Assos | 444 6 495 | Muhafazkâr Villa Tatil Köyü,Rizom Village Assos (same)
+yes,parafly_1902,Robinson Club Sarıgerme Park,https://www.robinson.com,,ssl_error,ROBINSON Cluburlaub: die besten Angebote,Robinson Club brand (Sarigerme is a Robinson club)
+yes,parafly_1023995,SL La Perla Hotel Kemer,https://www.laperlahotel.com.tr,,ssl_error,SL La Perla Hotel,SL La Perla Hotel
+yes,parafly_873721,Santana Göcek,https://www.santanavillas.com,,ssl_error,Santana Villas,Santana (Gocek) - Santana Villas
+yes,parafly_187116,Selvi Beach Hotel,https://www.selvibeach.com,,mismatch,Selvi Bodrum Otel: Göltürkbükü Denize Sıfır Konaklama | En İyi Fiyat,Selvi (Bodrum/Golturkbuku) same property
+yes,parafly_136646,Small Beach Hotel,https://veltursmall.com,,ssl_error,Veltur Small Beach Hotel | Turgutreis Bodrum | Rezervasyon +90 252 382 28 33,Veltur Small Beach Hotel Turgutreis
+yes,parafly_101847,Sultan Of Side Hotel,https://www.sultanofside.com,,ssl_error,Sultan of Side | Resmi Websitesi,Sultan of Side
+yes,parafly_1210691,Sun Fire Beach Hotel,https://sunfirehotel.com/,,ssl_error,sunfirehotel.com,sunfirehotel.com
+yes,parafly_649,Suncity Hotel & Beach Club,http://suncity.com.tr/en/home-page/,https://www.sundiabyliberty.com/otellerimiz/sundia-by-liberty-suncity/,redirect_suspicious,Sundia By Liberty Suncity – Fethiye Ölüdeniz’de Unutulmaz Bir Tatil,rebranded Sundia by Liberty Suncity (same property)
+yes,parafly_139488,Sunis Elita Beach Resort & Spa,https://www.sunishotels.com,,mismatch,Sunis Hotels &#8211; Sonsuza kadar Sürecek Anılar,Sunis Hotels (Elita Beach is a Sunis property)
+yes,parafly_765,Sunny Hill Alya Hotel,https://www.alyahotels.com,,ssl_error,Alya Hotels,Alya Hotels brand
+yes,parafly_1001,Sunrise Resort Hotel,https://www.starlight.com.tr,,ssl_error,World of Sunrise | Antalya Otel | Side Otel,"Sunrise brand (World of Sunrise, Side)"
+yes,parafly_877646,Sunthalia Hotels & Resorts,https://www.sunthaliahotels.com,,ssl_error,SunThalia Hotel ve Resorts,SunThalia Hotel & Resorts
+yes,parafly_877961,The Luxury Shelters,https://www.theluxuryshelters.com,,ssl_error,Luxury Shelters,The Luxury Shelters
+yes,parafly_627016,The Marilis Hill Resort Hotel & Spa,https://www.marilishill.com,,ssl_error,The Marilis Hill Resort &amp; Spa,Marilis Hill Resort & Spa
+yes,parafly_1292,Tui Blue Pascha Bay,https://www.tthotels.com,,mismatch,TUI Hotels & Resorts Turkey,TUI Blue brand matches
+yes,parafly_416509,Tui Blue Tropical,http://www.tthotels.com,,mismatch,TUI Hotels & Resorts Turkey,TUI Blue brand matches
+yes,parafly_876615,Türkay Hotel,https://www.turkayhotel.com,,ssl_error,Türkay Hotel,Turkay Hotel
+yes,parafly_266,Viento Hotel Alaçatı,https://vientoalacati.com,,ssl_error,Viento Hotel Alaçatı | Luxury Hotel Alaçatı,Viento Hotel Alacati
+yes,parafly_785336,Yakamoz Otel,https://yakamozhotel.com,,ssl_error,Yakamoz Hotel - Yakamoz Home,Yakamoz Hotel
+yes,parafly_873689,Zoe Hotel Alaçatı,https://www.zoealacati.com,,ssl_error,Zoe | Luxury Boutique Hotel,Zoe boutique hotel Alacati
+yes,parafly_221486,Çınarlar Apart Otel,https://www.cinarlarapart.com,,ssl_error,Çınarlar Apart,Cinarlar Apart
+yes,parafly_415487,Çıralı Zakkum Bungalow,https://www.ciralizakkumbungalow.com,,ssl_error,Çıralı Zakkum Bungalow - Çıralı Villa Bungalow Zakkum Bungalow ciralizakkumbungalow.com +90 534 516 77 07,Cirali Zakkum Bungalow
+yes,parafly_872714,Ören Konak Apart Otel,https://www.orenkonakapartotel.com,,ssl_error,�ren Konak Apart Otel,Oren Konak Apart Otel
+yes,parafly_225280,İllusion Beach Club Hotel + 16,https://www.illusionhotels.com,,ssl_error,&#x130;llusion Beach Club Hotel | Resmi Websitesi,Illusion Beach Club Hotel

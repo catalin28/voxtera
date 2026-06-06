@@ -41,6 +41,7 @@ don't require a live Redis.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import time
@@ -50,8 +51,49 @@ from typing import Any
 from loguru import logger
 
 DEFAULT_TTL_SECONDS = 30 * 60  # 30-minute chat-mode TTL (per architecture doc)
-DEFAULT_HISTORY_LIMIT = 8       # ring buffer for recent turns
+# Keep the FULL conversation per session (a voice call is one session). The cap
+# is only a runaway-safety bound, not a 2-3-turn window — real dialogue needs the
+# whole history so follow-ups ("the other one", "yes", "what did I ask?") resolve.
+DEFAULT_HISTORY_LIMIT = 500
 KEY_PREFIX = "voxtera:cc:session:"
+
+# Budget for how much transcript we FEED the LLM each turn (storage stays full;
+# this only bounds tokens/latency on very long calls — newest turns are kept).
+DEFAULT_TRANSCRIPT_CHAR_BUDGET = 8000
+
+
+def build_transcript(
+    history: list[dict[str, Any]] | None,
+    *,
+    char_budget: int = DEFAULT_TRANSCRIPT_CHAR_BUDGET,
+    include_current: bool = True,
+) -> str:
+    """Render session history into a plain 'User:/Assistant:' transcript.
+
+    Newest-first budgeting: if the full transcript exceeds `char_budget`, the
+    OLDEST turns are dropped (the recent context matters most for a follow-up),
+    but the stored history in Redis is never trimmed by this function.
+    """
+    turns = list(history or [])
+    if not include_current and turns:
+        turns = turns[:-1]
+    lines: list[str] = []
+    total = 0
+    for turn in reversed(turns):  # newest first, so we keep recent under budget
+        u = (turn.get("utterance") or "").strip()
+        a = (turn.get("answer") or "").strip()
+        block = ""
+        if u:
+            block += f"User: {u}\n"
+        if a:
+            block += f"Assistant: {a}\n"
+        if not block:
+            continue
+        if total + len(block) > char_budget and lines:
+            break
+        lines.append(block)
+        total += len(block)
+    return "".join(reversed(lines)).strip()
 
 
 def _now() -> float:
@@ -106,8 +148,11 @@ class SessionStore:
             import redis.asyncio as aioredis  # type: ignore
 
             self._client = aioredis.from_url(
-                self._url, encoding="utf-8", decode_responses=True,
-                socket_connect_timeout=2.0, socket_timeout=2.0,
+                self._url,
+                encoding="utf-8",
+                decode_responses=True,
+                socket_connect_timeout=2.0,
+                socket_timeout=2.0,
             )
             return self._client
         except Exception as e:  # noqa: BLE001
@@ -169,14 +214,16 @@ class SessionStore:
         is_clarification: bool = False,
     ) -> None:
         """Append a turn to history and update counters; caller must still call ``save``."""
-        session.setdefault("history", []).append({
-            "ts": _now(),
-            "utterance": utterance,
-            "decomposition": decomposition,
-            "reason": reason,
-            "answer": answer,
-            "is_clarification": is_clarification,
-        })
+        session.setdefault("history", []).append(
+            {
+                "ts": _now(),
+                "utterance": utterance,
+                "decomposition": decomposition,
+                "reason": reason,
+                "answer": answer,
+                "is_clarification": is_clarification,
+            }
+        )
         if is_clarification:
             session["clarification_count"] = int(session.get("clarification_count", 0)) + 1
         else:
@@ -186,7 +233,5 @@ class SessionStore:
 
     async def close(self) -> None:
         if self._client is not None and hasattr(self._client, "aclose"):
-            try:
+            with contextlib.suppress(Exception):
                 await self._client.aclose()
-            except Exception:  # noqa: BLE001
-                pass

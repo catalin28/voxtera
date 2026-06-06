@@ -235,26 +235,52 @@ def _build_anthropic_render(model: str) -> RenderFn:
     async def render(payload: dict[str, Any]) -> str:
         # Trim retrieval to the fields the model actually needs to stay grounded.
         retrieval = payload.get("retrieval") or {}
-        trimmed = {
-            "reason": retrieval.get("reason"),
-            "missing_requirements": retrieval.get("missing_requirements", []),
-            "hotels": [
+        hotels_out = []
+        for h in retrieval.get("hotels", []):
+            ev = {
+                req: (chunk.get("text_en") or chunk.get("text") or "")[:280]
+                for req, chunk in (h.get("evidence") or {}).items()
+            }
+            # A passage returned for MORE THAN ONE requirement is a generic blob
+            # (e.g. a single "activities" list backing both "yoga" and "historical
+            # sites") — it does not specifically confirm any of them.
+            from collections import Counter as _Counter
+
+            text_counts = _Counter(t for t in ev.values() if t)
+            generic_reqs = sorted({req for req, t in ev.items() if t and text_counts[t] > 1})
+            hotels_out.append(
                 {
                     "hotel_id": h["hotel_id"],
                     "name": (h.get("payload") or {}).get("hotel_name"),
-                    "score": round(float(h.get("score", 0.0)), 3),
-                    "evidence": {
-                        req: (chunk.get("text_en") or chunk.get("text") or "")[:280]
-                        for req, chunk in (h.get("evidence") or {}).items()
+                    # The hotel's ACTUAL location — so the model states where it really
+                    # is and never invents a city or nearby landmarks.
+                    "location": {
+                        "district": (h.get("payload") or {}).get("district"),
+                        "region": (h.get("payload") or {}).get("region"),
+                        "country": (h.get("payload") or {}).get("country"),
                     },
+                    "score": round(float(h.get("score", 0.0)), 3),
+                    "evidence": ev,
+                    # Requirements whose only evidence is a reused generic passage —
+                    # do NOT claim the hotel offers these.
+                    "unconfirmed_generic": generic_reqs,
                 }
-                for h in retrieval.get("hotels", [])
-            ],
+            )
+        trimmed = {
+            "reason": retrieval.get("reason"),
+            "missing_requirements": retrieval.get("missing_requirements", []),
+            "hotels": hotels_out,
         }
         language = (payload.get("decomposition") or {}).get("language") or "en"
+        transcript = (payload.get("transcript") or "").strip()
+        convo = f"Conversation so far:\n{transcript}\n\n" if transcript else ""
         user_msg = (
             f"Detected language: {language}\n"
-            f"Region: {payload.get('region')}\n"
+            # This is the region the guest ASKED about — NOT necessarily where a
+            # returned hotel is. Use each hotel's own 'location' for facts.
+            f"Guest's requested region (may differ from a hotel's real "
+            f"location): {payload.get('region')}\n"
+            f"{convo}"
             f"Guest utterance: {payload.get('utterance')}\n\n"
             f"Retrieval result (JSON):\n{json.dumps(trimmed, ensure_ascii=False)}"
         )
@@ -285,6 +311,102 @@ def _build_anthropic_render(model: str) -> RenderFn:
         return _first_text_block(msg).strip()
 
     return render
+
+
+_WEB_SYNTH_SYSTEM = load_prompt("concierge_web_synth")
+_CONVERSE_SYSTEM = load_prompt("concierge_converse")
+_WEB_QUERY_SYSTEM = load_prompt("concierge_web_query")
+
+
+def _build_anthropic_web_query(model: str) -> Callable[[dict[str, Any]], Awaitable[str]]:
+    """Build a query_fn that rewrites the conversation into ONE self-contained web
+    search query — independent of the ES resolver and the decomposition."""
+
+    async def web_query(payload: dict[str, Any]) -> str:
+        user_msg = (
+            f"Conversation so far:\n{(payload.get('transcript') or '(none yet)')}\n\n"
+            f"Guest's current message: {payload.get('utterance')}"
+        )
+        client = _anthropic()
+        msg = await client.messages.create(
+            model=model,
+            max_tokens=80,
+            system=[
+                {"type": "text", "text": _WEB_QUERY_SYSTEM, "cache_control": {"type": "ephemeral"}}
+            ],
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        return _first_text_block(msg).strip()
+
+    return web_query
+
+
+def _build_anthropic_converse(model: str) -> Callable[[dict[str, Any]], Awaitable[str]]:
+    """Build a converse_fn that answers a conversational/meta/recall turn from
+    the transcript (no retrieval)."""
+
+    async def converse(payload: dict[str, Any]) -> str:
+        user_msg = (
+            f"Detected language: {payload.get('language') or 'en'}\n\n"
+            f"Conversation so far:\n"
+            f"{(payload.get('transcript') or '(this is the first message)')}\n\n"
+            f"Guest's current message: {payload.get('utterance')}"
+        )
+        client = _anthropic()
+        msg = await client.messages.create(
+            model=model,
+            max_tokens=220,
+            system=[
+                {"type": "text", "text": _CONVERSE_SYSTEM, "cache_control": {"type": "ephemeral"}}
+            ],
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        return _first_text_block(msg).strip()
+
+    return converse
+
+
+def _build_anthropic_web_synth(model: str) -> Callable[[dict[str, Any]], Awaitable[str]]:
+    """Build a synth_fn that rewrites a raw web-search blob into one clean,
+    non-contradictory spoken answer (voice channel)."""
+
+    async def synth(payload: dict[str, Any]) -> str:
+        web = payload.get("web") or {}
+        # Feed MORE, LONGER snippets — the model must ground its answer in the
+        # evidence (and catch nuance like "spa on-site, scuba arranged nearby"),
+        # not parrot the shallow aggregated blob.
+        snippets = []
+        for s in (web.get("sources") or [])[:6]:
+            txt = s.get("snippet") or s.get("content") or ""
+            if txt:
+                snippets.append(f"- {txt[:600]}")
+        hotel_facts = (payload.get("hotel_facts") or "").strip()
+        hotel_block = (
+            f"\n\nWhat the hotel's OWN guide says (on-site facts — weave these in, "
+            f"lead with them):\n{hotel_facts}\n"
+            if hotel_facts
+            else ""
+        )
+        user_msg = (
+            f"Detected language: {payload.get('language') or 'en'}\n"
+            f"Guest question: {payload.get('question')}\n"
+            f"{hotel_block}\n"
+            f"Aggregated web answer (shallow — verify against snippets): "
+            f"{web.get('answer') or '(none)'}\n\n"
+            f"Web source snippets (the real evidence):\n" + ("\n".join(snippets) or "(none)")
+        )
+        client = _anthropic()
+        msg = await client.messages.create(
+            model=model,
+            max_tokens=420,
+            system=[
+                {"type": "text", "text": _WEB_SYNTH_SYSTEM, "cache_control": {"type": "ephemeral"}}
+            ],
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        return _first_text_block(msg).strip()
+
+    return synth
 
 
 def _extract_usage(msg: Any) -> dict[str, Any]:

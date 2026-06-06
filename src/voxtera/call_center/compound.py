@@ -16,7 +16,8 @@ Decision contract:
       "normalized_requirements": list[str],
       "top_score":            float,   # mean of per-requirement top scores for the best hotel
       "count":                int,
-      "hotels":               list[dict],   # each: {hotel_id, score, payload, evidence: {requirement -> chunk}}
+    "hotels":               list[dict],   # each: {hotel_id, score, payload,
+                               #        evidence: {requirement -> chunk}}
       "missing_requirements": list[str],    # populated when reason == "partial_match_only"
       "reason":               str | None,
     }
@@ -76,19 +77,18 @@ class CompoundAndDiscovery:
         activity_tags: list[str] | None = None,
         category_hint: str | None = None,
         hotel_id: str | None = None,
+        rerank: bool = True,
     ) -> dict[str, Any]:
         region = (region or "").strip()
         normalized = [r.strip() for r in (requirements or []) if r and r.strip()]
         normalized = normalized[: self._max_requirements]
 
-        if not region:
-            return self._empty(region, requirements, normalized, REASON_NO_REGION_SCOPE)
         if not normalized:
             return self._empty(region, requirements, normalized, REASON_EMPTY_REQUIREMENTS)
 
         try:
             per_req = await self._fan_out(
-                normalized, region, activity_tags, category_hint, hotel_id=hotel_id
+                normalized, region, activity_tags, category_hint, hotel_id=hotel_id, rerank=rerank
             )
         except Exception as e:  # noqa: BLE001 — graceful degradation per contract
             logger.warning("CompoundAndDiscovery error for region={!r}: {}", region, e)
@@ -106,6 +106,23 @@ class CompoundAndDiscovery:
         }
         return result
 
+    async def fetch_hotel_chunks(
+        self,
+        *,
+        hotel_id: str,
+        query: str,
+        region: str = "",
+        k: int = 6,
+    ) -> list[dict[str, Any]]:
+        """Delegate to BroadHotelDiscovery: top-`k` distinct chunks for one hotel.
+
+        Used by the scoped path so a question about a KNOWN hotel is answered
+        from several of its passages, not a single best-matching chunk.
+        """
+        return await self._discovery.fetch_hotel_chunks(
+            hotel_id=hotel_id, query=query, region=region, k=k
+        )
+
     # --- internals ---
 
     async def _fan_out(
@@ -116,6 +133,7 @@ class CompoundAndDiscovery:
         category_hint: str | None,
         *,
         hotel_id: str | None = None,
+        rerank: bool = True,
     ) -> list[dict[str, Any]]:
         tasks = [
             self._discovery.discover(
@@ -124,6 +142,7 @@ class CompoundAndDiscovery:
                 activity_tags=activity_tags,
                 category_hint=category_hint,
                 hotel_id=hotel_id,
+                rerank=rerank,
             )
             for req in requirements
         ]

@@ -12,12 +12,39 @@ ES_INDEX = "hotels"
 
 # Brand tokens to protect from Turkish stemming (e.g. "Rixos" -> "rixo").
 BRAND_KEYWORDS: list[str] = [
-    "rixos", "maxx", "royal", "cornelia", "voyage", "gloria",
-    "xanadu", "limak", "atlantis", "selectum", "regnum", "carya",
-    "akra", "hilton", "sheraton", "marriott", "hyatt", "radisson",
-    "kempinski", "fairmont", "dedeman", "wyndham",
-    "crystal", "calista", "ela", "susesi", "titanic",
-    "kaya", "palazzo", "bomonti", "premium", "belek", "lara",
+    "rixos",
+    "maxx",
+    "royal",
+    "cornelia",
+    "voyage",
+    "gloria",
+    "xanadu",
+    "limak",
+    "atlantis",
+    "selectum",
+    "regnum",
+    "carya",
+    "akra",
+    "hilton",
+    "sheraton",
+    "marriott",
+    "hyatt",
+    "radisson",
+    "kempinski",
+    "fairmont",
+    "dedeman",
+    "wyndham",
+    "crystal",
+    "calista",
+    "ela",
+    "susesi",
+    "titanic",
+    "kaya",
+    "palazzo",
+    "bomonti",
+    "premium",
+    "belek",
+    "lara",
 ]
 
 # Query-time synonyms for common spoken / mistyped variants.
@@ -98,6 +125,7 @@ def build_hotel_mapping() -> dict[str, Any]:
                 "adults_only": {"type": "boolean"},
                 "board_type": {"type": "keyword"},
                 "star_rating": {"type": "integer"},
+                "hotel_url": {"type": "keyword"},
             }
         },
     }

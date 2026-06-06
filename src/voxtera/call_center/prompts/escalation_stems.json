@@ -1,0 +1,30 @@
+{
+  "_doc": "Fast-gate stem list for the escalation classifier. If an utterance contains NONE of these stems (case-insensitive substring match), the LLM escalation classifier is SKIPPED for that turn (verdict: no escalation) — the multilingual decomposer remains the second net. If ANY stem matches, the LLM classifier runs as usual and makes the real decision. Stems, not words: 'rezerv' matches rezervasyon/rezervasyonumu/rezerve. Err on the side of adding too many — a false trigger only costs one LLM call. Edits are picked up automatically (no restart). Keys starting with _ are ignored.",
+  "booking": [
+    "book", "reserv", "rezerv", "availab", "müsait", "musait", "vacanc",
+    "check in tomorrow", "stay next", "want to stay", "kalmak istiyorum"
+  ],
+  "post_booking": [
+    "cancel", "iptal", "refund", "iade", "change my", "modify", "değiştir",
+    "degistir", "reschedul", "erteleme", "ertele", "my booking", "my reservation",
+    "rezervasyonum"
+  ],
+  "live_complaint": [
+    "complain", "şikayet", "sikayet", "manager", "müdür", "mudur", "dirty",
+    "kirli", "broken", "bozuk", "not working", "çalışmıyor", "calismiyor",
+    "terrible", "berbat", "awful", "unacceptable", "kabul edilemez",
+    "my room", "odam", "oteldeyim", "i'm at the hotel", "im at the hotel",
+    "giremiyorum", "charged twice", "overcharged", "noise", "gürültü", "gurultu",
+    "cold water", "no hot water", "sıcak su yok", "klima"
+  ],
+  "medical": [
+    "doctor", "doktor", "ambulan", "hospital", "hastane", "sick", "hasta",
+    "hurt", "injur", "yaralan", "ilaç", "ilac", "medicine", "allerg", "alerji",
+    "emergency", "first aid", "ilk yardım"
+  ],
+  "urgency": [
+    "urgent", "acil", "hemen", "immediately", "right now", "right away",
+    "asap", "şimdi lazım", "simdi lazim", "tonight", "bu gece", "in 2 hours",
+    "no hotel", "stranded", "help me", "yardım edin", "yardim edin"
+  ]
+}

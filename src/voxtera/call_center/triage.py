@@ -82,7 +82,14 @@ def _pick_language(decomposition: dict[str, Any], session: dict[str, Any] | None
 
 
 def _has_geography(decomposition: dict[str, Any], session: dict[str, Any] | None) -> bool:
-    """True if the decomposition or carry-over session has any geographic anchor."""
+    """True if the decomposition or carry-over session has any geographic anchor.
+
+    An explicit "all regions" selection counts as a satisfied geography choice —
+    the caller deliberately wants a cross-region search, so we must not ask
+    "which destination?".
+    """
+    if session and session.get("all_regions"):
+        return True
     for k in ("hotel_mention", "city", "region", "district"):
         v = decomposition.get(k)
         if isinstance(v, str) and v.strip():
@@ -117,9 +124,7 @@ def _needs_hotel_vs_recommend(decomposition: dict[str, Any]) -> bool:
         return False
     if decomposition.get("budget_tier") or decomposition.get("budget_signal"):
         return False
-    if decomposition.get("traveller_type"):
-        return False
-    return True
+    return not decomposition.get("traveller_type")
 
 
 def _needs_non_negotiable(decomposition: dict[str, Any]) -> bool:
@@ -211,9 +216,10 @@ class Triage:
         query_type = decomposition.get("query_type") or "broad"
 
         # --- Priority 1: Geography ---
-        if query_type in GEOGRAPHY_REQUIRED_QUERY_TYPES:
-            if not _has_geography(decomposition, session):
-                return _ask(SLOT_GEOGRAPHY, language, "missing_geography")
+        if query_type in GEOGRAPHY_REQUIRED_QUERY_TYPES and not _has_geography(
+            decomposition, session
+        ):
+            return _ask(SLOT_GEOGRAPHY, language, "missing_geography")
 
         # --- Priority 2: Hotel vs recommendation intent ---
         if _needs_hotel_vs_recommend(decomposition):

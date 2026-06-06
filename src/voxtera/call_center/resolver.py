@@ -59,6 +59,8 @@ class HotelResolver:
         max_candidates: int = 3,
         search_fn: SearchFn | None = None,
         score_norm: float = 100.0,
+        dominance_ratio: float = 1.8,
+        dominance_floor: float = 0.15,
     ) -> None:
         self._session = session
         self._index_name = index_name
@@ -67,6 +69,14 @@ class HotelResolver:
         self._max_candidates = max_candidates
         self._search_fn = search_fn
         self._score_norm = score_norm
+        # Relative-dominance auto-resolve: a candidate that clearly beats the
+        # runner-up auto-resolves even when its ABSOLUTE normalised score is
+        # modest. ES BM25 scores are query/corpus dependent, so the absolute
+        # /100 threshold alone wrongly rejects strong matches — e.g. "Casa Dell
+        # Arte" scores 48 (→0.48) but is 2x the next candidate. Same lesson the
+        # Qdrant side learned: filter on relative margin, not absolute score.
+        self._dominance_ratio = dominance_ratio  # top must beat 2nd by this factor
+        self._dominance_floor = dominance_floor  # ...and clear this sanity floor
 
     async def resolve(self, mention_text: str) -> dict[str, Any]:
         """Resolve *mention_text* and return a stable decision payload."""
@@ -188,13 +198,27 @@ class HotelResolver:
             )
 
         top = candidates[0]
-        if top.score >= self._auto_threshold:
+        second = candidates[1].score if len(candidates) > 1 else 0.0
+        # A clear winner: above the absolute auto-threshold, OR (with a real
+        # runner-up to compare against) it clears a sanity floor AND dominates
+        # the second candidate. A lone weak candidate is genuinely uncertain, so
+        # it falls through to the absolute clarify/no-match bands below.
+        is_dominant = (
+            len(candidates) >= 2
+            and top.score >= self._dominance_floor
+            and top.score >= second * self._dominance_ratio
+        )
+        if top.score >= self._auto_threshold or is_dominant:
             return self._result(
                 decision="auto_resolve",
                 hotel_id=top.hotel_id,
                 top_score=top.score,
                 candidates=[],
-                reason="score_above_auto_threshold",
+                reason=(
+                    "score_above_auto_threshold"
+                    if top.score >= self._auto_threshold
+                    else "dominant_top_match"
+                ),
                 normalized_mention=normalized_mention,
             )
 

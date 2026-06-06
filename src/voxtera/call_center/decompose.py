@@ -101,6 +101,7 @@ QUERY_TYPES = {
     "web",  # live web (16-19)
     "hybrid",  # hotel KB + web (20-23)
     "escalate",  # human agent (24-27)
+    "conversational",  # chitchat / meta / recall, answered from history (28)
 }
 
 SOURCES = {"hotel_kb", "destination_kb", "web"}
@@ -257,7 +258,7 @@ class QueryDecomposer:
             qid = raw.get("query_type_id")
             if qid is not None:
                 qid_int = int(qid)
-                if 1 <= qid_int <= 27:
+                if 1 <= qid_int <= 28:  # 28 = conversational
                     out["query_type_id"] = qid_int
         except (TypeError, ValueError):
             pass
@@ -388,6 +389,12 @@ def _build_ctx_block(context: dict[str, Any]) -> str:
     hotel_mention null — the router supplies the actual id from the session.
     """
     ctx_lines = []
+    if context.get("transcript"):
+        ctx_lines.append(
+            "Conversation so far (oldest to newest) — use it to resolve follow-ups, "
+            'pronouns ("they"/"it"/"the other one"), and short replies ("yes", '
+            '"the second one"):\n' + str(context["transcript"]) + "\n"
+        )
     if context.get("active_region"):
         ctx_lines.append(f"Carry-over region: {context['active_region']}")
     if context.get("active_hotel_id"):

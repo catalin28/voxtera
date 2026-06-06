@@ -96,12 +96,11 @@ class BroadHotelDiscovery:
         activity_tags: list[str] | None = None,
         category_hint: str | None = None,
         hotel_id: str | None = None,
+        rerank: bool = True,
     ) -> dict[str, Any]:
         region = (region or "").strip()
         normalized_query = (query or "").strip()
 
-        if not region:
-            return self._empty(region, query, normalized_query, REASON_NO_REGION_SCOPE)
         if not normalized_query:
             return self._empty(region, query, normalized_query, REASON_EMPTY_QUERY)
 
@@ -123,11 +122,73 @@ class BroadHotelDiscovery:
             return empty
 
         t0 = time.perf_counter()
-        hits, reranked = await self._maybe_rerank(normalized_query, hits)
+        if rerank:
+            hits, reranked = await self._maybe_rerank(normalized_query, hits)
+        else:
+            # Raw cosine ranking — the cross-encoder over-weights common tokens
+            # like "beach" for NAME lookups, flipping "Casa Dell Arte" below
+            # "Casa Fora Beach Resort". Name detection wants the raw vector order.
+            reranked = False
         timings["rerank_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
         result = self._finalize(region, query, normalized_query, hits, reranked=reranked)
         result["timings"] = timings
         return result
+
+    async def fetch_hotel_chunks(
+        self,
+        *,
+        hotel_id: str,
+        query: str,
+        region: str = "",
+        k: int = 6,
+    ) -> list[dict[str, Any]]:
+        """Return the top-`k` distinct chunks for ONE resolved hotel.
+
+        Unlike `discover` (which keeps the single best chunk per hotel for
+        cross-hotel ranking), this returns several passages from the SAME hotel
+        so the render LLM can answer a specific question with the full context —
+        e.g. an address chunk AND a "located on the beach" chunk, instead of
+        guessing from whichever single chunk scored highest. Raw cosine order,
+        no rerank: we want breadth of evidence, not a re-sorted single winner.
+        """
+        normalized_query = (query or "").strip()
+        if not hotel_id or not normalized_query:
+            return []
+        try:
+            vector = await self._embed(normalized_query)
+            body = self._build_search_body(vector, region, None, None, hotel_id=hotel_id)
+            # Pull more than k and de-dupe so near-identical chunks don't crowd
+            # out distinct facts.
+            body["limit"] = max(k * 3, 12)
+            hits = await self._search(body)
+        except Exception as e:  # noqa: BLE001 — never fail the turn over evidence breadth
+            logger.warning("fetch_hotel_chunks error for hotel_id={!r}: {}", hotel_id, e)
+            return []
+
+        out: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for h in hits:
+            payload = h.get("payload", {}) or {}
+            if payload.get("hotel_id") != hotel_id:
+                continue
+            text = payload.get("text") or ""
+            key = (payload.get("category", ""), text[:80])
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                {
+                    "chunk_id": payload.get("chunk_id", str(h.get("id", ""))),
+                    "category": payload.get("category", ""),
+                    "text": text,
+                    "text_en": payload.get("text_en", ""),
+                    "score": float(h.get("score", 0.0)),
+                    "hotel_name": payload.get("hotel_name", ""),
+                }
+            )
+            if len(out) >= k:
+                break
+        return out
 
     # --- internals ---
 
@@ -148,25 +209,27 @@ class BroadHotelDiscovery:
         *,
         hotel_id: str | None = None,
     ) -> dict[str, Any]:
-        must: list[dict[str, Any]] = [
-            {"key": "region", "match": {"value": canonical_region(region)}},
-        ]
+        must: list[dict[str, Any]] = []
+        if region:
+            must.append({"key": "region", "match": {"value": canonical_region(region)}})
         if hotel_id:
             must.append({"key": "hotel_id", "match": {"value": hotel_id}})
         if activity_tags:
             must.append({"key": "activity_tags", "match": {"any": list(activity_tags)}})
         if category_hint:
             must.append({"key": "category", "match": {"any": [category_hint, "overview"]}})
-        return {
+        body: dict[str, Any] = {
             "vector": vector,
             "limit": self._max_hotels * self._overshoot_mult,
             "with_payload": True,
-            "filter": {"must": must},
         }
+        if must:
+            body["filter"] = {"must": must}
+        return body
 
     async def _search(self, body: dict[str, Any]) -> list[dict[str, Any]]:
         if self._search_fn is not None:
-            return await self._search_fn(body["vector"], body["filter"], body["limit"])
+            return await self._search_fn(body["vector"], body.get("filter"), body["limit"])
         if self._session is None:
             raise RuntimeError("BroadHotelDiscovery needs either a session or a search_fn")
         resp = await qdrant_request(
