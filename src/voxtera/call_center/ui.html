@@ -27,7 +27,10 @@
         .score { color: #00ba7c; font-weight: bold; }
         .category { color: #ffd700; font-size: 0.75rem; text-transform: uppercase; }
         .hotel-name { color: #1d9bf0; font-weight: 500; }
-        .text-preview { color: #8899a6; margin-top: 4px; }
+        .text-preview { color: #8899a6; margin-top: 4px; cursor: pointer; }
+        .text-preview:hover { color: #c0c8d0; }
+        .text-preview .expand-hint { color: #1d9bf0; font-size: 0.75rem; margin-left: 4px; }
+        .text-preview.expanded { white-space: pre-wrap; cursor: default; color: #c0c8d0; }
         .loader { display: none; color: #8899a6; font-style: italic; }
         .loader.active { display: block; }
         .badge { display: inline-block; background: #2f3336; border-radius: 4px; padding: 2px 6px; font-size: 0.72rem; margin: 2px; }
@@ -167,9 +170,12 @@ async function qdrantBrowse() {
     let html = `<strong>${r.count} points in "${r.collection}"</strong>\n\n`;
     for (const p of r.points || []) {
         const pl = p.payload || {};
+        const fullText = (pl.text_en || pl.text || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const preview = fullText.substring(0, 150);
+        const isTruncated = fullText.length > 150;
         html += `<div class="result-item">`;
         html += `<span class="hotel-name">${pl.hotel_name || '?'}</span> <span class="category">${pl.category || ''}</span>\n`;
-        html += `<div class="text-preview">${(pl.text_en || pl.text || '').substring(0, 150)}...</div>`;
+        html += `<div class="text-preview" onclick="toggleChunk(this)" data-full="${fullText.replace(/"/g,'&quot;')}" data-preview="${preview.replace(/"/g,'&quot;')}">${preview}${isTruncated ? '<span class="expand-hint">…click to expand</span>' : ''}</div>`;
         html += `</div>`;
     }
     document.getElementById('qdrant-results').innerHTML = html;
@@ -188,9 +194,12 @@ async function qdrantSearch() {
     showQdrantLoader(false);
     let html = `<strong>${r.count} results</strong> (embed: ${r.embed_ms}ms)\n\n`;
     for (const h of r.results || []) {
+        const fullText = (h.text_en || h.text || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const preview = fullText.substring(0, 200);
+        const isTruncated = fullText.length > 200;
         html += `<div class="result-item">`;
-        html += `<span class="score">${h.score.toFixed(4)}</span> <span class="hotel-name">${h.hotel_name}</span> <span class="category">${h.category}</span>\n`;
-        html += `<div class="text-preview">${(h.text_en || h.text || '').substring(0, 200)}...</div>`;
+        html += `<span class="score">${h.score.toFixed(4)}</span> <span class="hotel-name">${h.hotel_name}</span> <span class="category">${h.category}</span> <span class="badge">${fullText.length} chars</span>\n`;
+        html += `<div class="text-preview" onclick="toggleChunk(this)" data-full="${fullText.replace(/"/g,'&quot;')}" data-preview="${preview.replace(/"/g,'&quot;')}">${preview}${isTruncated ? '<span class="expand-hint">…click to expand</span>' : ''}</div>`;
         html += `</div>`;
     }
     document.getElementById('qdrant-results').innerHTML = html;
@@ -203,6 +212,16 @@ function populateHotelFilter(hotels) {
         for (const h of hotels) {
             sel.innerHTML += `<option value="${h.hotel_id}">${h.name}</option>`;
         }
+    }
+}
+
+function toggleChunk(el) {
+    if (el.classList.contains('expanded')) {
+        el.classList.remove('expanded');
+        el.innerHTML = el.dataset.preview + '<span class="expand-hint">…click to expand</span>';
+    } else {
+        el.classList.add('expanded');
+        el.innerHTML = el.dataset.full;
     }
 }
 

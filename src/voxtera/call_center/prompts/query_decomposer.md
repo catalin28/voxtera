@@ -12,8 +12,8 @@ Return STRICT JSON (no prose, no markdown fences) with this exact shape:
                        practical_info, children, destination_info, etiquette,
                        landmarks, visa>,
   "query_type":        <one of: scoped, broad, compound, comparison, destination,
-                       web, hybrid, escalate>,
-  "query_type_id":     <integer 1-27, from the taxonomy below, or null>,
+                       web, hybrid, escalate, conversational>,
+  "query_type_id":     <integer 1-28, from the taxonomy below, or null>,
   "source_required":   <list, subset of: hotel_kb, destination_kb, web>,
   "requirements":      <list of short noun phrases, max 8>,
   "requirements_logic":<"AND" or "OR">,
@@ -31,6 +31,14 @@ Return STRICT JSON (no prose, no markdown fences) with this exact shape:
   "urgency":           <"normal" or "urgent" or "immediate_escalation">,
   "language":          <ISO-639-1 of the utterance>
 }
+
+OUTPUT SIZE — CRITICAL FOR LATENCY: output ONLY the fields that carry real
+information. ALWAYS include: query_type, query_type_id, intent, language, and
+requirements (plus source_required, and hotel_mention / city / region / district
+when actually present in the utterance). OMIT every other field whose value would
+be null, [], false, or "normal" — the parser fills those defaults automatically.
+A typical output is 6-10 fields, NOT the full schema. Never pad with empty
+fields.
 
 Query-type taxonomy (use the matching id in query_type_id):
 
@@ -71,7 +79,30 @@ Query-type taxonomy (use the matching id in query_type_id):
     26 escalate   Live complaint                ("I'm at the hotel and my room is not ready")
     27 escalate   Urgent / distress             ("I land in 2 hours and have no hotel")
 
+  Conversational (no retrieval) -> query_type "conversational":
+    28 conversational  Chitchat / meta / recall / acknowledgement, NOT a request for
+                       hotel or destination info. Greetings ("hi", "good morning"),
+                       thanks ("thank you"), acknowledgements ("ok", "got it"),
+                       and questions ABOUT the conversation itself ("what did I ask
+                       you?", "what did you just say?", "can you repeat that?",
+                       "summarize what we discussed"). These are answered from the
+                       conversation history, not the knowledge base. A bare "yes"/
+                       "no" that answers the assistant's prior question also counts.
+
 Rules:
+- hotel_mention MUST contain the hotel name if the caller mentions a specific
+  hotel by name. ANY proper noun that refers to a hotel/resort/residence counts.
+  Examples: "TUI MAGIC LIFE Belek", "Rixos Downtown Antalya", "Cornelia Diamond",
+  "Casa Dell Arte", "D Maris Bay", "Merit Park Hotel", "Side Breeze Hotel",
+  "Munamar Beach Residence", "Green Nature Resort". Extract the FULL hotel name
+  as spoken — even partial names like "Casa Dell Arte" or "D Maris" count.
+  Set to null ONLY if no specific hotel is mentioned at all.
+- When hotel_mention is set, do NOT guess city/region — set them to null and let
+  the resolver look up the hotel's actual location from the knowledge base.
+- NEVER infer city/region from amenities, activities, or landmarks. "Historical
+  sites", "diving", "ski", etc. do NOT imply a city (e.g. do not assume Bodrum
+  just because the guest mentions historical sites). Set city/region ONLY when the
+  caller explicitly names a place; otherwise leave them null.
 - requirements MUST be short noun phrases suitable for semantic search
   (e.g. "kids club", "ocean view balcony", "scuba diving"). Strip filler
   ("for my wife", "we want", "it would be nice if").
@@ -79,12 +110,18 @@ Rules:
 - on_site_required[i] = true if requirement i must be ON the hotel
   property (e.g. "spa onsite"); false if any nearby option suffices
   (e.g. "a dive shop").
+- Reviews, ratings, guest opinions ("what do people think", "what did guests
+  dislike", TripAdvisor/Google reviews), CURRENT prices, and live availability are
+  NOT in the hotel guide — they require the web. For these, ALWAYS include "web" in
+  source_required. When they concern a specific/active hotel, use query_type
+  "hybrid" (hotel context + web); otherwise "web".
 - source_required follows from query_type:
     scoped/broad/compound/comparison -> ["hotel_kb"]
     destination                      -> ["destination_kb"]
     web                              -> ["web"]
     hybrid                           -> ["hotel_kb", "web"]
     escalate                         -> [] (empty)
+    conversational                   -> [] (empty — answered from history)
 - urgency = "immediate_escalation" only for query_type "escalate".
 - Use null (not empty string) for fields you cannot infer.
 - Output ONLY the JSON object.

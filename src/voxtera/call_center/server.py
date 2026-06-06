@@ -101,6 +101,7 @@ async def handle_es_load(request: web.Request) -> web.Response:
             "adults_only": hotel.get("adults_only", False),
             "board_type": hotel.get("board_type", ""),
             "star_rating": hotel.get("star_rating", 0),
+            "hotel_url": hotel.get("hotel_url", ""),
         }
         resp = await es_request(session, "PUT", f"/{ES_INDEX}/_doc/{hotel['hotel_id']}", json=doc)
         if resp.get("error"):
@@ -122,7 +123,7 @@ async def handle_es_hotels(request: web.Request) -> web.Response:
         "POST",
         f"/{ES_INDEX}/_search",
         json={
-            "size": 100,
+            "size": 1000,
             "query": {"match_all": {}},
             "_source": [
                 "hotel_id",
@@ -222,6 +223,7 @@ async def handle_qdrant_load(request: web.Request) -> web.Response:
                     "country": hotel.get("country", ""),
                     "district": hotel.get("district", ""),
                     "activity_tags": hotel.get("activity_tags", []),
+                    "hotel_url": hotel.get("hotel_url", ""),
                 }
             )
 
@@ -266,6 +268,7 @@ async def handle_qdrant_load(request: web.Request) -> web.Response:
                         "country": chunk["country"],
                         "district": chunk["district"],
                         "activity_tags": chunk["activity_tags"],
+                        "hotel_url": chunk.get("hotel_url", ""),
                     },
                 }
             )
@@ -407,8 +410,10 @@ async def handle_kb_compound(request: web.Request) -> web.Response:
     compound = CompoundAndDiscovery(session=session)
     return web.json_response(
         await compound.discover(
-            region=region, requirements=requirements,
-            activity_tags=tags, category_hint=category,
+            region=region,
+            requirements=requirements,
+            activity_tags=tags,
+            category_hint=category,
         )
     )
 

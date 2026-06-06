@@ -35,6 +35,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from collections import deque
@@ -49,6 +50,63 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import audit_log as _audit  # noqa: E402  — local module, writes logs/audit/
+
+# ── Persistent concierge runtime ────────────────────────────────────────────
+# ONE background event loop + shared connections for ALL /api/concierge
+# requests. The previous per-request `asyncio.new_event_loop()` threw away
+# every connection pool after each turn, so each turn paid fresh TLS handshakes
+# to Anthropic/OpenAI, a Redis reconnect (the ~390ms "session_load"), and new
+# aiohttp connections to the remote ES/Qdrant box. One long-lived loop keeps
+# all of them warm; handlers submit work via run_coroutine_threadsafe.
+_concierge_rt: dict = {"loop": None, "deps": None}
+_concierge_rt_lock = threading.Lock()
+
+
+def _concierge_loop() -> asyncio.AbstractEventLoop:
+    with _concierge_rt_lock:
+        loop = _concierge_rt["loop"]
+        if loop is None or loop.is_closed():
+            loop = asyncio.new_event_loop()
+            threading.Thread(target=loop.run_forever, name="concierge-loop", daemon=True).start()
+            _concierge_rt["loop"] = loop
+            _concierge_rt["deps"] = None
+        return loop
+
+
+async def _concierge_deps() -> dict:
+    """Heavy shared deps, created ONCE on the persistent loop and reused.
+
+    Holds the warm aiohttp session (ES/Qdrant), the Redis-backed SessionStore,
+    and the LLM fn closures (whose Anthropic/OpenAI clients are module
+    singletons that now stay bound to this one loop). Per-request pipeline
+    objects are wired around these — cheap, and keeps per-run state isolated.
+    """
+    if _concierge_rt["deps"] is None:
+        import aiohttp as _aio
+
+        from voxtera.call_center.classifier import EscalationClassifier
+        from voxtera.call_center.concierge import (
+            _build_anthropic_converse,
+            _build_anthropic_render,
+            _build_anthropic_web_query,
+            _build_anthropic_web_synth,
+        )
+        from voxtera.call_center.decompose import QueryDecomposer
+        from voxtera.call_center.session import SessionStore
+
+        model = os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001")
+        _concierge_rt["deps"] = {
+            "http": _aio.ClientSession(),
+            "store": SessionStore(),
+            "classifier": EscalationClassifier(),
+            "decomposer": QueryDecomposer(),
+            "render_fn": _build_anthropic_render(model),
+            "web_synth_fn": _build_anthropic_web_synth(model),
+            "converse_fn": _build_anthropic_converse(model),
+            "web_query_fn": _build_anthropic_web_query(model),
+        }
+    return _concierge_rt["deps"]
+
 
 from voxtera.actions import (  # noqa: E402
     build_openai_tools,
@@ -66,6 +124,9 @@ from voxtera.admin import (  # noqa: E402
     list_rooms,
     list_rooms_with_presence,
 )
+from voxtera.call_center.embeddings import PREFIX_QUERY, embed_texts  # noqa: E402
+from voxtera.call_center.index_config import ES_INDEX  # noqa: E402
+from voxtera.call_center.kb_config import QDRANT_COLLECTION  # noqa: E402
 from voxtera.lang_config import (  # noqa: E402
     LANG_CONFIG,
     google_locale_for,
@@ -91,6 +152,89 @@ def _get_oai_client() -> "_openai_mod.OpenAI":
     if _oai_client is None:
         _oai_client = _openai_mod.OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
     return _oai_client
+
+
+def _es_base_url() -> str:
+    return os.environ.get("ELASTICSEARCH_URL", "http://138.197.142.222:9200").rstrip("/")
+
+
+def _qdrant_base_url() -> str:
+    return os.environ.get("QDRANT_URL", "http://138.197.142.222:6333").rstrip("/")
+
+
+def _json_http_request(
+    url: str,
+    method: str,
+    *,
+    payload: dict | list | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = 30.0,
+) -> tuple[int, object]:
+    req_headers = {"Accept": "application/json"}
+    if headers:
+        req_headers.update(headers)
+
+    data = None
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        req_headers["Content-Type"] = "application/json"
+
+    req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            if not raw:
+                return resp.status, {}
+            try:
+                return resp.status, json.loads(raw)
+            except json.JSONDecodeError:
+                return 502, {"error": "invalid_json", "detail": raw[:1000]}
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        if not raw:
+            return exc.code, {}
+        try:
+            return exc.code, json.loads(raw)
+        except json.JSONDecodeError:
+            return exc.code, {"detail": raw[:1000]}
+    except urllib.error.URLError as exc:
+        return 502, {"error": "upstream_unreachable", "detail": str(exc)}
+
+
+def _es_json_request(
+    method: str,
+    path: str,
+    *,
+    payload: dict | list | None = None,
+) -> tuple[int, object]:
+    user = os.environ.get("ELASTICSEARCH_USER", "elastic")
+    password = os.environ.get("ELASTICSEARCH_PASSWORD", "")
+    token = base64.b64encode(f"{user}:{password}".encode()).decode("ascii")
+    return _json_http_request(
+        f"{_es_base_url()}{path}",
+        method,
+        payload=payload,
+        headers={"Authorization": f"Basic {token}"},
+    )
+
+
+def _qdrant_json_request(
+    method: str,
+    path: str,
+    *,
+    payload: dict | list | None = None,
+) -> tuple[int, object]:
+    headers = {}
+    api_key = os.environ.get("QDRANT_API_KEY", "")
+    if api_key:
+        headers["api-key"] = api_key
+    return _json_http_request(
+        f"{_qdrant_base_url()}{path}",
+        method,
+        payload=payload,
+        headers=headers,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1608,6 +1752,16 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_sessions()
         if self.path == "/api/admin/rooms":
             return self._handle_admin_rooms()
+        if self.path == "/api/admin/call-center/status":
+            return self._handle_admin_call_center_status()
+        if self.path.startswith("/api/admin/call-center/es/hotels"):
+            return self._handle_admin_call_center_es_hotels()
+        if self.path.startswith("/api/admin/call-center/es/search"):
+            return self._handle_admin_call_center_es_search()
+        if self.path.startswith("/api/admin/call-center/qdrant/collections"):
+            return self._handle_admin_call_center_qdrant_collections()
+        if self.path.startswith("/api/admin/call-center/qdrant/points"):
+            return self._handle_admin_call_center_qdrant_points()
         if self.path.startswith("/api/admin/calls"):
             return self._handle_admin_calls()
         if "/audio/" in self.path and self.path.startswith("/api/admin/call/"):
@@ -1635,6 +1789,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_audit_session_detail(filename)
         if self.path.startswith("/api/rag/chunks"):
             return self._handle_rag_chunks()
+        if self.path.startswith("/api/admin/concierge-logs"):
+            return self._handle_concierge_logs()
         if self.path.startswith("/api/trace/sessions/") and self.path.endswith("/events"):
             sid = self.path[len("/api/trace/sessions/") : -len("/events")]
             return self._handle_session_events(sid)
@@ -1680,6 +1836,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_chat()
         if self.path == "/api/concierge":
             return self._handle_concierge()
+        if self.path == "/api/concierge/replay":
+            return self._handle_concierge_replay()
         if self.path == "/api/product-chat":
             return self._handle_product_chat()
         if self.path == "/api/admin/eject":
@@ -1690,6 +1848,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_config_post()
         if self.path == "/api/admin/tune":
             return self._handle_admin_tune()
+        if self.path == "/api/admin/call-center/qdrant/search":
+            return self._handle_admin_call_center_qdrant_search()
         # Phase 3 — on-demand bot launcher
         if self.path == "/api/start-session":
             return self._handle_start_session()
@@ -1785,18 +1945,27 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return {}
         return data if isinstance(data, dict) else {}
 
+    def _send_upstream_error(self, service: str, status: int, payload: object) -> None:
+        detail = payload if isinstance(payload, dict) else {"detail": payload}
+        self._send_json(
+            status if 400 <= status <= 599 else 502,
+            {"error": f"{service}_request_failed", "detail": detail},
+        )
+
     # ------------------------------------------------------------------
     # Admin auth + helpers
     # ------------------------------------------------------------------
 
-    def _admin_auth(self) -> tuple[bool, dict | None]:
+    def _admin_auth(self, *, require_daily: bool = True) -> tuple[bool, dict | None]:
         """Return (ok, error_response) for the current request.
 
         Centralised so every admin endpoint enforces the same gate. The
         precedence is intentional: if the *server* is misconfigured (no
         token, no Daily key) we report 503 — that's a deployment problem
         the operator needs to see, not "wrong password". Only when the
-        server is healthy do we check the operator's token (401).
+        server is healthy do we check the operator's token (401). Some
+        admin pages do not depend on Daily; those call this with
+        require_daily=False.
         """
         if not _ADMIN_TOKEN:
             self._send_json(
@@ -1807,7 +1976,9 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 },
             )
             return False, {}
-        if not _DAILY_API_KEY or (not _DAILY_ROOM_NAME and not _DAILY_DYNAMIC_ROOMS):
+        if require_daily and (
+            not _DAILY_API_KEY or (not _DAILY_ROOM_NAME and not _DAILY_DYNAMIC_ROOMS)
+        ):
             self._send_json(
                 503,
                 {
@@ -3218,7 +3389,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 status = 503 if err in ("hmac_not_configured", "hmac_misconfigured") else 401
                 x_headers = sorted(
                     header_name
-                    for header_name in self.headers.keys()
+                    for header_name in self.headers
                     if header_name.lower().startswith("x-")
                 )
                 print(
@@ -3376,7 +3547,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                     )
                     _resp = urllib.request.urlopen(_req, timeout=3)
                     print(
-                        f"[pstn] sent max-duration goodbye (session={sid[:8]}, status={_resp.status})"
+                        "[pstn] sent max-duration goodbye "
+                        f"(session={sid[:8]}, status={_resp.status})"
                     )
                     time.sleep(2.0)  # let TTS play before disconnecting
                 except Exception as exc:
@@ -3396,7 +3568,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                         time.sleep(0.2)
                     if _proc.poll() is None:
                         print(
-                            f"[pstn] process still alive after terminate, killing (session={sid[:8]})"
+                            "[pstn] process still alive after terminate, killing "
+                            f"(session={sid[:8]})"
                         )
                         _proc.kill()
                 except Exception as exc:
@@ -4018,6 +4191,272 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             },
         )
 
+    def _handle_admin_call_center_status(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        payload = {"es": "error", "qdrant": "error"}
+
+        es_status, es_body = _es_json_request("GET", "/")
+        if es_status == 200 and isinstance(es_body, dict):
+            version = (es_body.get("version") or {}).get("number")
+            if version:
+                payload["es"] = "ok"
+                payload["es_version"] = version
+            else:
+                payload["es_error"] = es_body
+        else:
+            payload["es_error"] = es_body
+
+        qdrant_status, qdrant_body = _qdrant_json_request("GET", "/collections")
+        if qdrant_status == 200 and isinstance(qdrant_body, dict):
+            collections = (qdrant_body.get("result") or {}).get("collections") or []
+            payload["qdrant"] = "ok"
+            payload["qdrant_collections"] = len(collections)
+        else:
+            payload["qdrant_error"] = qdrant_body
+
+        self._send_json(200, payload)
+
+    def _handle_admin_call_center_es_hotels(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        status, body = _es_json_request(
+            "POST",
+            f"/{ES_INDEX}/_search",
+            payload={
+                "size": 1000,
+                "query": {"match_all": {}},
+                "_source": [
+                    "hotel_id",
+                    "name",
+                    "chain",
+                    "district",
+                    "price_tier",
+                    "board_type",
+                    "star_rating",
+                ],
+            },
+        )
+        if status != 200 or not isinstance(body, dict):
+            self._send_upstream_error("elasticsearch", status, body)
+            return
+
+        hits = (body.get("hits") or {}).get("hits") or []
+        hotels = [hit.get("_source", {}) for hit in hits]
+        self._send_json(200, {"count": len(hotels), "hotels": hotels})
+
+    def _handle_admin_call_center_es_search(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
+        query = (params.get("q") or [""])[0].strip()
+        if not query:
+            self._send_json(400, {"error": "missing_query", "detail": "Missing ?q= parameter"})
+            return
+
+        status, body = _es_json_request(
+            "POST",
+            f"/{ES_INDEX}/_search",
+            payload={
+                "size": 10,
+                "query": {
+                    "multi_match": {
+                        "query": query,
+                        "fields": ["name^3", "aliases^2", "chain", "district", "city"],
+                        "type": "best_fields",
+                        "fuzziness": "AUTO",
+                    }
+                },
+            },
+        )
+        if status != 200 or not isinstance(body, dict):
+            self._send_upstream_error("elasticsearch", status, body)
+            return
+
+        hits = (body.get("hits") or {}).get("hits") or []
+        results = [
+            {
+                "hotel_id": (hit.get("_source") or {}).get("hotel_id"),
+                "name": (hit.get("_source") or {}).get("name"),
+                "score": hit.get("_score", 0.0),
+            }
+            for hit in hits
+        ]
+        self._send_json(200, {"query": query, "count": len(results), "results": results})
+
+    def _handle_admin_call_center_qdrant_collections(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        status, body = _qdrant_json_request("GET", "/collections")
+        if status != 200 or not isinstance(body, dict):
+            self._send_upstream_error("qdrant", status, body)
+            return
+
+        collections = (body.get("result") or {}).get("collections") or []
+        self._send_json(200, {"collections": collections})
+
+    def _handle_admin_call_center_qdrant_points(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
+        collection = (params.get("collection") or [QDRANT_COLLECTION])[0]
+        hotel_id = (params.get("hotel_id") or [""])[0].strip()
+        try:
+            limit = max(1, min(int((params.get("limit") or ["20"])[0]), 100))
+        except ValueError:
+            limit = 20
+
+        payload = {"limit": limit, "with_payload": True, "with_vector": False}
+        if hotel_id:
+            payload["filter"] = {"must": [{"key": "hotel_id", "match": {"value": hotel_id}}]}
+
+        status, body = _qdrant_json_request(
+            "POST",
+            f"/collections/{collection}/points/scroll",
+            payload=payload,
+        )
+        if status != 200 or not isinstance(body, dict):
+            self._send_upstream_error("qdrant", status, body)
+            return
+
+        points = (body.get("result") or {}).get("points") or []
+        self._send_json(200, {"collection": collection, "count": len(points), "points": points})
+
+    def _handle_admin_call_center_qdrant_search(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        body = self._read_json_body()
+        query = str(body.get("query") or "").strip()
+        hotel_id = str(body.get("hotel_id") or "").strip()
+        try:
+            limit = max(1, min(int(body.get("limit", 5)), 20))
+        except (TypeError, ValueError):
+            limit = 5
+
+        if not query:
+            self._send_json(400, {"error": "missing_query", "detail": "Missing 'query' in body"})
+            return
+
+        try:
+            t0 = time.perf_counter()
+            embeddings = embed_texts([query], prefix=PREFIX_QUERY)
+            embed_ms = (time.perf_counter() - t0) * 1000
+        except Exception as exc:
+            self._send_json(500, {"error": "embed_failed", "detail": str(exc)})
+            return
+
+        payload = {"vector": embeddings[0], "limit": limit, "with_payload": True}
+        if hotel_id:
+            payload["filter"] = {"must": [{"key": "hotel_id", "match": {"value": hotel_id}}]}
+
+        status, qdrant_body = _qdrant_json_request(
+            "POST",
+            f"/collections/{QDRANT_COLLECTION}/points/search",
+            payload=payload,
+        )
+        if status != 200 or not isinstance(qdrant_body, dict):
+            self._send_upstream_error("qdrant", status, qdrant_body)
+            return
+
+        results = qdrant_body.get("result") or []
+        self._send_json(
+            200,
+            {
+                "query": query,
+                "embed_ms": round(embed_ms, 1),
+                "count": len(results),
+                "results": [
+                    {
+                        "score": result.get("score"),
+                        "hotel_id": (result.get("payload") or {}).get("hotel_id"),
+                        "hotel_name": (result.get("payload") or {}).get("hotel_name"),
+                        "category": (result.get("payload") or {}).get("category"),
+                        "text": (result.get("payload") or {}).get("text"),
+                        "text_en": (result.get("payload") or {}).get("text_en"),
+                    }
+                    for result in results
+                ],
+            },
+        )
+
+    def _handle_concierge_logs(self):
+        """GET /api/admin/concierge-logs?date=YYYY-MM-DD — return all log entries for a day."""
+        from urllib.parse import parse_qs, urlparse
+
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        date_str = (params.get("date") or [None])[0]
+
+        # Check both possible log directories (CWD/logs and project-root/logs)
+        log_dirs = []
+        log_dirs.append(Path(os.environ.get("CONCIERGE_LOG_DIR", "logs")))
+        project_root = Path(os.path.dirname(os.path.abspath(__file__))).parent / "logs"
+        if project_root.exists() and project_root not in log_dirs:
+            log_dirs.append(project_root)
+
+        # If no date, list available days
+        if not date_str:
+            days = set()
+            for log_dir in log_dirs:
+                if log_dir.exists():
+                    for f in log_dir.glob("travel_agent_consierge-*.jsonl"):
+                        day = f.stem.replace("travel_agent_consierge-", "")
+                        if "_" not in day:  # skip files like -2026-06-05_old_test
+                            days.add(day)
+            self._send_json(200, {"days": sorted(days, reverse=True)})
+            return
+
+        # Find the log file
+        log_file = None
+        for log_dir in log_dirs:
+            candidate = log_dir / f"travel_agent_consierge-{date_str}.jsonl"
+            if candidate.exists():
+                log_file = candidate
+                break
+
+        if not log_file:
+            self._send_json(200, {"entries": [], "sessions": []})
+            return
+
+        entries = []
+        for line in log_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+        # Group session ids preserving order of first appearance
+        seen = {}
+        for e in entries:
+            sid = e.get("session_id") or "unknown"
+            if sid not in seen:
+                seen[sid] = {
+                    "session_id": sid,
+                    "first_ts": e.get("ts"),
+                    "turns": 0,
+                    "first_utterance": e.get("utterance", "")[:60],
+                }
+            seen[sid]["turns"] += 1
+
+        self._send_json(200, {"entries": entries, "sessions": list(seen.values())})
+
     def _handle_languages(self):
         """GET /api/languages — full language config for the demo UI.
 
@@ -4463,52 +4902,113 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                   (session_id, path, reason, answer, escalation,
                    clarification, decomposition, router, retrieval, timings).
         """
-        from voxtera.call_center.classifier import EscalationClassifier
         from voxtera.call_center.compound import CompoundAndDiscovery
-        from voxtera.call_center.concierge import _build_anthropic_render
-        from voxtera.call_center.decompose import QueryDecomposer
         from voxtera.call_center.pipeline import ConciergePipeline
+        from voxtera.call_center.resolver import HotelResolver
         from voxtera.call_center.router import SourceRouter
-        from voxtera.call_center.session import SessionStore
         from voxtera.call_center.triage import Triage
+        from voxtera.call_center.web_retriever import WebRetriever
 
         body = self._read_json_body()
         utterance = (body.get("utterance") or "").strip()
-        region = (body.get("region") or "").strip() or None
+        # Preserve empty string as explicit "all regions" signal (distinct from None/absent).
+        raw_region = body.get("region")
+        region = raw_region.strip() if isinstance(raw_region, str) else None
         session_id = (body.get("session_id") or "").strip() or None
         if not utterance:
             self._send_json(400, {"error": "utterance_required"})
             return
 
         async def _run() -> dict:
-            import aiohttp as _aio
-            async with _aio.ClientSession() as http:
-                pipeline = ConciergePipeline(
-                    session_store=SessionStore(),
-                    classifier=EscalationClassifier(),
-                    decomposer=QueryDecomposer(),
-                    triage=Triage(),
-                    router=SourceRouter(),
-                    compound=CompoundAndDiscovery(session=http),
-                    render_fn=_build_anthropic_render(
-                        os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001")
-                    ),
-                )
-                return await pipeline.run(
-                    utterance=utterance,
-                    session_id=session_id,
-                    region=region,
-                )
+            # Shared warm deps (connections, LLM fns) + cheap per-request wiring
+            # so per-run pipeline state stays isolated across concurrent requests.
+            deps = await _concierge_deps()
+            pipeline = ConciergePipeline(
+                session_store=deps["store"],
+                classifier=deps["classifier"],
+                decomposer=deps["decomposer"],
+                triage=Triage(),
+                router=SourceRouter(),
+                compound=CompoundAndDiscovery(session=deps["http"]),
+                resolver=HotelResolver(session=deps["http"]),
+                web_retriever=WebRetriever(),
+                render_fn=deps["render_fn"],
+                web_synth_fn=deps["web_synth_fn"],
+                converse_fn=deps["converse_fn"],
+                web_query_fn=deps["web_query_fn"],
+            )
+            return await pipeline.run(
+                utterance=utterance,
+                session_id=session_id,
+                region=region,
+            )
 
-        loop = asyncio.new_event_loop()
         try:
-            result = loop.run_until_complete(_run())
+            result = asyncio.run_coroutine_threadsafe(_run(), _concierge_loop()).result(timeout=120)
         except Exception as exc:  # noqa: BLE001
-            loop.close()
             print(f"[concierge] error: {exc}")
             self._send_json(500, {"error": str(exc)})
             return
-        loop.close()
+        self._send_json(200, result)
+
+    def _handle_concierge_replay(self) -> None:
+        """POST /api/concierge/replay — DEBUG: run the pipeline from a user-edited
+        decomposition, skipping the LLM decompose step.
+
+        Lets you fix a field (e.g. set hotel_mention) in the debug drawer and see
+        whether the DOWNSTREAM (triage → route → resolve → retrieve → render) then
+        works — isolating decomposer bugs from retrieval bugs. The decomposition
+        is used VERBATIM (no coerce), so what you type is exactly what runs.
+
+        Request:  {"utterance": str, "region": str|null, "session_id": str|null,
+                   "decomposition": {...edited fields...}}
+        Response: same shape as /api/concierge.
+        """
+        from voxtera.call_center.compound import CompoundAndDiscovery
+        from voxtera.call_center.pipeline import ConciergePipeline
+        from voxtera.call_center.resolver import HotelResolver
+        from voxtera.call_center.router import SourceRouter
+        from voxtera.call_center.triage import Triage
+
+        body = self._read_json_body()
+        utterance = (body.get("utterance") or "").strip()
+        raw_region = body.get("region")
+        region = raw_region.strip() if isinstance(raw_region, str) else None
+        session_id = (body.get("session_id") or "").strip() or None
+        edited = body.get("decomposition")
+        if not utterance or not isinstance(edited, dict):
+            self._send_json(400, {"error": "utterance_and_decomposition_required"})
+            return
+
+        class _FixedDecomposer:
+            """Returns the operator's edited decomposition verbatim (no LLM, no coerce)."""
+
+            async def decompose(self, _utterance: str, _ctx: dict) -> dict:
+                return dict(edited)
+
+        async def _run() -> dict:
+            deps = await _concierge_deps()
+            pipeline = ConciergePipeline(
+                session_store=deps["store"],
+                classifier=deps["classifier"],
+                decomposer=_FixedDecomposer(),  # <-- the only difference from /api/concierge
+                triage=Triage(),
+                router=SourceRouter(),
+                compound=CompoundAndDiscovery(session=deps["http"]),
+                resolver=HotelResolver(session=deps["http"]),
+                render_fn=deps["render_fn"],
+                web_synth_fn=deps["web_synth_fn"],
+                converse_fn=deps["converse_fn"],
+                web_query_fn=deps["web_query_fn"],
+            )
+            return await pipeline.run(utterance=utterance, session_id=session_id, region=region)
+
+        try:
+            result = asyncio.run_coroutine_threadsafe(_run(), _concierge_loop()).result(timeout=120)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[concierge-replay] error: {exc}")
+            self._send_json(500, {"error": str(exc)})
+            return
         self._send_json(200, result)
 
     def _handle_product_chat(self):
@@ -4708,6 +5208,7 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------
     # Clean up orphaned rooms from previous server runs before accepting traffic.
     _cleanup_orphaned_rooms()
+
     # --------------------------------------------------------------------------
     # Pre-warm the call-center embedding model (e5-large) in a background
     # thread so the first /api/concierge request doesn't pay the ~3s cold
@@ -4716,11 +5217,13 @@ if __name__ == "__main__":
     def _warm_call_center_embed() -> None:
         try:
             from voxtera.call_center.embeddings import embed_query
+
             t0 = time.perf_counter()
             embed_query("warmup")
             print(f"[warmup] call_center embed model ready in {time.perf_counter() - t0:.1f}s")
         except Exception as exc:  # noqa: BLE001
             print(f"[warmup] embed pre-warm failed: {exc}")
+
     threading.Thread(target=_warm_call_center_embed, daemon=True).start()
     # --------------------------------------------------------------------------
     socketserver.ThreadingTCPServer.allow_reuse_address = True

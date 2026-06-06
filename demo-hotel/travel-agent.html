@@ -3,8 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Voxtera — Concierge · Find hotels & places</title>
-<meta name="robots" content="noindex" />
+<title>Voxtera — Travel Agent · Find hotels & places</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..700,0..100&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300..500&display=swap" rel="stylesheet">
@@ -298,7 +297,7 @@ details.debug summary:hover{color:var(--accent);}
     <a href="voxtera.html#solution">Solution</a>
     <a href="voxtera-hotels.html">For hotels</a>
     <a href="voxtera-demo.html">Try demo</a>
-    <a href="voxtera-concierge.html" class="is-active">Concierge</a>
+    <a href="travel-agent.html" class="is-active">Travel Agent</a>
     <a href="voxtera.html#pricing">Pricing</a>
     <button onclick="window.location.href='voxtera.html#contact'" class="nav-cta">Book a demo →</button>
   </div>
@@ -307,7 +306,7 @@ details.debug summary:hover{color:var(--accent);}
 <!-- MODE STRIP -->
 <header class="topbar">
   <div class="mode-strip">
-    <span class="mode-tag">Concierge</span>
+    <span class="mode-tag">Travel Agent</span>
     <span class="mode-meta">Find hotels &amp; places — by what they offer.</span>
   </div>
   <div class="topbar-right">
@@ -369,6 +368,13 @@ const input      = document.getElementById('ask-input');
 const sendBtn    = document.getElementById('send-btn');
 const regionPick = document.getElementById('region-pick');
 
+// A page load / refresh starts a FRESH conversation. sessionStorage survives a
+// refresh, so without this the server keeps the prior session and the bot
+// "remembers" a dialog the user can no longer see on the now-empty thread —
+// e.g. referencing a hotel it recommended before the refresh. Clearing the id
+// here keeps the visible thread and the bot's memory in sync.
+sessionStorage.removeItem('voxtera_concierge_sid');
+
 // Auto-grow textarea
 input.addEventListener('input', () => {
   input.style.height = 'auto';
@@ -415,9 +421,36 @@ function addSystem(text){
   return el;
 }
 
+function renderWeb(retrieval, parent){
+  const web = retrieval && retrieval.web;
+  if (!web) return;
+  const card = document.createElement('div'); card.className = 'hotel-card';
+  card.style.borderLeft = '3px solid var(--accent, #2a6)';
+  const head = document.createElement('div'); head.className = 'hotel-head';
+  const name = document.createElement('div'); name.className = 'hotel-name';
+  name.textContent = '🌐 Live web search';
+  head.appendChild(name);
+  card.appendChild(head);
+  const q = document.createElement('div'); q.className = 'evidence';
+  q.style.opacity = '0.8'; q.style.fontSize = '0.85em';
+  q.textContent = 'query: ' + (web.query || '—');
+  card.appendChild(q);
+  (web.sources || []).slice(0, 3).forEach(s => {
+    const row = document.createElement('div'); row.className = 'evidence-row';
+    const a = document.createElement('a');
+    a.href = s.url || '#'; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = s.title || s.url || 'source';
+    a.style.color = 'var(--accent-deep, #2a6)';
+    row.appendChild(a);
+    card.appendChild(row);
+  });
+  parent.appendChild(card);
+}
+
 function renderHotels(retrieval, parent){
   const hotels = (retrieval && retrieval.hotels) || [];
   if (!hotels.length){
+    if (retrieval && retrieval.web) return;  // a web/hybrid answer — renderWeb handles it
     const el = document.createElement('div');
     el.className = 'no-hotels';
     el.textContent = 'No hotels matched every requirement. Try loosening the request.';
@@ -466,13 +499,79 @@ function renderDebug(result, parent){
   }
 
   const grid = document.createElement('div'); grid.className = 'debug-grid';
-  const dec = document.createElement('div'); dec.className = 'debug-box';
-  dec.textContent = 'decomposition\n' + JSON.stringify(result.decomposition, null, 2);
+
+  // EDITABLE decomposition — operators can tweak any field and re-run the
+  // pipeline from these exact values (skips the LLM decompose step). Great for
+  // isolating "decomposer bug vs retrieval bug".
+  const decWrap = document.createElement('div'); decWrap.className = 'debug-box';
+  const decLabel = document.createElement('div'); decLabel.className = 'k';
+  decLabel.textContent = 'decomposition (editable)';
+  const dec = document.createElement('textarea');
+  dec.value = JSON.stringify(result.decomposition || {}, null, 2);
+  dec.spellcheck = false;
+  dec.style.cssText = 'width:100%;min-height:220px;font:inherit;background:transparent;'
+    + 'color:inherit;border:1px solid var(--line,#ccc);border-radius:6px;padding:6px;resize:vertical;';
+  const btn = document.createElement('button');
+  btn.textContent = '▶ Re-run with these values';
+  btn.style.cssText = 'margin-top:6px;cursor:pointer;font:inherit;padding:5px 10px;'
+    + 'border-radius:6px;border:1px solid var(--accent,#2a6);background:transparent;color:var(--accent,#2a6);';
+  const status = document.createElement('span'); status.style.cssText = 'margin-left:8px;font-size:0.8em;opacity:0.7;';
+  btn.onclick = async () => {
+    let edited;
+    try { edited = JSON.parse(dec.value); }
+    catch (e){ status.textContent = 'Invalid JSON: ' + e.message; return; }
+    btn.disabled = true; status.textContent = 'running…';
+    try {
+      const res = await fetch('/api/concierge/replay', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          utterance: result.utterance, region: regionPick.value,
+          session_id: null,  // fresh/isolated so the edited decomposition is tested cleanly
+          decomposition: edited,
+        }),
+      });
+      const data = await res.json();
+      status.textContent = res.ok ? 'done' : ('HTTP ' + res.status);
+      const bub = addBubble('assistant', 'Concierge · REPLAY (edited decomposition)', data.answer || data.error || '—');
+      if (data.retrieval){ renderHotels(data.retrieval, bub); renderWeb(data.retrieval, bub); }
+      renderDebug(data, bub);
+    } catch (e){ status.textContent = 'error: ' + e; }
+    finally { btn.disabled = false; }
+  };
+  decWrap.appendChild(decLabel); decWrap.appendChild(dec);
+  decWrap.appendChild(btn); decWrap.appendChild(status);
+
   const ret = document.createElement('div'); ret.className = 'debug-box';
-  ret.textContent = 'retrieval reason: ' + (result.reason || '—') +
+  const web = result.retrieval && result.retrieval.web;
+  const tr = result.trace || {qdrant: [], es: []};
+  let txt = 'retrieval reason: ' + (result.reason || '—') +
     '\nrequirements matched: ' + ((result.retrieval && result.retrieval.requirements_count) ?? '?') +
     '\nhotels: ' + ((result.retrieval && result.retrieval.hotels && result.retrieval.hotels.length) || 0);
-  grid.appendChild(dec); grid.appendChild(ret);
+
+  // Vector store (Qdrant) calls — which query went where, and whether reranked.
+  txt += '\n\nQDRANT (vector): ' + ((tr.qdrant && tr.qdrant.length) ? 'USED ×' + tr.qdrant.length : 'not used');
+  (tr.qdrant || []).forEach(c => {
+    txt += '\n  • [' + c.stage + ']' + (c.rerank === false ? ' raw' : ' reranked')
+         + (c.region ? ' region=' + c.region : '')
+         + (c.hotel_id ? ' hotel_id=' + c.hotel_id : '')
+         + '\n      query: ' + JSON.stringify(c.query)
+         + (c.resolved ? '\n      → resolved: ' + c.resolved : '');
+  });
+
+  // Elasticsearch (hotel name resolver) calls.
+  txt += '\n\nELASTICSEARCH (resolver): ' + ((tr.es && tr.es.length) ? 'USED ×' + tr.es.length : 'not used');
+  (tr.es || []).forEach(c => {
+    txt += '\n  • [' + c.stage + '] query: ' + JSON.stringify(c.query)
+         + ' → ' + (c.decision || '?') + (c.hotel_id ? ' (' + c.hotel_id + ')' : '');
+  });
+
+  txt += '\n\nWEB (Tavily): ' + (web ? ('USED · ' + (web.sources ? web.sources.length : 0)
+          + ' sources · ' + (web.elapsed_ms || 0) + 'ms'
+          + '\n      query sent: ' + JSON.stringify(web.query || '—')
+          + '\n      answer back: ' + JSON.stringify(web.answer || '—'))
+          : 'not used');
+  ret.textContent = txt;
+  grid.appendChild(decWrap); grid.appendChild(ret);
   det.appendChild(grid);
   parent.appendChild(det);
 }
@@ -514,14 +613,13 @@ async function ask(utterance){
     }
     const bub = addBubble('assistant', 'Concierge', data.answer || '—');
     renderHotels(data.retrieval, bub);
+    renderWeb(data.retrieval, bub);
     renderDebug(data, bub);
   } catch (e){
     waiting.remove();
     addBubble('assistant', 'Concierge · error', String(e));
   } finally {
     sendBtn.disabled = false;
-    input.value = '';
-    input.style.height = 'auto';
     input.focus();
   }
 }
@@ -530,6 +628,10 @@ form.addEventListener('submit', (e) => {
   e.preventDefault();
   const v = input.value.trim();
   if (!v) return;
+  // Clear the box immediately on send — the question is already in the thread,
+  // so leaving it in the input (during "Thinking…") is confusing.
+  input.value = '';
+  input.style.height = 'auto';
   ask(v);
 });
 </script>

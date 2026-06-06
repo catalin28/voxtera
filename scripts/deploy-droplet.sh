@@ -119,8 +119,9 @@ if [[ "$SKIP_SYNC" == "false" ]]; then
     --exclude '.pytest_cache/' \
     --exclude '.mypy_cache/' \
     --exclude '.ruff_cache/' \
-    --exclude 'logs/*.jsonl' \
-    --exclude 'logs/*.db*' \
+    --exclude 'logs/' \
+    --exclude 'demo-hotel/logs/' \
+    --exclude 'demo-hotel/traces/' \
     --exclude '.env' \
     ./ "${HOST}:${REMOTE_APP_DIR}/"
 
