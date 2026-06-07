@@ -2820,11 +2820,34 @@
         const url  = URL.createObjectURL(blob);
         audioEl.src = url;
         let played = false;
-        try { await audioEl.play(); played = true; } catch (_) { /* autoplay blocked (Safari) */ }
+        try { await audioEl.play(); played = true; } catch (_) {
+          // Autoplay blocked (Safari). The scheduleGreeting probe can lie:
+          // its silent zero-length data-URI may resolve while real audible
+          // playback is still blocked. Decide on THIS play() instead — keep
+          // the audio loaded and surface the unmute button; the tap is the
+          // user gesture Safari wants.
+          const muteBtn = document.getElementById('safari-mute-btn');
+          if (muteBtn) {
+            muteBtn.classList.add('visible');
+            muteBtn.addEventListener('click', async () => {
+              muteBtn.classList.remove('visible');
+              if (inCall) { URL.revokeObjectURL(url); return; }  // call started meanwhile — skip the greeting
+              setOrbState('speaking');
+              setStatus('<strong>Voxtera is speaking…</strong>', 'Speaking');
+              try {
+                await audioEl.play();
+                await new Promise(resolve => { audioEl.onended = resolve; audioEl.onerror = resolve; });
+              } catch (_) { /* still blocked — give up quietly */ }
+              URL.revokeObjectURL(url);
+              setOrbState('');
+              setStatus('Tap the orb, or send a message below to begin.', 'Ready');
+            }, { once: true });
+          }
+        }
         if (played) {
           await new Promise(resolve => { audioEl.onended = resolve; audioEl.onerror = resolve; });
+          URL.revokeObjectURL(url);
         }
-        URL.revokeObjectURL(url);
       }
     } catch (e) {
       // TTS unavailable — bubble already visible, continue silently

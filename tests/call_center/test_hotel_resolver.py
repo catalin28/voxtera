@@ -35,7 +35,9 @@ class TestHotelResolverCore:
 
     @pytest.mark.asyncio
     async def test_auto_resolve_when_score_above_threshold(self) -> None:
-        search_fn = AsyncMock(return_value=[_hit("rixos_premium_belek", "Rixos Premium Belek", 0.91)])
+        search_fn = AsyncMock(
+            return_value=[_hit("rixos_premium_belek", "Rixos Premium Belek", 0.91)]
+        )
         resolver = HotelResolver(search_fn=search_fn)
 
         result = await resolver.resolve("Rixos Belek")
@@ -81,6 +83,38 @@ class TestHotelResolverCore:
         assert result["hotel_id"] is None
 
     @pytest.mark.asyncio
+    async def test_dominant_top_auto_resolves_at_modest_score(self) -> None:
+        # "Casa Dell Arte" -> ES ~0.48 absolute, but 2x the runner-up. A clear
+        # winner must auto-resolve via relative dominance, not be rejected by the
+        # absolute threshold (the real Casa Dell Arte bug).
+        search_fn = AsyncMock(
+            return_value=[
+                _hit("casa_dell_arte_residance", "Casa Dell Arte Residance", 0.48),
+                _hit("casa_dellarte_arts", "Casa dell'Arte Hotel of Arts", 0.21),
+                _hit("casa_tuana", "Casa Tuana Alacati", 0.15),
+            ]
+        )
+        resolver = HotelResolver(search_fn=search_fn)
+        result = await resolver.resolve("Casa Dell Arte")
+        assert result["decision"] == "auto_resolve"
+        assert result["hotel_id"] == "casa_dell_arte_residance"
+        assert result["reason"] == "dominant_top_match"
+
+    @pytest.mark.asyncio
+    async def test_close_candidates_do_not_dominate(self) -> None:
+        # Two near-tied candidates (no dominance) stay in the clarify band rather
+        # than auto-resolving the wrong one.
+        search_fn = AsyncMock(
+            return_value=[
+                _hit("hilton_lara", "Hilton Lara", 0.60),
+                _hit("hilton_belek", "Hilton Belek", 0.58),
+            ]
+        )
+        resolver = HotelResolver(search_fn=search_fn)
+        result = await resolver.resolve("Hilton")
+        assert result["decision"] == "needs_clarification"
+
+    @pytest.mark.asyncio
     async def test_no_candidates_returns_no_match(self) -> None:
         search_fn = AsyncMock(return_value=[])
         resolver = HotelResolver(search_fn=search_fn)
@@ -123,7 +157,9 @@ class TestThresholdBoundaries:
         ],
     )
     async def test_decision_boundaries(self, score: float, expected: str) -> None:
-        search_fn = AsyncMock(return_value=[_hit("rixos_premium_belek", "Rixos Premium Belek", score)])
+        search_fn = AsyncMock(
+            return_value=[_hit("rixos_premium_belek", "Rixos Premium Belek", score)]
+        )
         resolver = HotelResolver(search_fn=search_fn)
 
         result = await resolver.resolve("Rixos")

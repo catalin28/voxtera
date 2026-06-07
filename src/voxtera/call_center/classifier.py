@@ -254,7 +254,7 @@ def _build_openai_classify(model: str) -> ClassifyFn:
             max_tokens=80,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "system", "content": load_prompt("escalation_classifier")},
                 {"role": "user", "content": utterance},
             ],
         )

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voxtera — Call Center Prompts</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2129; --border:#30363d;
+  --ink:#e6edf3; --ink-soft:#8b949e; --accent:#58a6ff; --ok:#3fb950; --warn:#d29922; --err:#f85149;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+header{padding:1.1rem 1.4rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap;}
+header h1{font-size:1.15rem;margin:0;}
+header .sub{color:var(--ink-soft);font-size:0.85rem;}
+#token-bar{margin-left:auto;display:flex;gap:0.5rem;align-items:center;}
+input[type=password]{background:var(--panel2);border:1px solid var(--border);color:var(--ink);border-radius:6px;padding:0.45rem 0.6rem;width:220px;}
+button{background:var(--accent);border:none;color:#0d1117;font-weight:600;border-radius:6px;padding:0.5rem 0.95rem;cursor:pointer;}
+button.secondary{background:var(--panel2);color:var(--ink);border:1px solid var(--border);}
+button:disabled{opacity:0.45;cursor:default;}
+main{display:grid;grid-template-columns:330px 1fr;gap:0;min-height:calc(100vh - 64px);}
+#list{border-right:1px solid var(--border);overflow-y:auto;}
+.item{padding:0.85rem 1.1rem;border-bottom:1px solid var(--border);cursor:pointer;}
+.item:hover{background:var(--panel);}
+.item.active{background:var(--panel2);border-left:3px solid var(--accent);padding-left:calc(1.1rem - 3px);}
+.item .t{font-weight:600;}
+.item .f{font-family:ui-monospace,Menlo,monospace;font-size:0.72rem;color:var(--accent);margin-top:1px;}
+.item .d{color:var(--ink-soft);font-size:0.8rem;margin-top:0.3rem;}
+#editor{display:flex;flex-direction:column;padding:1.1rem 1.4rem;gap:0.7rem;}
+#ed-head .t{font-size:1.05rem;font-weight:700;}
+#ed-head .d{color:var(--ink-soft);font-size:0.88rem;margin-top:0.25rem;max-width:70ch;}
+textarea{flex:1;min-height:420px;background:var(--panel);border:1px solid var(--border);color:var(--ink);
+  border-radius:8px;padding:0.9rem;font:12.5px/1.55 ui-monospace,Menlo,Consolas,monospace;resize:vertical;white-space:pre;}
+#ed-foot{display:flex;align-items:center;gap:0.8rem;}
+#status{font-size:0.85rem;color:var(--ink-soft);}
+#status.ok{color:var(--ok);} #status.err{color:var(--err);} #status.dirty{color:var(--warn);}
+.note{color:var(--ink-soft);font-size:0.8rem;}
+#gate{padding:3rem;text-align:center;color:var(--ink-soft);}
+#flowwrap{border-bottom:1px solid var(--border);background:var(--panel);padding:0.7rem 1.4rem 0.9rem;}
+#flowwrap svg{width:100%;max-width:1180px;height:auto;display:block;margin:0 auto;}
+.pnode{cursor:pointer;}
+.pnode rect{transition:stroke-width 0.1s;}
+.pnode:hover rect{stroke-width:2.2;}
+.pnode.sel rect{fill:rgba(88,166,255,0.14);stroke-width:2.2;}
+</style>
+</head>
+<body>
+<header>
+  <h1>📝 Call Center Prompts</h1>
+  <span class="sub">Prompts of the call-center concierge — saves apply to the <b>next request</b>, no restart.</span>
+  <div id="token-bar">
+    <button class="secondary" id="flow-toggle" style="display:none">Flow ▾</button>
+    <input type="password" id="token" placeholder="admin token">
+    <button class="secondary" id="connect">Connect</button>
+  </div>
+</header>
+
+<section id="flowwrap" style="display:none">
+<svg viewBox="0 0 1180 560" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <defs>
+    <marker id="farr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-soft)"/>
+    </marker>
+  </defs>
+
+  <!-- guest -->
+  <rect x="510" y="8" width="160" height="30" rx="15" fill="none" stroke="var(--ink)" stroke-width="1.4"/>
+  <text x="590" y="27" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">Guest message</text>
+  <path d="M590 38 v12" stroke="var(--ink-soft)" stroke-width="1.2" fill="none"/>
+  <path d="M590 50 H300 V66" stroke="var(--ink-soft)" stroke-width="1.2" fill="none" marker-end="url(#farr)"/>
+  <path d="M590 50 H880 V66" stroke="var(--ink-soft)" stroke-width="1.2" fill="none" marker-end="url(#farr)"/>
+  <text x="590" y="62" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">runs in parallel</text>
+
+  <!-- escalation -->
+  <rect x="120" y="70" width="360" height="74" rx="8" fill="none" stroke="var(--border)"/>
+  <text x="134" y="89" font-size="11.5" font-weight="700" fill="var(--ink)">1 · Escalation check</text>
+  <g class="pnode" data-prompt="escalation_stems">
+    <rect x="134" y="98" width="166" height="20" rx="5" fill="none" stroke="var(--accent)" stroke-dasharray="4 3"/>
+    <text x="142" y="112" font-size="9.5" font-family="ui-monospace,Menlo,monospace" fill="var(--accent)">escalation_stems.json</text>
+  </g>
+  <text x="308" y="112" font-size="9.5" fill="var(--ink-soft)">word list · 0ms</text>
+  <text x="134" y="133" font-size="9.5" fill="var(--ink-soft)">stem hit →</text>
+  <g class="pnode" data-prompt="escalation_classifier">
+    <rect x="196" y="121" width="184" height="20" rx="5" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+    <text x="204" y="135" font-size="9.5" font-family="ui-monospace,Menlo,monospace" fill="var(--accent)">escalation_classifier.md</text>
+  </g>
+  <text x="388" y="135" font-size="9.5" fill="var(--ink-soft)">LLM judge</text>
+  <path d="M120 120 H72 V160" stroke="var(--ink-soft)" stroke-width="1.2" fill="none" marker-end="url(#farr)"/>
+  <rect x="14" y="162" width="118" height="32" rx="6" fill="none" stroke="var(--border)"/>
+  <text x="73" y="175" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">escalates → human</text>
+  <text x="73" y="187" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">fixed line, no LLM</text>
+
+  <!-- decompose -->
+  <rect x="700" y="70" width="360" height="74" rx="8" fill="none" stroke="var(--border)"/>
+  <text x="714" y="89" font-size="11.5" font-weight="700" fill="var(--ink)">2 · Understand the message</text>
+  <g class="pnode" data-prompt="query_decomposer">
+    <rect x="714" y="98" width="160" height="20" rx="5" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+    <text x="722" y="112" font-size="9.5" font-family="ui-monospace,Menlo,monospace" fill="var(--accent)">query_decomposer.md</text>
+  </g>
+  <text x="882" y="112" font-size="9.5" fill="var(--ink-soft)">LLM · every turn</text>
+  <text x="714" y="135" font-size="9.5" fill="var(--ink-soft)">type · hotel · region · requirements — reads conversation memory (Redis)</text>
+
+  <!-- router -->
+  <path d="M880 144 v14 H590 v18" stroke="var(--ink-soft)" stroke-width="1.2" fill="none" marker-end="url(#farr)"/>
+  <rect x="120" y="178" width="940" height="34" rx="8" fill="none" stroke="var(--ink)" stroke-width="1.4"/>
+  <text x="590" y="200" text-anchor="middle" font-size="12" font-weight="700" fill="var(--ink)">3 · Route by query_type</text>
+  <text x="590" y="228" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">missing info → clarifying question from <tspan class="pnode" data-prompt="triage_questions" fill="var(--accent)" font-family="ui-monospace,Menlo,monospace">triage_questions.md</tspan> (templates) · “search online” / “yes” to a lookup offer jumps to the Web lane · escalate → human</text>
+
+  <!-- persona band -->
+  <g class="pnode" data-prompt="concierge_persona">
+    <rect x="120" y="244" width="940" height="30" rx="8" fill="none" stroke="var(--ok)" stroke-width="1.6"/>
+    <text x="590" y="263" text-anchor="middle" font-size="10.5" fill="var(--ok)"><tspan font-family="ui-monospace,Menlo,monospace" font-weight="700">concierge_persona.md</tspan>  —  WHO the assistant is · prepended to all three answer writers below (edit tone here, once)</text>
+  </g>
+  <path d="M237 274 v118" stroke="var(--ok)" stroke-width="1" stroke-dasharray="3 3" fill="none" marker-end="url(#farr)"/>
+  <path d="M472 274 v158" stroke="var(--ok)" stroke-width="1" stroke-dasharray="3 3" fill="none" marker-end="url(#farr)"/>
+  <path d="M707 274 v158" stroke="var(--ok)" stroke-width="1" stroke-dasharray="3 3" fill="none" marker-end="url(#farr)"/>
+  <path d="M942 274 v206" stroke="var(--ok)" stroke-width="1" stroke-dasharray="3 3" fill="none" marker-end="url(#farr)"/>
+
+  <!-- lane headers -->
+  <text x="237" y="296" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.5" fill="var(--ink-soft)">CONVERSATIONAL</text>
+  <text x="472" y="296" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.5" fill="var(--ink-soft)">HOTEL QUESTION</text>
+  <text x="707" y="296" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.5" fill="var(--ink-soft)">HYBRID · HOTEL + WEB</text>
+  <text x="942" y="296" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.5" fill="var(--ink-soft)">WEB &amp; DESTINATION</text>
+
+  <!-- lane 1: conversational -->
+  <g class="pnode" data-prompt="concierge_converse">
+    <rect x="150" y="396" width="174" height="56" rx="8" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+    <text x="160" y="416" font-size="9.5" font-family="ui-monospace,Menlo,monospace" fill="var(--accent)">concierge_converse.md</text>
+    <text x="160" y="431" font-size="9.5" fill="var(--ink-soft)">greetings · recall · memory</text>
+    <text x="160" y="444" font-size="9.5" fill="var(--ink-soft)">no retrieval</text>
+  </g>
+
+  <!-- lane 2: hotel -->
+  <rect x="385" y="306" width="174" height="40" rx="8" fill="none" stroke="var(--border)"/>
+  <text x="472" y="323" text-anchor="middle" font-size="10" fill="var(--ink)">Qdrant retrieval + ES resolve</text>
+  <text x="472" y="337" text-anchor="middle" font-size="9" fill="var(--ink-soft)">no prompt</text>
+  <path d="M472 346 v44" stroke="var(--ink-soft)" stroke-width="1.2" fill="none" marker-end="url(#farr)"/>
+  <g class="pnode" data-prompt="concierge_render">
+    <rect x="385" y="436" width="174" height="56" rx="8" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+    <text x="395" y="456" font-size="9.5" font-family="ui-monospace,Menlo,monospace" fill="var(--accent)">concierge_render.md</text>
+    <text x="395" y="471" font-size="9.5" fill="var(--ink-soft)">writes the hotel answer</text>
+    <text x="395" y="484" font-size="9.5" fill="var(--ink-soft)">grounding rules</text>
+  </g>
+
+  <!-- lane 3: hybrid -->
+  <rect x="620" y="306" width="174" height="40" rx="8" fill="none" stroke="var(--border)"/>
+  <text x="707" y="323" text-anchor="middle" font-size="10" fill="var(--ink)">Qdrant + Web lane</text>
+  <text x="707" y="337" text-anchor="middle" font-size="9" fill="var(--ink-soft)">hotel facts + live results</text>
+  <path d="M707 346 v44" stroke="var(--ink-soft)" stroke-width="1.2" fill="none" marker-end="url(#farr)"/>
+  <g class="pnode" data-prompt="concierge_web_synth">
+    <rect x="620" y="436" width="174" height="56" rx="8" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+    <text x="630" y="456" font-size="9.5" font-family="ui-monospace,Menlo,monospace" fill="var(--accent)">concierge_web_synth.md</text>
+    <text x="630" y="471" font-size="9.5" fill="var(--ink-soft)">ONE combined answer</text>
+    <text x="630" y="484" font-size="9.5" fill="var(--ink-soft)">(same prompt as web →)</text>
+  </g>
+
+  <!-- lane 4: web -->
+  <g class="pnode" data-prompt="concierge_web_query">
+    <rect x="855" y="306" width="174" height="46" rx="8" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+    <text x="865" y="324" font-size="9.5" font-family="ui-monospace,Menlo,monospace" fill="var(--accent)">concierge_web_query.md</text>
+    <text x="865" y="340" font-size="9.5" fill="var(--ink-soft)">search query from the dialog</text>
+  </g>
+  <path d="M942 352 v12" stroke="var(--ink-soft)" stroke-width="1.2" fill="none" marker-end="url(#farr)"/>
+  <rect x="855" y="366" width="174" height="30" rx="8" fill="none" stroke="var(--border)"/>
+  <text x="942" y="385" text-anchor="middle" font-size="10" fill="var(--ink)">Tavily web search</text>
+  <path d="M942 396 v88" stroke="var(--ink-soft)" stroke-width="1.2" fill="none" marker-end="url(#farr)"/>
+  <g class="pnode" data-prompt="concierge_web_synth">
+    <rect x="855" y="486" width="174" height="36" rx="8" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+    <text x="865" y="501" font-size="9.5" font-family="ui-monospace,Menlo,monospace" fill="var(--accent)">concierge_web_synth.md</text>
+    <text x="865" y="514" font-size="9.5" fill="var(--ink-soft)">writes the web answer</text>
+  </g>
+
+  <!-- to answer -->
+  <path d="M237 452 v60 H540" stroke="var(--ink-soft)" stroke-width="1.2" fill="none"/>
+  <path d="M472 492 v20 H540" stroke="var(--ink-soft)" stroke-width="1.2" fill="none"/>
+  <path d="M707 492 v20 h-60" stroke="var(--ink-soft)" stroke-width="1.2" fill="none"/>
+  <rect x="445" y="524" width="290" height="28" rx="14" fill="none" stroke="var(--ink)" stroke-width="1.4"/>
+  <text x="590" y="542" text-anchor="middle" font-size="10.5" font-weight="600" fill="var(--ink)">4 · Answer → guest · saved to memory · logged</text>
+</svg>
+</section>
+<div id="gate">Enter the admin token to load the prompts.</div>
+<main id="main" style="display:none">
+  <div id="list"></div>
+  <div id="editor">
+    <div id="ed-head"><div class="t" id="ed-title">—</div><div class="d" id="ed-desc"></div></div>
+    <textarea id="ed-text" spellcheck="false"></textarea>
+    <div id="ed-foot">
+      <button id="save" disabled>Save</button>
+      <button class="secondary" id="revert" disabled>Revert</button>
+      <span id="status"></span>
+      <span class="note" style="margin-left:auto">A timestamped backup of the previous version is kept in <code>logs/prompt_backups/</code> on every save.</span>
+    </div>
+  </div>
+</main>
+<script>
+const STORAGE_TOKEN = "voxtera_admin_token";  // shared with the other admin pages
+// admin/index.html stores the token in sessionStorage, admin.html in
+// localStorage — accept either so arriving from the portal "just works".
+let token = localStorage.getItem(STORAGE_TOKEN) || sessionStorage.getItem(STORAGE_TOKEN) || "";
+let prompts = [];        // [{name,file,title,description,content,mtime}]
+let current = null;      // selected prompt object
+let savedContent = "";   // content as last loaded/saved (for dirty check)
+
+const $ = id => document.getElementById(id);
+$("token").value = token;
+
+function setStatus(msg, cls){ const s=$("status"); s.textContent=msg||""; s.className=cls||""; }
+
+async function api(method, body){
+  const res = await fetch("/api/admin/prompts", {
+    method, headers: {"Content-Type":"application/json","X-Admin-Token":token},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw new Error(data.error ? `${data.error}${data.detail? " — "+data.detail:""}` : `HTTP ${res.status}`);
+  return data;
+}
+
+function renderList(){
+  const list = $("list"); list.innerHTML = "";
+  prompts.forEach(p => {
+    const div = document.createElement("div");
+    div.className = "item" + (current && current.name===p.name ? " active":"");
+    div.innerHTML = `<div class="t">${p.title}</div><div class="f">${p.file}</div><div class="d">${p.description}</div>`;
+    div.onclick = () => select(p);
+    list.appendChild(div);
+  });
+}
+
+function select(p){
+  if (current && $("ed-text").value !== savedContent &&
+      !confirm("You have unsaved changes — discard them?")) return;
+  current = p; savedContent = p.content;
+  $("ed-title").textContent = `${p.title}  ·  ${p.file}`;
+  $("ed-desc").textContent = p.description;
+  $("ed-text").value = p.content;
+  $("save").disabled = true; $("revert").disabled = true;
+  setStatus("loaded","");
+  renderList();
+  highlightFlow();
+}
+
+// ── Flow diagram: click a prompt box to open it; highlight the selected one ──
+function highlightFlow(){
+  document.querySelectorAll("#flowwrap .pnode").forEach(n =>
+    n.classList.toggle("sel", !!current && n.dataset.prompt === current.name));
+}
+function wireFlow(){
+  document.querySelectorAll("#flowwrap .pnode").forEach(n => {
+    n.onclick = () => {
+      const p = prompts.find(x => x.name === n.dataset.prompt);
+      if (p) select(p);
+    };
+  });
+}
+const FLOW_PREF = "voxtera_prompt_flow_open";
+function setFlowOpen(open){
+  $("flowwrap").style.display = open ? "block" : "none";
+  $("flow-toggle").textContent = open ? "Flow ▴" : "Flow ▾";
+  localStorage.setItem(FLOW_PREF, open ? "1" : "0");
+}
+$("flow-toggle").onclick = () =>
+  setFlowOpen($("flowwrap").style.display === "none");
+
+$("ed-text").addEventListener("input", () => {
+  const dirty = $("ed-text").value !== savedContent;
+  $("save").disabled = !dirty; $("revert").disabled = !dirty;
+  setStatus(dirty ? "unsaved changes" : "", dirty ? "dirty" : "");
+});
+
+$("revert").onclick = () => { $("ed-text").value = savedContent; $("ed-text").dispatchEvent(new Event("input")); };
+
+$("save").onclick = async () => {
+  if (!current) return;
+  $("save").disabled = true; setStatus("saving…","");
+  try {
+    const content = $("ed-text").value;
+    await api("POST", {name: current.name, content});
+    current.content = content; savedContent = content;
+    setStatus("saved — live on the next request ✓","ok");
+    $("revert").disabled = true;
+  } catch (e) {
+    setStatus("save failed: " + e.message, "err");
+    $("save").disabled = false;
+  }
+};
+
+async function load(){
+  try {
+    const data = await api("GET");
+    prompts = data.prompts || [];
+    $("gate").style.display="none"; $("main").style.display="grid";
+    $("flow-toggle").style.display = "inline-block";
+    setFlowOpen(localStorage.getItem(FLOW_PREF) !== "0");  // open by default
+    wireFlow();
+    renderList();
+    if (prompts.length) select(prompts[0]);
+  } catch (e) {
+    $("gate").textContent = "Could not load prompts: " + e.message;
+    $("gate").style.display="block"; $("main").style.display="none";
+  }
+}
+
+$("connect").onclick = () => {
+  token = $("token").value.trim();
+  localStorage.setItem(STORAGE_TOKEN, token);
+  load();
+};
+$("token").addEventListener("keydown", e => { if (e.key==="Enter") $("connect").click(); });
+
+if (token) load();
+</script>
+</body>
+</html>

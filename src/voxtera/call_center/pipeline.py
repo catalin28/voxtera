@@ -54,6 +54,7 @@ from loguru import logger
 from voxtera.call_center.classifier import EscalationClassifier
 from voxtera.call_center.compound import CompoundAndDiscovery
 from voxtera.call_center.decompose import QueryDecomposer
+from voxtera.call_center.kb_config import REGION_ALIASES, canonical_region
 from voxtera.call_center.resolver import HotelResolver
 from voxtera.call_center.router import (
     PATH_BROAD,
@@ -117,6 +118,10 @@ def _placeholder_answer(path: str, language: str) -> str:
         PATH_NEEDS_GEOGRAPHY: {
             "en": "Which destination are you thinking of?",
             "tr": "Hangi destinasyonu düşünüyorsunuz?",
+        },
+        PATH_ESCALATE: {
+            "en": "Let me connect you to a colleague who can help with that right away.",
+            "tr": "Sizi hemen bu konuda yardımcı olabilecek bir çalışma arkadaşıma bağlayayım.",
         },
     }
     by_lang = msgs.get(path, {"en": "Let me check on that."})
@@ -976,8 +981,14 @@ class ConciergePipeline:
             answer = await self._render(utterance, decomposition, retrieval, session)
             timings["render_ms"] = _ms(time.perf_counter() - t0)
 
-        elif path == PATH_WEB and self._web is not None:
+        elif path in (PATH_WEB, PATH_DESTINATION) and self._web is not None:
             # Pure live-web question (events, weather, local operators, hours).
+            # PATH_DESTINATION also lands here for now: the destination KB is a
+            # later phase, and a "ships in the next release" placeholder is a
+            # dead-end mid-conversation. Destination questions (itineraries,
+            # "which regions for historical sites?") answer well from the live
+            # web via the dialog-aware query rewrite + synth. When the
+            # destination KB ships, give PATH_DESTINATION its own branch again.
             t0 = time.perf_counter()
             dq = await self._web_query_from_dialog(utterance, session)
             rev = _REVIEW_DOMAINS if _is_review_query(decomposition, utterance) else None
@@ -985,7 +996,9 @@ class ConciergePipeline:
             timings["web_ms"] = _ms(time.perf_counter() - t0)
             retrieval = {"web": web}
             lang = (decomposition.get("language") or session.get("language") or "en").lower()
-            answer = _web_answer(web, lang, synth=await self._synth_web(utterance, web, lang))
+            answer = _web_answer(
+                web, lang, synth=await self._synth_web(utterance, web, lang, session=session)
+            )
 
         elif path == PATH_HYBRID and self._web is not None:
             # Hotel KB + live web (e.g. "is there a dive shop near my hotel?").
@@ -1018,7 +1031,9 @@ class ConciergePipeline:
             # greeting AND offered to "search online" right above the results it
             # had already fetched.
             hotel_facts = _hotel_facts_text(kb)
-            combined = await self._synth_web(utterance, web, lang, hotel_facts=hotel_facts)
+            combined = await self._synth_web(
+                utterance, web, lang, hotel_facts=hotel_facts, session=session
+            )
             if combined:
                 answer = combined
             else:
@@ -1089,6 +1104,34 @@ class ConciergePipeline:
         else:
             region = decomposition.get("region") or session.get("active_region") or ""
         requirements = list(decomposition.get("requirements") or [])
+
+        # ── Fine-grained / non-canonical geography ──────────────────────────
+        # The corpus has ONE coarse region bucket ("Turkish Riviera"), so a
+        # city/district like "Kaş" or a fancy region name like "Lycia" can
+        # never be FILTERED — but the place IS written inside the chunks
+        # ("…located in the Kaş district of Antalya"). Therefore:
+        #   1. a region label Qdrant doesn't store must NOT become a filter
+        #      (it would zero out every result) — drop it to all-regions;
+        #   2. the place joins the SEMANTIC query as an extra requirement, so
+        #      the AND-search pins results to hotels whose text mentions it.
+        # This is what makes "what hotels are in Kaş?" actually find the Kaş
+        # hotels the admin semantic-search panel shows.
+        if not (
+            path == PATH_SCOPED
+            and (decomposition.get("hotel_id") or session.get("active_hotel_id"))
+        ):
+            known_regions = set(REGION_ALIASES.values())
+            non_canonical_region = ""
+            if region and canonical_region(region) not in known_regions:
+                non_canonical_region = region
+                region = ""  # don't filter on a label the payloads don't carry
+            place = (
+                (decomposition.get("district") or "").strip()
+                or (decomposition.get("city") or "").strip()
+                or non_canonical_region
+            )
+            if place and place.lower() not in " ".join(requirements).lower():
+                requirements = requirements + [place]
         # Source the resolved hotel id from EITHER the decomposition (set by the
         # inline resolver on the PATH_HOTEL_RESOLVE branch) OR the session
         # (set on a prior turn; router then returns PATH_SCOPED directly with
@@ -1237,7 +1280,7 @@ class ConciergePipeline:
         # repeat the very "I don't have that — want me to check online?" offer
         # the user is responding to. The hotel context was already given last
         # turn. We still keep KB hotels for the evidence card, not the answer.
-        synth = await self._synth_web(prior, web, lang)
+        synth = await self._synth_web(prior, web, lang, session=session)
         answer = _web_answer(web, lang, synth=synth)
         if active_hotel:
             retrieval = {
@@ -1300,6 +1343,7 @@ class ConciergePipeline:
         web: dict[str, Any],
         language: str,
         hotel_facts: str | None = None,
+        session: dict[str, Any] | None = None,
     ) -> str | None:
         """Rewrite a raw web-search result into ONE clean spoken answer.
 
@@ -1320,6 +1364,11 @@ class ConciergePipeline:
                     "web": web,
                     "language": language,
                     "hotel_facts": hotel_facts,
+                    # Recent dialogue so the synth varies its openings instead of
+                    # parroting "Great question —" every turn.
+                    "transcript": build_transcript(
+                        (session or {}).get("history"), char_budget=1500
+                    ),
                 }
             )
             return (await result) if hasattr(result, "__await__") else result
@@ -1613,10 +1662,7 @@ class ConciergePipeline:
     def _log_query(self, result: dict[str, Any]) -> None:
         """Append a structured NDJSON record to the concierge query log."""
         try:
-            log_dir = Path(os.environ.get("CONCIERGE_LOG_DIR", "logs"))
-            log_dir.mkdir(parents=True, exist_ok=True)
-            today = datetime.now(UTC).strftime("%Y-%m-%d")
-            log_file = log_dir / f"travel_agent_consierge-{today}.jsonl"
+            log_file = concierge_log_file()
             # Full debug record: keep everything needed to replay a turn from the
             # log alone — the dialog, the decomposition, the store trace (what was
             # sent to Qdrant/ES/web and what came back), and timings. Hotel
@@ -1666,3 +1712,26 @@ class ConciergePipeline:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         except Exception as e:  # noqa: BLE001
             logger.debug("concierge log write failed: {}", e)
+
+
+def concierge_log_file() -> Path:
+    """Path to today's concierge NDJSON log (query + feedback records)."""
+    log_dir = Path(os.environ.get("CONCIERGE_LOG_DIR", "logs"))
+    log_dir.mkdir(parents=True, exist_ok=True)
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    return log_dir / f"travel_agent_consierge-{today}.jsonl"
+
+
+def append_feedback_record(record: dict[str, Any]) -> None:
+    """Append a user thumbs-up/down feedback record to the concierge log.
+
+    Query records have no ``type`` field; feedback records carry
+    ``type: "feedback"`` so log consumers can tell them apart. Correlation
+    back to the rated turn is via (session_id, utterance, answer).
+    """
+    try:
+        line = {"type": "feedback", "ts": datetime.now(UTC).isoformat(), **record}
+        with open(concierge_log_file(), "a", encoding="utf-8") as f:
+            f.write(json.dumps(line, ensure_ascii=False) + "\n")
+    except Exception as e:  # noqa: BLE001
+        logger.debug("concierge feedback write failed: {}", e)

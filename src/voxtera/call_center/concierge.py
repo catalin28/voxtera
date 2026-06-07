@@ -52,6 +52,13 @@ _DECOMPOSE_SYSTEM = load_prompt("concierge_decompose_legacy")
 _RENDER_SYSTEM = load_prompt("concierge_render")
 
 
+def _with_persona(task_prompt_name: str) -> str:
+    """Shared persona + task prompt. The persona (tone, spoken format, language)
+    lives ONCE in concierge_persona.md and is prepended to every answer-writing
+    prompt — edit the persona there, not in the task files."""
+    return load_prompt("concierge_persona") + "\n\n" + load_prompt(task_prompt_name)
+
+
 class ConciergeAgent:
     """Phase 3 — orchestrates decompose -> compound retrieve -> render."""
 
@@ -212,7 +219,7 @@ def _build_anthropic_decompose(model: str) -> DecomposeFn:
             system=[
                 {
                     "type": "text",
-                    "text": _DECOMPOSE_SYSTEM,
+                    "text": load_prompt("concierge_decompose_legacy"),
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
@@ -291,7 +298,7 @@ def _build_anthropic_render(model: str) -> RenderFn:
             system=[
                 {
                     "type": "text",
-                    "text": _RENDER_SYSTEM,
+                    "text": _with_persona("concierge_render"),
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
@@ -332,7 +339,11 @@ def _build_anthropic_web_query(model: str) -> Callable[[dict[str, Any]], Awaitab
             model=model,
             max_tokens=80,
             system=[
-                {"type": "text", "text": _WEB_QUERY_SYSTEM, "cache_control": {"type": "ephemeral"}}
+                {
+                    "type": "text",
+                    "text": load_prompt("concierge_web_query"),
+                    "cache_control": {"type": "ephemeral"},
+                }
             ],
             messages=[{"role": "user", "content": user_msg}],
         )
@@ -357,7 +368,11 @@ def _build_anthropic_converse(model: str) -> Callable[[dict[str, Any]], Awaitabl
             model=model,
             max_tokens=220,
             system=[
-                {"type": "text", "text": _CONVERSE_SYSTEM, "cache_control": {"type": "ephemeral"}}
+                {
+                    "type": "text",
+                    "text": _with_persona("concierge_converse"),
+                    "cache_control": {"type": "ephemeral"},
+                }
             ],
             messages=[{"role": "user", "content": user_msg}],
         )
@@ -387,9 +402,17 @@ def _build_anthropic_web_synth(model: str) -> Callable[[dict[str, Any]], Awaitab
             if hotel_facts
             else ""
         )
+        transcript = (payload.get("transcript") or "").strip()
+        convo_block = (
+            f"\n\nConversation so far (vary your openings — do NOT start the way "
+            f"your previous replies started):\n{transcript}\n"
+            if transcript
+            else ""
+        )
         user_msg = (
             f"Detected language: {payload.get('language') or 'en'}\n"
             f"Guest question: {payload.get('question')}\n"
+            f"{convo_block}"
             f"{hotel_block}\n"
             f"Aggregated web answer (shallow — verify against snippets): "
             f"{web.get('answer') or '(none)'}\n\n"
@@ -400,7 +423,11 @@ def _build_anthropic_web_synth(model: str) -> Callable[[dict[str, Any]], Awaitab
             model=model,
             max_tokens=420,
             system=[
-                {"type": "text", "text": _WEB_SYNTH_SYSTEM, "cache_control": {"type": "ephemeral"}}
+                {
+                    "type": "text",
+                    "text": _with_persona("concierge_web_synth"),
+                    "cache_control": {"type": "ephemeral"},
+                }
             ],
             messages=[{"role": "user", "content": user_msg}],
         )

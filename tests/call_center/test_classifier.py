@@ -41,9 +41,9 @@ async def test_empty_utterance_returns_no_escalation() -> None:
 @pytest.mark.asyncio
 async def test_high_confidence_live_complaint_escalates() -> None:
     clf = EscalationClassifier(
-        classify_fn=_scripted([
-            {"type": "live_complaint", "confidence": 0.92, "signal": "odama giremiyorum"}
-        ]),
+        classify_fn=_scripted(
+            [{"type": "live_complaint", "confidence": 0.92, "signal": "odama giremiyorum"}]
+        ),
     )
     v = await clf.classify("Oteldeyim ve odama giremiyorum")
     assert v["escalate"] is True
@@ -58,7 +58,8 @@ async def test_low_confidence_does_not_escalate_even_with_category() -> None:
         classify_fn=_scripted([{"type": "booking", "confidence": 0.40}]),
         min_confidence=0.55,
     )
-    v = await clf.classify("Could you tell me about your rooms?")
+    # "book" passes the fast gate so the (scripted) LLM verdict is exercised.
+    v = await clf.classify("Could I book one of your rooms?")
     assert v["escalate"] is False
     assert v["escalation_type"] is None
 
@@ -68,7 +69,8 @@ async def test_unknown_category_treated_as_none() -> None:
     clf = EscalationClassifier(
         classify_fn=_scripted([{"type": "weather_chat", "confidence": 0.9}]),
     )
-    v = await clf.classify("How's the weather in Belek?")
+    # "urgent" passes the fast gate; the scripted LLM returns a junk category.
+    v = await clf.classify("Urgent — how's the weather in Belek?")
     assert v["escalate"] is False
     assert v["escalation_type"] is None
 
@@ -79,10 +81,45 @@ async def test_llm_exception_returns_safe_default() -> None:
         raise RuntimeError("network down")
 
     clf = EscalationClassifier(classify_fn=boom)
-    v = await clf.classify("Aklı başında bir cümle.")
+    # "rezerv"/"iptal" pass the fast gate so the exploding LLM fn is reached.
+    v = await clf.classify("Rezervasyonumu iptal etmek istiyorum.")
     assert v["escalate"] is False
     assert v["escalation_type"] is None
     assert v["latency_ms"] >= 0.0
+
+
+@pytest.mark.asyncio
+async def test_fast_gate_skips_llm_for_benign_utterance() -> None:
+    """A plain Q&A turn with no escalation stem must NOT call the LLM at all."""
+    classify_fn = _scripted([{"type": "medical", "confidence": 1.0}])
+    clf = EscalationClassifier(classify_fn=classify_fn)
+    v = await clf.classify("do they have a spa and a pool?")
+    assert v["escalate"] is False
+    assert v["model"] == "fast_gate"
+    assert classify_fn.state["calls"] == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_fast_gate_triggers_llm_when_stem_present() -> None:
+    """Any stem (here Turkish 'iptal') wakes the real LLM classifier."""
+    classify_fn = _scripted([{"type": "post_booking", "confidence": 0.9, "signal": "iptal"}])
+    clf = EscalationClassifier(classify_fn=classify_fn)
+    v = await clf.classify("Rezervasyonumu iptal edebilir miyim?")
+    assert v["escalate"] is True
+    assert v["escalation_type"] == "post_booking"
+    assert len(classify_fn.state["calls"]) == 1  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_fast_gate_fails_open_when_stems_file_missing(monkeypatch) -> None:
+    """Missing/broken stems file disables the gate — every turn runs the LLM."""
+    monkeypatch.setenv("ESCALATION_STEMS_PATH", "/nonexistent/stems.json")
+    classify_fn = _scripted([{"type": "none", "confidence": 0.1}])
+    clf = EscalationClassifier(classify_fn=classify_fn)
+    v = await clf.classify("do they have a spa and a pool?")
+    assert v["escalate"] is False
+    assert len(classify_fn.state["calls"]) == 1  # type: ignore[attr-defined]
+    monkeypatch.delenv("ESCALATION_STEMS_PATH")
 
 
 @pytest.mark.asyncio
@@ -97,7 +134,9 @@ async def test_redis_cache_short_circuits_repeat_calls() -> None:
 
     classify_fn = _scripted([{"type": "medical", "confidence": 0.95, "signal": "ambulans"}])
     clf = EscalationClassifier(
-        classify_fn=classify_fn, cache_get=cache_get, cache_set=cache_set,
+        classify_fn=classify_fn,
+        cache_get=cache_get,
+        cache_set=cache_set,
     )
     v1 = await clf.classify("Ambulans çağırın!")
     v2 = await clf.classify("Ambulans çağırın!")

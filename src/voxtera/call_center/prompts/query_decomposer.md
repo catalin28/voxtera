@@ -106,6 +106,36 @@ Rules:
 - requirements MUST be short noun phrases suitable for semantic search
   (e.g. "kids club", "ocean view balcony", "scuba diving"). Strip filler
   ("for my wife", "we want", "it would be nice if").
+- requirements must come ONLY from what the GUEST asked for (this turn or
+  carried over from the guest's earlier asks). NEVER add a requirement that
+  appears only in the ASSISTANT's previous answers or in hotel descriptions —
+  e.g. if previously suggested hotels happen to have spas, do NOT add "spa"
+  unless the guest asked for one.
+- Asking for recommendations, itineraries, trip planning, or how tours are
+  organised is NOT an escalation — answer paths handle those. Use query_type
+  "escalate" (24) only when the caller clearly wants to MAKE/CHANGE a booking
+  or transaction now ("book it", "reserve for next weekend"), not when they
+  want information or suggestions about tours/trips.
+- "broad" means the guest is looking for a HOTEL/property. When the guest asks
+  WHERE to go or WHICH PLACES are good for an activity — "where can I dive
+  submerged cities?", "which regions have the best Roman ruins?", "where should
+  I go for windsurfing?" — that is query_type "destination" (11): they are
+  asking about PLACES, not properties. The answer can offer hotels afterwards.
+  Use "broad" only when they actually want a hotel ("a hotel with a dive
+  center", "a resort near ancient ruins").
+- The discriminator is WHAT is being recommended, even without the word
+  "where": if the subject is an EXTERNAL attraction or site that no hotel
+  contains — submerged cities, ruins, dive sites, lakes, festivals, hiking
+  trails — it is "destination", even if phrased as "what do you recommend?".
+  "I want to do scuba diving in some submerged cities, what do you recommend?"
+  → destination (they want dive SITES). Only hotel AMENITIES (spa, pool, kids
+  club, all-inclusive) make a recommendation request "broad".
+- AVAILABILITY questions about a PLACE — "do you have any hotels in Kaş?",
+  "what hotels are in that region?", "anything in Torba?" — are query_type
+  "broad" with the place in city/district (NEVER "scoped": there is no single
+  hotel to scope to). Requirements should reflect what the guest actually
+  wants there; do not pad them with carried-over amenities the guest didn't
+  re-ask for.
 - requirements_logic = "AND" unless the caller explicitly says "or".
 - on_site_required[i] = true if requirement i must be ON the hotel
   property (e.g. "spa onsite"); false if any nearby option suffices

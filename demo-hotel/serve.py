@@ -51,6 +51,236 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import audit_log as _audit  # noqa: E402  — local module, writes logs/audit/
 
+# ── Admin-editable prompt registry ──────────────────────────────────────────
+# Every LLM prompt of the call-center concierge, with a plain-language
+# explanation shown in the admin editor. Files live in
+# src/voxtera/call_center/prompts/ and HOT-RELOAD on save (mtime cache in the
+# prompt loader; escalation_stems.json has its own mtime reload).
+_PROMPT_REGISTRY: dict[str, dict] = {
+    "concierge_persona": {
+        "file": "concierge_persona.md",
+        "title": "Persona (ONE place for tone & character)",
+        "description": (
+            "Who the assistant IS — tone, no stock openers, spoken format, "
+            "language behaviour. Automatically prepended to ALL THREE answer "
+            "writers (hotel, web, conversational), so the persona is changed "
+            "here ONCE and applies everywhere. The task prompts below contain "
+            "only their task-specific rules."
+        ),
+    },
+    "query_decomposer": {
+        "file": "query_decomposer.md",
+        "title": "Query decomposer (routing brain)",
+        "description": (
+            "Converts each guest message into the structured plan that drives "
+            "everything else: query type (hotel / destination / web / hybrid / "
+            "escalate / conversational), hotel mention, region, and the "
+            "requirements used for retrieval. Edit this to change how questions "
+            "are classified and what gets extracted."
+        ),
+    },
+    "concierge_render": {
+        "file": "concierge_render.md",
+        "title": "Hotel answer writer",
+        "description": (
+            "Writes the spoken answer from hotel knowledge-base results. Carries "
+            "the concierge persona, the grounding rules (never invent amenities, "
+            "locations or landmarks; admit region mismatches), and the "
+            "offer-to-check-online behaviour when a detail is missing."
+        ),
+    },
+    "concierge_web_synth": {
+        "file": "concierge_web_synth.md",
+        "title": "Web answer writer",
+        "description": (
+            "Writes the spoken answer from live web results, and the combined "
+            "hotel+web answer on hybrid turns. Controls persona, the on-site vs "
+            "arranged-nearby accuracy rule, the destination-question format "
+            "(top options + one clear recommendation), and the natural 'worth "
+            "confirming' note."
+        ),
+    },
+    "concierge_converse": {
+        "file": "concierge_converse.md",
+        "title": "Conversational turns",
+        "description": (
+            "Handles chitchat and meta turns answered from the conversation "
+            "history — greetings, thanks, 'what did I ask you?', 'where are we "
+            "with the itinerary?'. Explicitly forbidden from promising actions "
+            "it cannot perform (searching, booking, sending)."
+        ),
+    },
+    "concierge_web_query": {
+        "file": "concierge_web_query.md",
+        "title": "Web search query builder",
+        "description": (
+            "Rewrites the conversation into ONE self-contained web search query "
+            "— resolves 'there'/'they' to the actual hotel and place from the "
+            "dialog, so the web search is anchored even when the guest uses "
+            "pronouns."
+        ),
+    },
+    "escalation_classifier": {
+        "file": "escalation_classifier.md",
+        "title": "Escalation judge (LLM)",
+        "description": (
+            "Decides whether a turn must be handed to a human: booking, "
+            "cancellation/changes, live complaint, medical, urgency. Only runs "
+            "when the fast-gate word list (below) finds a trigger word."
+        ),
+    },
+    "escalation_stems": {
+        "file": "escalation_stems.json",
+        "title": "Escalation fast-gate word list (JSON)",
+        "description": (
+            "Stem list checked before the escalation judge. If a message "
+            "contains NONE of these stems, the LLM judge is skipped (saves "
+            "~1.5s on normal turns). Stems, not words: 'rezerv' matches "
+            "rezervasyon/rezervasyonumu. JSON must stay valid — saves are "
+            "validated. Hot-reloads instantly."
+        ),
+    },
+    "triage_questions": {
+        "file": "triage_questions.md",
+        "title": "Triage clarification questions",
+        "description": (
+            "The localised clarification questions triage can ask when a "
+            "request is missing a critical slot (per-locale '## <locale>' "
+            "sections with '- slot: text' lines)."
+        ),
+    },
+    "concierge_decompose_legacy": {
+        "file": "concierge_decompose_legacy.md",
+        "title": "Legacy decomposer (old endpoint)",
+        "description": (
+            "Used only by the older single-shot concierge endpoint, NOT by the "
+            "main pipeline. Kept for backwards compatibility."
+        ),
+    },
+}
+
+
+def _prompts_dir() -> Path:
+    from voxtera.call_center import prompts as _p
+
+    return Path(_p.__file__).resolve().parent
+
+
+# ── Voice-concierge prompt registry (Voice Concierge Prompts admin page) ────
+# Prompts of the HOTEL VOICE CONCIERGE — the real-time voice agent with the
+# "Her"-inspired persona. Unlike the call-center prompts above, these do NOT
+# hot-reload: the voice bot runs as a separate subprocess spawned per call and
+# imports its prompts at startup, so saves apply from the NEXT CALL.
+# Entries with "readonly": True are shown in the editor for transparency but
+# cannot be saved (Python modules / latency-critical code).
+_VOICE_PROMPT_REGISTRY: dict[str, dict] = {
+    "system_prompt": {
+        "file": "system_prompt.md",
+        "title": "Voice concierge system prompt (the 'Her' persona)",
+        "description": (
+            "THE main prompt of the voice agent. Three jobs in tension: "
+            "PRESENCE (the 'Her'-inspired persona — warm, polished, attentive, "
+            "never robotic), BREVITY (every word is ~330ms of TTS playback "
+            "during which the guest's mic is silenced — keep replies short), "
+            "and LANGUAGE CONSISTENCY (reply in the guest's language for the "
+            "whole call). ⚠️ This text is also embedded in audio.py as a "
+            "semantic fingerprint that calibrates the STT noise filter — tone "
+            "edits are fine, but do NOT strip the hotel/travel vocabulary "
+            "wholesale or the filter's baseline drifts. Applies from the NEXT "
+            "CALL (the bot reads it once at startup)."
+        ),
+    },
+    "greetings": {
+        "file": "greetings.json",
+        "title": "Startup greetings — 31 languages (JSON)",
+        "description": (
+            "What the bot says the moment a call starts, before the guest "
+            "speaks — spoken instantly with no LLM round-trip. Two sections: "
+            "'greetings' (one time-neutral greeting per language — the safe "
+            "default) and 'timed_greetings' (morning/afternoon/evening "
+            "variants, used when the browser reports the guest's timezone). "
+            "'en' is required; timed variants may repeat where a language "
+            "doesn't daypart (French afternoon, Korean, Hindi — intentional). "
+            "The optional {hotel_name} placeholder becomes the hotel's name at "
+            "bot startup ('Welcome to Casa Dell Arte'), or the 'generic_hotel' "
+            "phrase when no hotel is configured. Saves are validated. Applies "
+            "from the NEXT CALL; the TTS-test admin endpoint keeps the old "
+            "text until a server restart."
+        ),
+    },
+    "fillers": {
+        "file": "fillers.py",
+        "readonly": True,
+        "title": "Instant-ack fillers (read-only, Python)",
+        "description": (
+            "Short backchannels ('One moment.') spoken within ~100ms of the "
+            "guest finishing, masking STT→LLM→TTS latency. Read-only: "
+            "latency-critical and deliberately hardcoded — no file read or "
+            "validation may sit on this path. Edit in code if needed."
+        ),
+    },
+    "actions_fragment": {
+        "file": "../actions/prompt.py",
+        "readonly": True,
+        "title": "Action-taking fragment (read-only, Python)",
+        "description": (
+            "Teaches Claude the create_ticket flow (confirm before filing, "
+            "summary in the hotel's staff language). Read-only: this is "
+            "Python that GENERATES the prompt at bot startup, parameterised "
+            "by each hotel's config — there is no single text to edit."
+        ),
+    },
+}
+
+
+def _voice_prompts_dir() -> Path:
+    from voxtera import prompts as _vp
+
+    return Path(_vp.__file__).resolve().parent
+
+
+def _validate_greetings_json(content: str) -> str | None:
+    """Validate a greetings.json save. Returns an error string or None if OK.
+
+    The bot import fails loudly on malformed data — this keeps a bad save from
+    ever reaching disk, since a broken greetings.json would stop the voice bot
+    from starting at all.
+    """
+    try:
+        data = json.loads(content)
+    except ValueError as e:
+        return f"invalid JSON — {e}"
+    if not isinstance(data, dict):
+        return "top level must be an object"
+    for key in ("greetings", "timed_greetings"):
+        if not isinstance(data.get(key), dict):
+            return f"missing or invalid '{key}' object"
+    if "en" not in data["greetings"]:
+        return "'greetings' must contain an 'en' entry (the universal fallback)"
+    for lang, text in data["greetings"].items():
+        if not isinstance(text, str) or not text.strip():
+            return f"greetings['{lang}'] must be a non-empty string"
+    dayparts = {"morning", "afternoon", "evening"}
+    for lang, variants in data["timed_greetings"].items():
+        if not isinstance(variants, dict):
+            return f"timed_greetings['{lang}'] must be an object"
+        for part, text in variants.items():
+            if part not in dayparts:
+                return (
+                    f"timed_greetings['{lang}']: unknown daypart '{part}' "
+                    "(use morning/afternoon/evening)"
+                )
+            if not isinstance(text, str) or not text.strip():
+                return f"timed_greetings['{lang}']['{part}'] must be a non-empty string"
+    generic = data.get("generic_hotel", {})
+    if not isinstance(generic, dict):
+        return "'generic_hotel' must be an object of language → phrase"
+    for lang, text in generic.items():
+        if not isinstance(text, str) or not text.strip():
+            return f"generic_hotel['{lang}'] must be a non-empty string"
+    return None
+
+
 # ── Persistent concierge runtime ────────────────────────────────────────────
 # ONE background event loop + shared connections for ALL /api/concierge
 # requests. The previous per-request `asyncio.new_event_loop()` threw away
@@ -114,6 +344,7 @@ from voxtera.actions import (  # noqa: E402
     load_hotel_config,
 )
 from voxtera.actions.logging_sink import LoggingSink  # noqa: E402
+from voxtera.actions.telegram_sink import TelegramSink  # noqa: E402
 from voxtera.actions.ticket import Category, Ticket  # noqa: E402
 from voxtera.admin import (  # noqa: E402
     DailyAPIError,
@@ -948,7 +1179,19 @@ def _start_reaper_thread(session_id: str, proc: subprocess.Popen) -> None:
 # ---------------------------------------------------------------------------
 _hotel_config = load_hotel_config("demo")
 _ACTIONS_SYSTEM_PROMPT = compose_system_prompt(SYSTEM_PROMPT, _hotel_config)
-_logging_sink = LoggingSink()
+
+# Ticket sink for the HTTP chat path (/api/chat). Post to the same Telegram
+# channel the voice bot uses when the bot token is configured; otherwise fall
+# back to the terminal-only LoggingSink so the demo still works without creds.
+try:
+    _ticket_sink = TelegramSink(
+        bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+        channel_id=os.environ.get("TELEGRAM_CHANNEL_ID", "") or _hotel_config.telegram_channel_id,
+    )
+    print(f"[actions] /api/chat tickets → Telegram channel {_hotel_config.telegram_channel_id}")
+except ValueError:
+    _ticket_sink = LoggingSink()
+    print("[actions] TELEGRAM_BOT_TOKEN not set — /api/chat tickets go to the terminal only")
 
 # ---------------------------------------------------------------------------
 # Load tool definitions from one source (`voxtera.actions.tool`) and allow
@@ -1170,14 +1413,30 @@ def _handle_tool_call(tool_call, session_id: str) -> str:
 
 
 def _handle_create_ticket(args: dict, session_id: str) -> str:
-    """Execute a create_ticket tool call via LoggingSink and return result JSON."""
+    """Execute a create_ticket tool call via the ticket sink and return result JSON.
+
+    OpenAI function-calling does not hard-enforce the schema enum, so invented
+    categories ("Room Service") can arrive here. No alias lists: anything that
+    isn't an allowed category (matched case-insensitively against the enum's
+    own labels) is rejected WITH the valid list, and the LLM maps its invented
+    label to the closest valid one itself on the follow-up call.
+    """
     import asyncio
 
-    try:
-        category = Category(args["category"])
-    except (ValueError, KeyError):
+    raw_cat = str(args.get("category", "")).strip()
+    category = next((c for c in Category if c.value.lower() == raw_cat.lower()), None)
+    if category is not None and category not in _hotel_config.allowed_categories:
+        category = None
+    if category is None:
+        valid = ", ".join(c.value for c in _hotel_config.allowed_categories)
         return json.dumps(
-            {"status": "rejected", "reason": f"Invalid category: {args.get('category')}"}
+            {
+                "status": "rejected",
+                "reason": (
+                    f"Invalid category: {raw_cat!r}. Valid categories: {valid}. "
+                    "Call create_ticket again once with the closest valid category."
+                ),
+            }
         )
 
     ticket = Ticket(
@@ -1189,7 +1448,7 @@ def _handle_create_ticket(args: dict, session_id: str) -> str:
     )
 
     loop = asyncio.new_event_loop()
-    ok = loop.run_until_complete(_logging_sink.send(ticket))
+    ok = loop.run_until_complete(_ticket_sink.send(ticket))
     loop.close()
 
     if ok:
@@ -1266,7 +1525,8 @@ def _chat_completion(session_id: str, user_text: str, model: str, language: str)
                     "content": result,
                 }
             )
-        # Second LLM call to get the final spoken reply.
+        # Second LLM call to get the final spoken reply. Tools stay available
+        # so the model can fix a rejected call — bounded to one retry round.
         response2 = client.chat.completions.create(
             model=model,
             max_tokens=512,
@@ -1274,7 +1534,24 @@ def _chat_completion(session_id: str, user_text: str, model: str, language: str)
             tools=_TOOLS or None,
             tool_choice="auto" if _TOOLS else None,
         )
-        reply = response2.choices[0].message.content or ""
+        msg2 = response2.choices[0].message
+        if msg2.tool_calls:
+            messages.append(msg2.model_dump())
+            for tc2 in msg2.tool_calls:
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc2.id,
+                        "content": _handle_tool_call(tc2, session_id),
+                    }
+                )
+            # Final pass without tools so this can never loop.
+            response3 = client.chat.completions.create(
+                model=model, max_tokens=512, messages=messages
+            )
+            reply = response3.choices[0].message.content or ""
+        else:
+            reply = msg2.content or ""
         messages.append({"role": "assistant", "content": reply})
     else:
         reply = msg.content or ""
@@ -1752,6 +2029,10 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_sessions()
         if self.path == "/api/admin/rooms":
             return self._handle_admin_rooms()
+        if self.path == "/api/admin/prompts":
+            return self._handle_admin_prompts_list()
+        if self.path == "/api/admin/voice-prompts":
+            return self._handle_admin_voice_prompts_list()
         if self.path == "/api/admin/call-center/status":
             return self._handle_admin_call_center_status()
         if self.path.startswith("/api/admin/call-center/es/hotels"):
@@ -1838,6 +2119,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_concierge()
         if self.path == "/api/concierge/replay":
             return self._handle_concierge_replay()
+        if self.path == "/api/concierge/feedback":
+            return self._handle_concierge_feedback()
         if self.path == "/api/product-chat":
             return self._handle_product_chat()
         if self.path == "/api/admin/eject":
@@ -1848,6 +2131,10 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_config_post()
         if self.path == "/api/admin/tune":
             return self._handle_admin_tune()
+        if self.path == "/api/admin/prompts":
+            return self._handle_admin_prompts_save()
+        if self.path == "/api/admin/voice-prompts":
+            return self._handle_admin_voice_prompts_save()
         if self.path == "/api/admin/call-center/qdrant/search":
             return self._handle_admin_call_center_qdrant_search()
         # Phase 3 — on-demand bot launcher
@@ -4502,10 +4789,17 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 lang = "en"
 
             # Use pre-built greeting if available, otherwise translate via LLM.
+            # fill_hotel_name resolves the optional {hotel_name} placeholder to
+            # the per-language generic ("our hotel") — the TTS test page has no
+            # hotel context.
+            from voxtera.prompts import fill_hotel_name
+
             text = GREETINGS.get(lang)
             if not text:
-                base = GREETINGS["en"]
+                base = fill_hotel_name(GREETINGS["en"], None, "en")
                 text = _translate_greeting(base, lang, model)
+            else:
+                text = fill_hotel_name(text, None, lang)
 
             if provider == "google":
                 audio = _tts_google(text, voice, lang)
@@ -4836,11 +5130,33 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 messages.append({"role": "tool", "tool_call_id": tcd["id"], "content": result})
             try:
                 t0_llm2 = _time.monotonic()
+                # Keep tools available so the model can FIX a rejected call
+                # (e.g. invalid category) — bounded to one retry round below.
                 r2 = oai_client.chat.completions.create(
-                    model=model, max_tokens=150, messages=messages, stream=False
+                    model=model,
+                    max_tokens=150,
+                    messages=messages,
+                    stream=False,
+                    tools=_TOOLS or None,
+                    tool_choice="auto" if _TOOLS else None,
                 )
                 print(f"[timing] llm_tool_followup={(_time.monotonic() - t0_llm2) * 1000:.0f}ms")
-                full_text = (r2.choices[0].message.content or "").strip()
+                msg2 = r2.choices[0].message
+                if msg2.tool_calls:
+                    # One corrected retry, then a final text-only pass (no
+                    # tools) so this can never loop.
+                    messages.append(msg2.model_dump())
+                    for tc2 in msg2.tool_calls:
+                        result2 = _handle_tool_call(tc2, session_id)
+                        messages.append(
+                            {"role": "tool", "tool_call_id": tc2.id, "content": result2}
+                        )
+                    r3 = oai_client.chat.completions.create(
+                        model=model, max_tokens=150, messages=messages, stream=False
+                    )
+                    full_text = (r3.choices[0].message.content or "").strip()
+                else:
+                    full_text = (msg2.content or "").strip()
                 messages.append({"role": "assistant", "content": full_text})
                 push({"type": "text", "chunk": full_text})
             except Exception as e2:
@@ -4893,6 +5209,137 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         )
         push({"type": "done", "session_id": session_id, "text": full_text})
         finish()
+
+    def _handle_admin_prompts_list(self) -> None:
+        """GET /api/admin/prompts — every editable prompt with its explanation."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        pdir = _prompts_dir()
+        out = []
+        for name, meta in _PROMPT_REGISTRY.items():
+            path = pdir / meta["file"]
+            try:
+                content = path.read_bytes().decode("utf-8")
+                mtime = path.stat().st_mtime
+            except OSError:
+                content, mtime = "", None
+            out.append(
+                {
+                    "name": name,
+                    "file": meta["file"],
+                    "title": meta["title"],
+                    "description": meta["description"],
+                    "content": content,
+                    "mtime": mtime,
+                }
+            )
+        self._send_json(200, {"prompts": out})
+
+    def _handle_admin_prompts_save(self) -> None:
+        """POST /api/admin/prompts — save one prompt {name, content}.
+
+        Whitelisted names only (no path traversal); JSON prompts are validated
+        before writing; the previous version is backed up to
+        logs/prompt_backups/. Changes hot-reload — no restart needed.
+        """
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        name = (body.get("name") or "").strip()
+        content = body.get("content")
+        meta = _PROMPT_REGISTRY.get(name)
+        if meta is None or not isinstance(content, str) or not content.strip():
+            self._send_json(400, {"error": "unknown_prompt_or_empty_content"})
+            return
+        if meta["file"].endswith(".json"):
+            try:
+                json.loads(content)
+            except ValueError as e:
+                self._send_json(400, {"error": "invalid_json", "detail": str(e)})
+                return
+        path = _prompts_dir() / meta["file"]
+        try:
+            backup_dir = Path(__file__).resolve().parent.parent / "logs" / "prompt_backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            # Save time in the filename (same convention as the audit logs), e.g.
+            # concierge_render.md.2026-06-06_18-42-07.bak
+            stamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
+            (backup_dir / f"{meta['file']}.{stamp}.bak").write_bytes(path.read_bytes())
+        except OSError:
+            pass  # backup is best-effort; never block a save on it
+        path.write_bytes(content.encode("utf-8"))
+        self._send_json(200, {"ok": True, "name": name, "mtime": path.stat().st_mtime})
+
+    def _handle_admin_voice_prompts_list(self) -> None:
+        """GET /api/admin/voice-prompts — voice-concierge prompts + explanations."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        pdir = _voice_prompts_dir()
+        out = []
+        for name, meta in _VOICE_PROMPT_REGISTRY.items():
+            path = (pdir / meta["file"]).resolve()
+            try:
+                content = path.read_bytes().decode("utf-8")
+                mtime = path.stat().st_mtime
+            except OSError:
+                content, mtime = "", None
+            out.append(
+                {
+                    "name": name,
+                    "file": Path(meta["file"]).name,
+                    "title": meta["title"],
+                    "description": meta["description"],
+                    "readonly": bool(meta.get("readonly")),
+                    "content": content,
+                    "mtime": mtime,
+                }
+            )
+        self._send_json(200, {"prompts": out})
+
+    def _handle_admin_voice_prompts_save(self) -> None:
+        """POST /api/admin/voice-prompts — save one prompt {name, content}.
+
+        Whitelisted names only; readonly entries are rejected; greetings.json
+        gets structural validation (a bad save would stop the voice bot from
+        booting). Backup to logs/prompt_backups/ before every write. NO
+        hot-reload here: the voice bot imports its prompts at startup, so the
+        save applies from the NEXT CALL.
+
+        Bytes are written exactly as received (UTF-8, no newline
+        normalisation) — audio.py embeds system_prompt.md as a byte-stable
+        semantic fingerprint.
+        """
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        name = (body.get("name") or "").strip()
+        content = body.get("content")
+        meta = _VOICE_PROMPT_REGISTRY.get(name)
+        if meta is None or not isinstance(content, str) or not content.strip():
+            self._send_json(400, {"error": "unknown_prompt_or_empty_content"})
+            return
+        if meta.get("readonly"):
+            self._send_json(403, {"error": "readonly_prompt"})
+            return
+        if name == "greetings":
+            err = _validate_greetings_json(content)
+            if err:
+                self._send_json(400, {"error": "invalid_greetings", "detail": err})
+                return
+        path = (_voice_prompts_dir() / meta["file"]).resolve()
+        try:
+            backup_dir = Path(__file__).resolve().parent.parent / "logs" / "prompt_backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
+            (backup_dir / f"{path.name}.{stamp}.bak").write_bytes(path.read_bytes())
+        except OSError:
+            pass  # backup is best-effort; never block a save on it
+        path.write_bytes(content.encode("utf-8"))
+        self._send_json(200, {"ok": True, "name": name, "mtime": path.stat().st_mtime})
 
     def _handle_concierge(self) -> None:
         """POST /api/concierge — synchronous JSON Q&A backed by ConciergePipeline.
@@ -4950,6 +5397,33 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(500, {"error": str(exc)})
             return
         self._send_json(200, result)
+
+    def _handle_concierge_feedback(self) -> None:
+        """POST /api/concierge/feedback — store a thumbs up/down rating + comment.
+
+        Request:  {"session_id": str|null, "utterance": str, "answer": str,
+                   "rating": "up"|"down", "comment": str}
+        Appended as a ``{"type": "feedback"}`` NDJSON record to the same daily
+        ``travel_agent_consierge-*.jsonl`` log as the dialog records, so each
+        conversation and its user feedback live in one file.
+        """
+        from voxtera.call_center.pipeline import append_feedback_record
+
+        body = self._read_json_body()
+        rating = (body.get("rating") or "").strip().lower()
+        if rating not in ("up", "down"):
+            self._send_json(400, {"error": "rating_must_be_up_or_down"})
+            return
+        append_feedback_record(
+            {
+                "session_id": (body.get("session_id") or "").strip() or None,
+                "utterance": str(body.get("utterance") or "")[:2000],
+                "answer": str(body.get("answer") or "")[:4000],
+                "rating": rating,
+                "comment": str(body.get("comment") or "")[:2000],
+            }
+        )
+        self._send_json(200, {"ok": True})
 
     def _handle_concierge_replay(self) -> None:
         """POST /api/concierge/replay — DEBUG: run the pipeline from a user-edited
@@ -5223,6 +5697,30 @@ if __name__ == "__main__":
             print(f"[warmup] call_center embed model ready in {time.perf_counter() - t0:.1f}s")
         except Exception as exc:  # noqa: BLE001
             print(f"[warmup] embed pre-warm failed: {exc}")
+        # Also warm the persistent concierge runtime so the first guest turn
+        # doesn't pay it: create the shared loop + deps (Redis client, aiohttp
+        # session) and fire a 1-token Anthropic ping to establish the TLS/HTTP2
+        # connection the decompose/render calls will reuse.
+        try:
+            t0 = time.perf_counter()
+
+            async def _warm_deps() -> None:
+                deps = await _concierge_deps()
+                # touch Redis so the connection is established now
+                await deps["store"].load("warmup")
+                if os.environ.get("ANTHROPIC_API_KEY"):
+                    from voxtera.call_center.clients import anthropic_client
+
+                    await anthropic_client().messages.create(
+                        model=os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001"),
+                        max_tokens=1,
+                        messages=[{"role": "user", "content": "ping"}],
+                    )
+
+            asyncio.run_coroutine_threadsafe(_warm_deps(), _concierge_loop()).result(timeout=60)
+            print(f"[warmup] concierge runtime warm in {time.perf_counter() - t0:.1f}s")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[warmup] concierge runtime pre-warm failed: {exc}")
 
     threading.Thread(target=_warm_call_center_embed, daemon=True).start()
     # --------------------------------------------------------------------------

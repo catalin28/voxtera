@@ -67,13 +67,18 @@ def _make_search_fn(hits: list[dict[str, Any]]):
 
 
 class TestBroadDiscoveryCore:
-    async def test_empty_region_returns_no_region_scope(self) -> None:
+    async def test_empty_region_searches_all_regions(self) -> None:
+        # Empty region == "all regions": the retriever searches the whole
+        # collection (no region filter) instead of short-circuiting.
         search = _make_search_fn([])
         d = BroadHotelDiscovery(embed_fn=_fake_embed, search_fn=search)
         result = await d.discover(region="   ", query="anything")
-        assert result["count"] == 0
-        assert result["reason"] == REASON_NO_REGION_SCOPE
-        assert search.calls == []  # type: ignore[attr-defined]
+        assert result["reason"] != REASON_NO_REGION_SCOPE
+        assert len(search.calls) == 1  # type: ignore[attr-defined]  # searched, no short-circuit
+        # No region filter applied (filter is None or carries no region clause).
+        flt = search.calls[0]["filter"]  # type: ignore[attr-defined]
+        must = (flt or {}).get("must", [])
+        assert not any(m.get("key") == "region" for m in must)
 
     async def test_empty_query_returns_empty_query(self) -> None:
         search = _make_search_fn([])
@@ -91,14 +96,18 @@ class TestBroadDiscoveryCore:
             _hit(0.88, hotel_id="cornelia_de_luxe", idx=3),
         ]
         d = BroadHotelDiscovery(
-            max_hotels=5, min_score=0.25,
-            embed_fn=_fake_embed, search_fn=_make_search_fn(hits),
+            max_hotels=5,
+            min_score=0.25,
+            embed_fn=_fake_embed,
+            search_fn=_make_search_fn(hits),
         )
         result = await d.discover(region=REGION, query="luxury hotel with spa")
         assert result["count"] == 3
         ids = [h["hotel_id"] for h in result["hotels"]]
         assert ids == [
-            "maxx_royal_belek", "cornelia_de_luxe", "rixos_premium_belek",
+            "maxx_royal_belek",
+            "cornelia_de_luxe",
+            "rixos_premium_belek",
         ]
         assert result["top_score"] == pytest.approx(0.90)
         assert result["reason"] is None
@@ -110,8 +119,10 @@ class TestBroadDiscoveryCore:
             _hit(0.5, hotel_id="rixos_premium_belek", idx=3, category="overview"),
         ]
         d = BroadHotelDiscovery(
-            max_hotels=5, min_score=0.25,
-            embed_fn=_fake_embed, search_fn=_make_search_fn(hits),
+            max_hotels=5,
+            min_score=0.25,
+            embed_fn=_fake_embed,
+            search_fn=_make_search_fn(hits),
         )
         result = await d.discover(region=REGION, query="spa")
         assert result["count"] == 1
@@ -127,28 +138,29 @@ class TestBroadDiscoveryCore:
         assert {"key": "region", "match": {"value": "Turkish Riviera"}} in must
 
     async def test_activity_tags_appends_filter(self) -> None:
-        search = _make_search_fn([
-            _hit(0.8, hotel_id="rixos_premium_belek", idx=1, activity_tags=["scuba_diving"]),
-        ])
+        search = _make_search_fn(
+            [
+                _hit(0.8, hotel_id="rixos_premium_belek", idx=1, activity_tags=["scuba_diving"]),
+            ]
+        )
         d = BroadHotelDiscovery(embed_fn=_fake_embed, search_fn=search)
         await d.discover(region=REGION, query="diving", activity_tags=["scuba_diving"])
         must = search.calls[0]["filter"]["must"]  # type: ignore[attr-defined]
         assert any(
-            m.get("key") == "activity_tags"
-            and m["match"]["any"] == ["scuba_diving"]
-            for m in must
+            m.get("key") == "activity_tags" and m["match"]["any"] == ["scuba_diving"] for m in must
         )
 
     async def test_category_hint_appends_filter_with_overview(self) -> None:
-        search = _make_search_fn([
-            _hit(0.8, hotel_id="rixos_premium_belek", idx=1, category="food_beverage"),
-        ])
+        search = _make_search_fn(
+            [
+                _hit(0.8, hotel_id="rixos_premium_belek", idx=1, category="food_beverage"),
+            ]
+        )
         d = BroadHotelDiscovery(embed_fn=_fake_embed, search_fn=search)
         await d.discover(region=REGION, query="dinner", category_hint="food_beverage")
         must = search.calls[0]["filter"]["must"]  # type: ignore[attr-defined]
         assert any(
-            m.get("key") == "category"
-            and set(m["match"]["any"]) == {"food_beverage", "overview"}
+            m.get("key") == "category" and set(m["match"]["any"]) == {"food_beverage", "overview"}
             for m in must
         )
 
@@ -158,8 +170,10 @@ class TestBroadDiscoveryCore:
             _hit(0.22, hotel_id="maxx_royal_belek", idx=2),
         ]
         d = BroadHotelDiscovery(
-            max_hotels=5, min_score=0.25,
-            embed_fn=_fake_embed, search_fn=_make_search_fn(hits),
+            max_hotels=5,
+            min_score=0.25,
+            embed_fn=_fake_embed,
+            search_fn=_make_search_fn(hits),
         )
         result = await d.discover(region=REGION, query="zzz")
         assert result["count"] == 0
@@ -176,12 +190,12 @@ class TestBroadDiscoveryCore:
         assert result["reason"] == REASON_ERROR
 
     async def test_max_hotels_caps_results(self) -> None:
-        hits = [
-            _hit(0.9 - 0.05 * i, hotel_id=f"hotel_{i}", idx=i) for i in range(5)
-        ]
+        hits = [_hit(0.9 - 0.05 * i, hotel_id=f"hotel_{i}", idx=i) for i in range(5)]
         d = BroadHotelDiscovery(
-            max_hotels=2, min_score=0.25,
-            embed_fn=_fake_embed, search_fn=_make_search_fn(hits),
+            max_hotels=2,
+            min_score=0.25,
+            embed_fn=_fake_embed,
+            search_fn=_make_search_fn(hits),
         )
         result = await d.discover(region=REGION, query="any")
         assert result["count"] == 2
@@ -200,21 +214,31 @@ class TestBroadDiscoveryCore:
         d = BroadHotelDiscovery(embed_fn=_fake_embed, search_fn=_make_search_fn(hits))
         result = await d.discover(region=REGION, query="any")
         assert set(result) == {
-            "region", "query", "normalized_query",
-            "top_score", "count", "hotels", "reason", "timings",
+            "region",
+            "query",
+            "normalized_query",
+            "top_score",
+            "count",
+            "hotels",
+            "reason",
+            "timings",
         }
         assert set(result["timings"]) >= {"embed_ms", "qdrant_ms"}
         hotel = result["hotels"][0]
         assert set(hotel) == {"hotel_id", "score", "evidence_chunk", "payload"}
         assert set(hotel["evidence_chunk"]) == {
-            "chunk_id", "category", "text", "text_en",
+            "chunk_id",
+            "category",
+            "text",
+            "text_en",
         }
 
 
 class TestThresholdBoundaries:
     async def test_hit_exactly_at_min_score_is_kept(self) -> None:
         d = BroadHotelDiscovery(
-            max_hotels=5, min_score=0.25,
+            max_hotels=5,
+            min_score=0.25,
             embed_fn=_fake_embed,
             search_fn=_make_search_fn([_hit(0.25, hotel_id="rixos_premium_belek", idx=1)]),
         )
@@ -223,7 +247,8 @@ class TestThresholdBoundaries:
 
     async def test_hit_just_below_min_score_is_dropped(self) -> None:
         d = BroadHotelDiscovery(
-            max_hotels=5, min_score=0.25,
+            max_hotels=5,
+            min_score=0.25,
             embed_fn=_fake_embed,
             search_fn=_make_search_fn([_hit(0.2499, hotel_id="rixos_premium_belek", idx=1)]),
         )
@@ -232,8 +257,7 @@ class TestThresholdBoundaries:
         assert result["reason"] == REASON_NO_MATCH
 
 
-def _make_rerank_fn(scores_by_text: dict[str, float] | None = None,
-                    raises: bool = False):
+def _make_rerank_fn(scores_by_text: dict[str, float] | None = None, raises: bool = False):
     """Return a deterministic rerank_fn that maps chunk text -> rerank score.
 
     Unmapped texts get 0.10 (sub-floor) so the test can assert filtering.
@@ -333,9 +357,7 @@ class TestRerank:
             _hit(0.80, hotel_id="hotel_b", chunk_id="b1", idx=2),
             _hit(0.79, hotel_id="hotel_c", chunk_id="c1", idx=3),
         ]
-        rerank = _make_rerank_fn(
-            {"text-1": 0.90, "text-2": 0.80, "text-3": 0.60}
-        )
+        rerank = _make_rerank_fn({"text-1": 0.90, "text-2": 0.80, "text-3": 0.60})
         d = BroadHotelDiscovery(
             embed_fn=_fake_embed,
             search_fn=_make_search_fn(hits),
@@ -349,10 +371,7 @@ class TestRerank:
     async def test_rerank_called_only_once_per_discover(self) -> None:
         # Sanity: even though rerank_fn looks like an embed_fn, it must run
         # exactly once on the post-search batch \u2014 not per-hit.
-        hits = [
-            _hit(0.82, hotel_id=f"hotel_{i}", chunk_id=f"c{i}", idx=i)
-            for i in range(1, 11)
-        ]
+        hits = [_hit(0.82, hotel_id=f"hotel_{i}", chunk_id=f"c{i}", idx=i) for i in range(1, 11)]
         rerank = _make_rerank_fn({f"text-{i}": 0.60 for i in range(1, 11)})
         d = BroadHotelDiscovery(
             embed_fn=_fake_embed,
@@ -362,5 +381,3 @@ class TestRerank:
         await d.discover(region=REGION, query="any")
         assert len(rerank.calls) == 1  # type: ignore[attr-defined]
         assert len(rerank.calls[0][1]) == 10  # type: ignore[attr-defined]
-
-

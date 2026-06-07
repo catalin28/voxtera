@@ -167,7 +167,9 @@ async def run_bot(settings: Settings) -> None:
         # right clock. Greet with the matching time of day.
         local_daypart = daypart_for_hour(datetime.now().hour)
         greeting_lang, greeting_text = resolve_greeting(
-            settings.greeting_language, daypart=local_daypart
+            settings.greeting_language,
+            daypart=local_daypart,
+            hotel_name=action_runtime.hotel_config.hotel_name if action_runtime else None,
         )
         logger.info(
             "Greeting language: {} (preference: {}) daypart: {}",

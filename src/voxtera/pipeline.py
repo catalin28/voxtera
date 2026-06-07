@@ -324,7 +324,7 @@ from voxtera.observability import (  # noqa: E402
     UserTranscriptBroadcaster,
 )
 from voxtera.prompts import SYSTEM_PROMPT, resolve_greeting  # noqa: E402
-from voxtera.prompts.greetings import GREETINGS, TIMED_GREETINGS  # noqa: E402
+from voxtera.prompts.greetings import apply_hotel_name  # noqa: E402
 from voxtera.routing import STTGate, STTRouter, TTSGate, TTSRouter  # noqa: E402
 from voxtera.stt import _STT_BUILDERS, _build_stt  # noqa: E402
 from voxtera.trace import emit as _trace_emit  # noqa: E402
@@ -1343,7 +1343,10 @@ def build_pipeline(
         _rag_retriever = retriever  # expose to _on_joined closure for warmup
         language_getter = None
         if rag_language_tracker is not None:
-            language_getter = lambda: rag_language_tracker.current_language
+
+            def language_getter() -> str | None:
+                return rag_language_tracker.current_language
+
         rag_injector = RAGContextInjector(
             retriever,
             hotel_id=settings.hotel_id,
@@ -1408,11 +1411,19 @@ def build_pipeline(
         # Greeting controller: defers the startup greeting until the browser
         # sends {type: 'voxtera-ready'} after the transcript page is visible,
         # so the bot never speaks into an empty room.
-        greeting_lang, greeting_text = resolve_greeting(settings.greeting_language)
+        # Resolve the {hotel_name} placeholder once, up front — "Welcome to
+        # Casa Dell Arte" when a hotel config is loaded, "our hotel" otherwise.
+        _hotel_name = action_runtime.hotel_config.hotel_name if action_runtime else None
+        greeting_lang, greeting_text = resolve_greeting(
+            settings.greeting_language, hotel_name=_hotel_name
+        )
+        _greetings_map, _timed_greetings = apply_hotel_name(_hotel_name)
         logger.info(
-            "[greeting] language={} (preference={}) — awaiting voxtera-ready from browser",
+            "[greeting] language={} (preference={}, hotel={}) — "
+            "awaiting voxtera-ready from browser",
             greeting_lang,
             settings.greeting_language,
+            _hotel_name or "generic",
         )
         # Pass both greeting catalogs so the controller can pick the greeting
         # by the guest's selected language AND local time of day, from the
@@ -1421,8 +1432,8 @@ def build_pipeline(
         processors.append(
             GreetingController(
                 greeting_text=greeting_text,
-                greetings_map=GREETINGS,
-                timed_greetings=TIMED_GREETINGS,
+                greetings_map=_greetings_map,
+                timed_greetings=_timed_greetings,
                 default_language=greeting_lang,
             )
         )

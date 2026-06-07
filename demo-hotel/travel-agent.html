@@ -214,6 +214,59 @@ details.debug summary:hover{color:var(--accent);}
   letter-spacing:0.06em;
 }
 
+/* ---------- ANSWER FEEDBACK (thumbs + popup form) ---------- */
+.feedback-row{
+  display:flex;align-items:center;gap:0.45rem;
+  margin-top:0.6rem;padding-top:0.5rem;
+  border-top:1px dashed var(--line);
+}
+.feedback-label{
+  font-family:'JetBrains Mono',monospace;font-size:0.64rem;
+  text-transform:uppercase;letter-spacing:0.14em;color:var(--ink-soft);
+  opacity:0.75;margin-right:0.2rem;
+}
+.fb-btn{
+  font-size:0.95rem;line-height:1;cursor:pointer;
+  background:transparent;border:1px solid var(--line-strong);
+  border-radius:999px;padding:0.3rem 0.6rem;
+  filter:grayscale(1);opacity:0.65;
+  transition:all 0.2s ease;
+}
+.fb-btn:hover:not(:disabled){
+  border-color:var(--accent);background:var(--accent-tint);
+  filter:grayscale(0);opacity:1;
+}
+.fb-btn.selected{
+  border-color:var(--accent);background:var(--accent-tint);
+  filter:grayscale(0);opacity:1;
+}
+.fb-btn:disabled{cursor:default;}
+.fb-btn:disabled:not(.selected){opacity:0.3;}
+.feedback-form{
+  margin-top:0.55rem;padding:0.7rem 0.75rem;
+  border:1px solid var(--accent);border-radius:10px;
+  background:var(--accent-tint);
+}
+.feedback-form textarea{
+  width:100%;min-height:64px;resize:vertical;
+  font-family:'Fraunces',serif;font-size:0.95rem;color:var(--ink);
+  background:var(--paper);border:1px solid var(--line);border-radius:6px;
+  padding:0.5rem 0.6rem;outline:none;
+}
+.feedback-form textarea:focus{border-color:var(--accent);}
+.feedback-actions{display:flex;gap:0.5rem;margin-top:0.5rem;}
+.fb-send,.fb-skip{
+  font-family:'JetBrains Mono',monospace;font-size:0.68rem;
+  text-transform:uppercase;letter-spacing:0.1em;cursor:pointer;
+  padding:0.4rem 0.9rem;border-radius:999px;
+  transition:all 0.2s ease;
+}
+.fb-send{background:var(--accent);color:#fff;border:1px solid var(--accent);}
+.fb-send:hover:not(:disabled){background:var(--accent-deep);border-color:var(--accent-deep);}
+.fb-skip{background:transparent;color:var(--ink-soft);border:1px solid var(--line-strong);}
+.fb-skip:hover:not(:disabled){border-color:var(--accent);color:var(--accent-deep);}
+.fb-send:disabled,.fb-skip:disabled{opacity:0.5;cursor:not-allowed;}
+
 /* ---------- INPUT BAR ---------- */
 .input-bar-wrap{
   position:sticky;bottom:0;
@@ -535,6 +588,7 @@ function renderDebug(result, parent){
       const bub = addBubble('assistant', 'Concierge · REPLAY (edited decomposition)', data.answer || data.error || '—');
       if (data.retrieval){ renderHotels(data.retrieval, bub); renderWeb(data.retrieval, bub); }
       renderDebug(data, bub);
+      addFeedback(bub, result.utterance, data);
     } catch (e){ status.textContent = 'error: ' + e; }
     finally { btn.disabled = false; }
   };
@@ -576,6 +630,63 @@ function renderDebug(result, parent){
   parent.appendChild(det);
 }
 
+// Thumbs up/down under each concierge answer. Clicking a thumb opens a small
+// form so the user can explain what was good/bad; Send (or Skip) POSTs the
+// rating + comment to /api/concierge/feedback, which appends a
+// {"type":"feedback"} record to the same JSONL log as the dialog itself.
+function addFeedback(bub, utterance, data){
+  const answerText = data.answer
+    || (data.clarification && data.clarification.question) || '';
+  const row = document.createElement('div'); row.className = 'feedback-row';
+  const label = document.createElement('span'); label.className = 'feedback-label';
+  label.textContent = 'Rate this answer';
+  const up = document.createElement('button');
+  up.type = 'button'; up.className = 'fb-btn'; up.textContent = '👍'; up.title = 'Good answer';
+  const down = document.createElement('button');
+  down.type = 'button'; down.className = 'fb-btn'; down.textContent = '👎'; down.title = 'Bad answer';
+  row.appendChild(label); row.appendChild(up); row.appendChild(down);
+  bub.appendChild(row);
+
+  let formEl = null;
+  function openForm(rating){
+    if (formEl) formEl.remove();
+    formEl = document.createElement('div'); formEl.className = 'feedback-form';
+    const ta = document.createElement('textarea');
+    ta.placeholder = rating === 'up'
+      ? 'What was good about this answer? (optional)'
+      : 'What was wrong or missing? (optional)';
+    const actions = document.createElement('div'); actions.className = 'feedback-actions';
+    const send = document.createElement('button'); send.type = 'button'; send.className = 'fb-send'; send.textContent = 'Send';
+    const skip = document.createElement('button'); skip.type = 'button'; skip.className = 'fb-skip'; skip.textContent = 'Skip';
+    actions.appendChild(send); actions.appendChild(skip);
+    formEl.appendChild(ta); formEl.appendChild(actions);
+    bub.appendChild(formEl);
+    ta.focus();
+
+    const submit = async (comment) => {
+      send.disabled = skip.disabled = true;
+      try {
+        await fetch('/api/concierge/feedback', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            session_id: data.session_id || sessionStorage.getItem('voxtera_concierge_sid'),
+            utterance, answer: answerText, rating, comment,
+          }),
+        });
+      } catch (e){ /* best-effort — don't block the UI on logging */ }
+      formEl.remove(); formEl = null;
+      up.classList.toggle('selected', rating === 'up');
+      down.classList.toggle('selected', rating === 'down');
+      up.disabled = down.disabled = true;
+      label.textContent = 'Thanks for the feedback';
+    };
+    send.onclick = () => submit(ta.value.trim());
+    skip.onclick = () => submit('');
+  }
+  up.onclick = () => openForm('up');
+  down.onclick = () => openForm('down');
+}
+
 async function ask(utterance){
   const region = regionPick.value;
   addBubble('user', 'You · ' + region, utterance);
@@ -603,18 +714,21 @@ async function ask(utterance){
       const label = 'Concierge · escalating (' + data.escalation.escalation_type + ')';
       const bub = addBubble('assistant', label, data.answer || '—');
       renderDebug(data, bub);
+      addFeedback(bub, utterance, data);
       return;
     }
     // Clarification — ask the user a follow-up question and wait for reply.
     if (data.clarification && data.clarification.question){
       const bub = addBubble('assistant', 'Concierge · needs more info', data.clarification.question);
       renderDebug(data, bub);
+      addFeedback(bub, utterance, data);
       return;
     }
     const bub = addBubble('assistant', 'Concierge', data.answer || '—');
     renderHotels(data.retrieval, bub);
     renderWeb(data.retrieval, bub);
     renderDebug(data, bub);
+    addFeedback(bub, utterance, data);
   } catch (e){
     waiting.remove();
     addBubble('assistant', 'Concierge · error', String(e));

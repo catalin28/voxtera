@@ -112,6 +112,7 @@ ssh "${HOST}" 'echo "Connected to $(hostname) as $(whoami)"'
 if [[ "$SKIP_SYNC" == "false" ]]; then
   echo "==> Syncing project files to ${HOST}:${REMOTE_APP_DIR}"
   ssh "${HOST}" "mkdir -p '${REMOTE_APP_DIR}'"
+  ssh "${HOST}" "rm -rf '${REMOTE_APP_DIR}/tests'"
   rsync -az --delete \
     --exclude '.git/' \
     --exclude '.venv/' \
@@ -119,6 +120,7 @@ if [[ "$SKIP_SYNC" == "false" ]]; then
     --exclude '.pytest_cache/' \
     --exclude '.mypy_cache/' \
     --exclude '.ruff_cache/' \
+      --exclude 'tests/' \
     --exclude 'logs/' \
     --exclude 'demo-hotel/logs/' \
     --exclude 'demo-hotel/traces/' \

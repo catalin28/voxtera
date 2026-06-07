@@ -1,10 +1,14 @@
 """Multilingual startup greetings for Voxtera — the hotel voice concierge.
 
-Hardcoded so the bot can speak before any LLM round-trip: faster, deterministic,
-no token cost. Once the guest speaks, Whisper detects their language and Claude
-replies in kind — see ``src/voxtera/prompts/system_prompt.py``.
+The greeting TEXT lives in ``greetings.json`` next to this module and is
+loaded ONCE at import time — so runtime behaviour is identical to the old
+hardcoded dicts (no LLM round-trip, no token cost, deterministic), but the
+text is editable from the admin page (Voice Concierge Prompts) without
+touching Python. Edits apply from the NEXT call: the bot subprocess imports
+this module at startup. Once the guest speaks, the STT detects their language
+and Claude replies in kind — see ``src/voxtera/prompts/system_prompt.py``.
 
-Two catalogs:
+Two catalogs (top-level keys in ``greetings.json``):
 
 * ``GREETINGS`` — one time-neutral concierge greeting per language. This is the
   safe default: used at bot boot (before the browser connects) and whenever the
@@ -24,10 +28,10 @@ Resolution order in :func:`resolve_greeting`:
     2. System locale (``locale.getlocale()``)
     3. English fallback
 
-Add a language: add a ``"xx": "..."`` entry to ``GREETINGS`` and a matching
-``"xx": {...}`` entry to ``TIMED_GREETINGS``. A language present in ``GREETINGS``
-but missing from ``TIMED_GREETINGS`` simply never gets a time-of-day greeting —
-it falls back to the neutral one, which is always safe.
+Add a language: add a ``"xx": "..."`` entry to ``greetings`` and a matching
+``"xx": {...}`` entry to ``timed_greetings`` in ``greetings.json``. A language
+present in ``greetings`` but missing from ``timed_greetings`` simply never gets
+a time-of-day greeting — it falls back to the neutral one, which is always safe.
 
 Where a language does not lexically distinguish a daypart (French has no
 separate "good afternoon"; Korean and Hindi barely daypart greetings at all),
@@ -36,8 +40,10 @@ the variants intentionally repeat — that is correct usage, not an oversight.
 
 from __future__ import annotations
 
+import json
 import locale
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 DEFAULT_LANGUAGE = "en"
@@ -45,556 +51,59 @@ DEFAULT_LANGUAGE = "en"
 # Daypart bucket keys used throughout (TIMED_GREETINGS, GreetingController).
 DAYPARTS = ("morning", "afternoon", "evening")
 
+# ── Greeting text: loaded once at import from greetings.json ────────────────
+# Read as bytes + explicit decode (same convention as system_prompt.py) so we
+# get exactly what's on disk. json.loads validates; a malformed file fails
+# LOUDLY at import (bot refuses to start) rather than greeting guests wrongly.
+_DATA_PATH = Path(__file__).parent / "greetings.json"
+_data = json.loads(_DATA_PATH.read_bytes().decode("utf-8"))
+
 # Time-neutral concierge greeting per language. Always safe to fall back to.
-GREETINGS: dict[str, str] = {
-    "en": (
-        "Hello, and a very warm welcome. "
-        "It's a pleasure to have you with us — I'm your concierge. "
-        "How may I help you?"
-    ),
-    "fr": (
-        "Bonjour et bienvenue. C'est un véritable plaisir de vous accueillir — "
-        "je suis votre concierge. Comment puis-je vous aider ?"
-    ),
-    "es": (
-        "Hola y le damos la bienvenida. Es un placer tenerle con nosotros. "
-        "Soy su conserje. ¿En qué puedo ayudarle?"
-    ),
-    "it": (
-        "Salve e Le diamo il benvenuto. È un piacere averla con noi. "
-        "Sono il Suo concierge. Come posso aiutarla?"
-    ),
-    "de": (
-        "Hallo und herzlich willkommen. Es ist uns eine Freude, Sie bei uns "
-        "zu begrüßen. Ich bin Ihr Concierge. Wie kann ich Ihnen helfen?"
-    ),
-    "pt": (
-        "Olá e damos-lhe as boas-vindas. É um grande prazer que esteja "
-        "connosco. Sou o seu concierge. Como posso ajudar?"
-    ),
-    "nl": (
-        "Hallo en hartelijk welkom. Wat fijn dat u er bent — "
-        "ik ben uw conciërge. Hoe kan ik u helpen?"
-    ),
-    "ja": (
-        "ようこそお越しくださいました。お会いできて光栄です。"
-        "わたくし、コンシェルジュでございます。ご用件をお伺いいたします。"
-    ),
-    "zh": "您好，热烈欢迎您。很高兴为您服务，我是您的专属礼宾。请问有什么可以帮您？",
-    "ko": (
-        "안녕하세요, 진심으로 환영합니다. 모시게 되어 기쁩니다. "
-        "저는 고객님의 컨시어지입니다. 무엇을 도와드릴까요?"
-    ),
-    "ar": ("أهلاً وسهلاً بك. يسعدنا وجودك معنا. " "أنا الكونسيرج الخاص بك. كيف يمكنني مساعدتك؟"),
-    "ru": (
-        "Здравствуйте и добро пожаловать. Мы рады видеть вас. "
-        "Я ваш консьерж. Чем я могу вам помочь?"
-    ),
-    "az": (
-        "Salam və xoş gəlmisiniz. Sizi aramızda görməyə şadıq. "
-        "Mən sizin konsyerjinizəm. Sizə necə kömək edə bilərəm?"
-    ),
-    "tr": (
-        "Merhaba ve hoş geldiniz. Sizi aramızda görmek bir mutluluk. "
-        "Ben sizin konsiyerjinizim. Size nasıl yardımcı olabilirim?"
-    ),
-    "ro": (
-        "Bună ziua și bine ați venit. Ne face plăcere să vă avem alături. "
-        "Sunt concierge-ul dumneavoastră. Cu ce vă pot ajuta?"
-    ),
-    "hy": (
-        "Բարև Ձեզ և բարի գալուստ։ Ուրախ ենք Ձեզ մեզ մոտ տեսնել։ "
-        "Ես Ձեր կոնսիերժն եմ։ Ինչո՞վ կարող եմ օգնել Ձեզ։"
-    ),
-    "hi": (
-        "नमस्ते और हार्दिक स्वागत है। आपका हमारे यहाँ आना हमारे लिए खुशी की बात है। "
-        "मैं आपका कॉन्सियर्ज हूँ। मैं आपकी कैसे सहायता करूँ?"
-    ),
-    "pl": (
-        "Dzień dobry i serdecznie witamy. Cieszymy się, że są Państwo z nami. "
-        "Jestem Państwa konsjerżem. W czym mogę pomóc?"
-    ),
-    "bg": (
-        "Здравейте и добре дошли. За нас е удоволствие да сте при нас. "
-        "Аз съм вашият консиерж. С какво мога да ви помогна?"
-    ),
-    "cs": (
-        "Dobrý den a vítejte. Je nám potěšením, že jste u nás. "
-        "Jsem váš concierge. Jak vám mohu pomoci?"
-    ),
-    "da": (
-        "Hej og hjertelig velkommen. Det glæder os at have dig hos os. "
-        "Jeg er din concierge. Hvordan kan jeg hjælpe dig?"
-    ),
-    "el": (
-        "Γεια σας και καλώς ορίσατε. Χαιρόμαστε που είστε μαζί μας. "
-        "Είμαι ο κονσιέρζ σας. Πώς μπορώ να σας βοηθήσω;"
-    ),
-    "fi": (
-        "Hei ja tervetuloa. On ilo saada teidät vieraaksemme. "
-        "Olen conciergenne. Kuinka voin auttaa teitä?"
-    ),
-    "he": ("שלום וברוכים הבאים. שמחים לארח אתכם. " "אני הקונסיירז' שלכם. כיצד אוכל לעזור לכם?"),
-    "hu": (
-        "Üdvözöljük! Örömünkre szolgál, hogy nálunk van. "
-        "Én vagyok az Ön concierge-e. Miben segíthetek?"
-    ),
-    "id": (
-        "Halo dan selamat datang. Kami senang Anda berada di sini. "
-        "Saya concierge pribadi Anda. Ada yang bisa saya bantu?"
-    ),
-    "no": (
-        "Hei og hjertelig velkommen. Det gleder oss å ha deg her. "
-        "Jeg er din concierge. Hvordan kan jeg hjelpe deg?"
-    ),
-    "sv": (
-        "Hej och hjärtligt välkommen. Det glädjer oss att ha dig hos oss. "
-        "Jag är din concierge. Hur kan jag hjälpa dig?"
-    ),
-    "th": ("สวัสดี ยินดีต้อนรับ เรายินดีมากที่คุณมาพัก " "คอนเซียร์จส่วนตัวของคุณพร้อมให้บริการ มีอะไรให้ช่วยไหม"),
-    "uk": (
-        "Вітаю і ласкаво просимо. Ми раді вітати вас у нас. "
-        "Я ваш консьєрж. Чим я можу вам допомогти?"
-    ),
-    "vi": (
-        "Xin chào và chào mừng quý khách. "
-        "Chúng tôi rất hân hạnh được đón tiếp quý khách. "
-        "Tôi là nhân viên lễ tân riêng của quý khách. Tôi có thể giúp gì cho quý khách?"
-    ),
-}
+GREETINGS: dict[str, str] = _data["greetings"]
 
 # Morning / afternoon / evening variants. Same body as the neutral greeting,
-# only the opening time-of-day phrase changes.
-TIMED_GREETINGS: dict[str, dict[str, str]] = {
-    "en": {
-        "morning": (
-            "Good morning, and a very warm welcome. "
-            "It's a pleasure to have you with us — I'm your concierge. "
-            "How may I help you?"
-        ),
-        "afternoon": (
-            "Good afternoon, and a very warm welcome. "
-            "It's a pleasure to have you with us — I'm your concierge. "
-            "How may I help you?"
-        ),
-        "evening": (
-            "Good evening, and a very warm welcome. "
-            "It's a pleasure to have you with us — I'm your concierge. "
-            "How may I help you?"
-        ),
-    },
-    "fr": {
-        # French has no distinct "good afternoon" — "Bonjour" covers the day.
-        "morning": (
-            "Bonjour et bienvenue. C'est un véritable plaisir de vous accueillir — "
-            "je suis votre concierge. Comment puis-je vous aider ?"
-        ),
-        "afternoon": (
-            "Bonjour et bienvenue. C'est un véritable plaisir de vous accueillir — "
-            "je suis votre concierge. Comment puis-je vous aider ?"
-        ),
-        "evening": (
-            "Bonsoir et bienvenue. C'est un véritable plaisir de vous accueillir — "
-            "je suis votre concierge. Comment puis-je vous aider ?"
-        ),
-    },
-    "es": {
-        "morning": (
-            "Buenos días y le damos la bienvenida. Es un placer tenerle con "
-            "nosotros. Soy su conserje. ¿En qué puedo ayudarle?"
-        ),
-        "afternoon": (
-            "Buenas tardes y le damos la bienvenida. Es un placer tenerle con "
-            "nosotros. Soy su conserje. ¿En qué puedo ayudarle?"
-        ),
-        "evening": (
-            "Buenas noches y le damos la bienvenida. Es un placer tenerle con "
-            "nosotros. Soy su conserje. ¿En qué puedo ayudarle?"
-        ),
-    },
-    "it": {
-        "morning": (
-            "Buongiorno e Le diamo il benvenuto. È un piacere averla con noi. "
-            "Sono il Suo concierge. Come posso aiutarla?"
-        ),
-        "afternoon": (
-            "Buon pomeriggio e Le diamo il benvenuto. È un piacere averla con noi. "
-            "Sono il Suo concierge. Come posso aiutarla?"
-        ),
-        "evening": (
-            "Buonasera e Le diamo il benvenuto. È un piacere averla con noi. "
-            "Sono il Suo concierge. Come posso aiutarla?"
-        ),
-    },
-    "de": {
-        "morning": (
-            "Guten Morgen und herzlich willkommen. Es ist uns eine Freude, Sie "
-            "bei uns zu begrüßen. Ich bin Ihr Concierge. Wie kann ich Ihnen helfen?"
-        ),
-        "afternoon": (
-            "Guten Tag und herzlich willkommen. Es ist uns eine Freude, Sie "
-            "bei uns zu begrüßen. Ich bin Ihr Concierge. Wie kann ich Ihnen helfen?"
-        ),
-        "evening": (
-            "Guten Abend und herzlich willkommen. Es ist uns eine Freude, Sie "
-            "bei uns zu begrüßen. Ich bin Ihr Concierge. Wie kann ich Ihnen helfen?"
-        ),
-    },
-    "pt": {
-        "morning": (
-            "Bom dia e damos-lhe as boas-vindas. É um grande prazer que esteja "
-            "connosco. Sou o seu concierge. Como posso ajudar?"
-        ),
-        "afternoon": (
-            "Boa tarde e damos-lhe as boas-vindas. É um grande prazer que esteja "
-            "connosco. Sou o seu concierge. Como posso ajudar?"
-        ),
-        "evening": (
-            "Boa noite e damos-lhe as boas-vindas. É um grande prazer que esteja "
-            "connosco. Sou o seu concierge. Como posso ajudar?"
-        ),
-    },
-    "nl": {
-        "morning": (
-            "Goedemorgen en hartelijk welkom. Wat fijn dat u er bent — "
-            "ik ben uw conciërge. Hoe kan ik u helpen?"
-        ),
-        "afternoon": (
-            "Goedemiddag en hartelijk welkom. Wat fijn dat u er bent — "
-            "ik ben uw conciërge. Hoe kan ik u helpen?"
-        ),
-        "evening": (
-            "Goedenavond en hartelijk welkom. Wat fijn dat u er bent — "
-            "ik ben uw conciërge. Hoe kan ik u helpen?"
-        ),
-    },
-    "ja": {
-        "morning": (
-            "おはようございます。ようこそお越しくださいました。お会いできて光栄です。"
-            "わたくし、コンシェルジュでございます。ご用件をお伺いいたします。"
-        ),
-        "afternoon": (
-            "こんにちは。ようこそお越しくださいました。お会いできて光栄です。"
-            "わたくし、コンシェルジュでございます。ご用件をお伺いいたします。"
-        ),
-        "evening": (
-            "こんばんは。ようこそお越しくださいました。お会いできて光栄です。"
-            "わたくし、コンシェルジュでございます。ご用件をお伺いいたします。"
-        ),
-    },
-    "zh": {
-        "morning": "早上好，热烈欢迎您。很高兴为您服务，我是您的专属礼宾。请问有什么可以帮您？",
-        "afternoon": "下午好，热烈欢迎您。很高兴为您服务，我是您的专属礼宾。请问有什么可以帮您？",
-        "evening": "晚上好，热烈欢迎您。很高兴为您服务，我是您的专属礼宾。请问有什么可以帮您？",
-    },
-    "ko": {
-        # Korean rarely dayparts greetings; "안녕하세요" is the natural default.
-        "morning": (
-            "좋은 아침입니다. 진심으로 환영합니다. 모시게 되어 기쁩니다. "
-            "저는 고객님의 컨시어지입니다. 무엇을 도와드릴까요?"
-        ),
-        "afternoon": (
-            "안녕하세요, 진심으로 환영합니다. 모시게 되어 기쁩니다. "
-            "저는 고객님의 컨시어지입니다. 무엇을 도와드릴까요?"
-        ),
-        "evening": (
-            "안녕하세요, 진심으로 환영합니다. 모시게 되어 기쁩니다. "
-            "저는 고객님의 컨시어지입니다. 무엇을 도와드릴까요?"
-        ),
-    },
-    "ar": {
-        # Arabic "مساء الخير" covers both afternoon and evening.
-        "morning": (
-            "صباح الخير وأهلاً بك. يسعدنا وجودك معنا. " "أنا الكونسيرج الخاص بك. كيف يمكنني مساعدتك؟"
-        ),
-        "afternoon": (
-            "مساء الخير وأهلاً بك. يسعدنا وجودك معنا. " "أنا الكونسيرج الخاص بك. كيف يمكنني مساعدتك؟"
-        ),
-        "evening": (
-            "مساء الخير وأهلاً بك. يسعدنا وجودك معنا. " "أنا الكونسيرج الخاص بك. كيف يمكنني مساعدتك؟"
-        ),
-    },
-    "ru": {
-        "morning": (
-            "Доброе утро и добро пожаловать. Мы рады видеть вас. "
-            "Я ваш консьерж. Чем я могу вам помочь?"
-        ),
-        "afternoon": (
-            "Добрый день и добро пожаловать. Мы рады видеть вас. "
-            "Я ваш консьерж. Чем я могу вам помочь?"
-        ),
-        "evening": (
-            "Добрый вечер и добро пожаловать. Мы рады видеть вас. "
-            "Я ваш консьерж. Чем я могу вам помочь?"
-        ),
-    },
-    "az": {
-        "morning": (
-            "Sabahınız xeyir və xoş gəlmisiniz. Sizi aramızda görməyə şadıq. "
-            "Mən sizin konsyerjinizəm. Sizə necə kömək edə bilərəm?"
-        ),
-        "afternoon": (
-            "Günortanız xeyir və xoş gəlmisiniz. Sizi aramızda görməyə şadıq. "
-            "Mən sizin konsyerjinizəm. Sizə necə kömək edə bilərəm?"
-        ),
-        "evening": (
-            "Axşamınız xeyir və xoş gəlmisiniz. Sizi aramızda görməyə şadıq. "
-            "Mən sizin konsyerjinizəm. Sizə necə kömək edə bilərəm?"
-        ),
-    },
-    "tr": {
-        "morning": (
-            "Günaydın ve hoş geldiniz. Sizi aramızda görmek bir mutluluk. "
-            "Ben sizin konsiyerjinizim. Size nasıl yardımcı olabilirim?"
-        ),
-        "afternoon": (
-            "İyi günler ve hoş geldiniz. Sizi aramızda görmek bir mutluluk. "
-            "Ben sizin konsiyerjinizim. Size nasıl yardımcı olabilirim?"
-        ),
-        "evening": (
-            "İyi akşamlar ve hoş geldiniz. Sizi aramızda görmek bir mutluluk. "
-            "Ben sizin konsiyerjinizim. Size nasıl yardımcı olabilirim?"
-        ),
-    },
-    "ro": {
-        "morning": (
-            "Bună dimineața și bine ați venit. Ne face plăcere să vă avem "
-            "alături. Sunt concierge-ul dumneavoastră. Cu ce vă pot ajuta?"
-        ),
-        "afternoon": (
-            "Bună ziua și bine ați venit. Ne face plăcere să vă avem "
-            "alături. Sunt concierge-ul dumneavoastră. Cu ce vă pot ajuta?"
-        ),
-        "evening": (
-            "Bună seara și bine ați venit. Ne face plăcere să vă avem "
-            "alături. Sunt concierge-ul dumneavoastră. Cu ce vă pot ajuta?"
-        ),
-    },
-    "hy": {
-        "morning": (
-            "Բարի լույս և բարի գալուստ։ Ուրախ ենք Ձեզ մեզ մոտ տեսնել։ "
-            "Ես Ձեր կոնսիերժն եմ։ Ինչո՞վ կարող եմ օգնել Ձեզ։"
-        ),
-        "afternoon": (
-            "Բարի օր և բարի գալուստ։ Ուրախ ենք Ձեզ մեզ մոտ տեսնել։ "
-            "Ես Ձեր կոնսիերժն եմ։ Ինչո՞վ կարող եմ օգնել Ձեզ։"
-        ),
-        "evening": (
-            "Բարի երեկո և բարի գալուստ։ Ուրախ ենք Ձեզ մեզ մոտ տեսնել։ "
-            "Ես Ձեր կոնսիերժն եմ։ Ինչո՞վ կարող եմ օգնել Ձեզ։"
-        ),
-    },
-    "hi": {
-        # Hindi barely dayparts greetings; "नमस्ते" is the natural default.
-        "morning": (
-            "सुप्रभात और हार्दिक स्वागत है। आपका हमारे यहाँ आना हमारे लिए खुशी की बात है। "
-            "मैं आपका कॉन्सियर्ज हूँ। मैं आपकी कैसे सहायता करूँ?"
-        ),
-        "afternoon": (
-            "नमस्ते और हार्दिक स्वागत है। आपका हमारे यहाँ आना हमारे लिए खुशी की बात है। "
-            "मैं आपका कॉन्सियर्ज हूँ। मैं आपकी कैसे सहायता करूँ?"
-        ),
-        "evening": (
-            "शुभ संध्या और हार्दिक स्वागत है। आपका हमारे यहाँ आना हमारे लिए खुशी की बात है। "
-            "मैं आपका कॉन्सियर्ज हूँ। मैं आपकी कैसे सहायता करूँ?"
-        ),
-    },
-    "pl": {
-        # Polish "Dzień dobry" covers morning and afternoon.
-        "morning": (
-            "Dzień dobry i serdecznie witamy. Cieszymy się, że są Państwo z "
-            "nami. Jestem Państwa konsjerżem. W czym mogę pomóc?"
-        ),
-        "afternoon": (
-            "Dzień dobry i serdecznie witamy. Cieszymy się, że są Państwo z "
-            "nami. Jestem Państwa konsjerżem. W czym mogę pomóc?"
-        ),
-        "evening": (
-            "Dobry wieczór i serdecznie witamy. Cieszymy się, że są Państwo z "
-            "nami. Jestem Państwa konsjerżem. W czym mogę pomóc?"
-        ),
-    },
-    "bg": {
-        "morning": (
-            "Добро утро и добре дошли. За нас е удоволствие да сте при нас. "
-            "Аз съм вашият консиерж. С какво мога да ви помогна?"
-        ),
-        "afternoon": (
-            "Добър ден и добре дошли. За нас е удоволствие да сте при нас. "
-            "Аз съм вашият консиерж. С какво мога да ви помогна?"
-        ),
-        "evening": (
-            "Добър вечер и добре дошли. За нас е удоволствие да сте при нас. "
-            "Аз съм вашият консиерж. С какво мога да ви помогна?"
-        ),
-    },
-    "cs": {
-        "morning": (
-            "Dobré ráno a vítejte. Je nám potěšením, že jste u nás. "
-            "Jsem váš concierge. Jak vám mohu pomoci?"
-        ),
-        "afternoon": (
-            "Dobrý den a vítejte. Je nám potěšením, že jste u nás. "
-            "Jsem váš concierge. Jak vám mohu pomoci?"
-        ),
-        "evening": (
-            "Dobrý večer a vítejte. Je nám potěšením, že jste u nás. "
-            "Jsem váš concierge. Jak vám mohu pomoci?"
-        ),
-    },
-    "da": {
-        "morning": (
-            "Godmorgen og hjertelig velkommen. Det glæder os at have dig hos "
-            "os. Jeg er din concierge. Hvordan kan jeg hjælpe dig?"
-        ),
-        "afternoon": (
-            "God eftermiddag og hjertelig velkommen. Det glæder os at have dig "
-            "hos os. Jeg er din concierge. Hvordan kan jeg hjælpe dig?"
-        ),
-        "evening": (
-            "Godaften og hjertelig velkommen. Det glæder os at have dig hos "
-            "os. Jeg er din concierge. Hvordan kan jeg hjælpe dig?"
-        ),
-    },
-    "el": {
-        "morning": (
-            "Καλημέρα και καλώς ορίσατε. Χαιρόμαστε που είστε μαζί μας. "
-            "Είμαι ο κονσιέρζ σας. Πώς μπορώ να σας βοηθήσω;"
-        ),
-        "afternoon": (
-            "Καλό απόγευμα και καλώς ορίσατε. Χαιρόμαστε που είστε μαζί μας. "
-            "Είμαι ο κονσιέρζ σας. Πώς μπορώ να σας βοηθήσω;"
-        ),
-        "evening": (
-            "Καλησπέρα και καλώς ορίσατε. Χαιρόμαστε που είστε μαζί μας. "
-            "Είμαι ο κονσιέρζ σας. Πώς μπορώ να σας βοηθήσω;"
-        ),
-    },
-    "fi": {
-        "morning": (
-            "Hyvää huomenta ja tervetuloa. On ilo saada teidät vieraaksemme. "
-            "Olen conciergenne. Kuinka voin auttaa teitä?"
-        ),
-        "afternoon": (
-            "Hyvää päivää ja tervetuloa. On ilo saada teidät vieraaksemme. "
-            "Olen conciergenne. Kuinka voin auttaa teitä?"
-        ),
-        "evening": (
-            "Hyvää iltaa ja tervetuloa. On ilo saada teidät vieraaksemme. "
-            "Olen conciergenne. Kuinka voin auttaa teitä?"
-        ),
-    },
-    "he": {
-        "morning": (
-            "בוקר טוב וברוכים הבאים. שמחים לארח אתכם. " "אני הקונסיירז' שלכם. כיצד אוכל לעזור לכם?"
-        ),
-        "afternoon": (
-            "צהריים טובים וברוכים הבאים. שמחים לארח אתכם. "
-            "אני הקונסיירז' שלכם. כיצד אוכל לעזור לכם?"
-        ),
-        "evening": (
-            "ערב טוב וברוכים הבאים. שמחים לארח אתכם. " "אני הקונסיירז' שלכם. כיצד אוכל לעזור לכם?"
-        ),
-    },
-    "hu": {
-        "morning": (
-            "Jó reggelt és sok szeretettel üdvözöljük. Örömünkre szolgál, hogy "
-            "nálunk van. Én vagyok az Ön concierge-e. Miben segíthetek?"
-        ),
-        "afternoon": (
-            "Jó napot és sok szeretettel üdvözöljük. Örömünkre szolgál, hogy "
-            "nálunk van. Én vagyok az Ön concierge-e. Miben segíthetek?"
-        ),
-        "evening": (
-            "Jó estét és sok szeretettel üdvözöljük. Örömünkre szolgál, hogy "
-            "nálunk van. Én vagyok az Ön concierge-e. Miben segíthetek?"
-        ),
-    },
-    "id": {
-        "morning": (
-            "Selamat pagi dan selamat datang. Kami senang Anda berada di sini. "
-            "Saya concierge pribadi Anda. Ada yang bisa saya bantu?"
-        ),
-        "afternoon": (
-            "Selamat siang dan selamat datang. Kami senang Anda berada di sini. "
-            "Saya concierge pribadi Anda. Ada yang bisa saya bantu?"
-        ),
-        "evening": (
-            "Selamat malam dan selamat datang. Kami senang Anda berada di sini. "
-            "Saya concierge pribadi Anda. Ada yang bisa saya bantu?"
-        ),
-    },
-    "no": {
-        "morning": (
-            "God morgen og hjertelig velkommen. Det gleder oss å ha deg her. "
-            "Jeg er din concierge. Hvordan kan jeg hjelpe deg?"
-        ),
-        "afternoon": (
-            "God dag og hjertelig velkommen. Det gleder oss å ha deg her. "
-            "Jeg er din concierge. Hvordan kan jeg hjelpe deg?"
-        ),
-        "evening": (
-            "God kveld og hjertelig velkommen. Det gleder oss å ha deg her. "
-            "Jeg er din concierge. Hvordan kan jeg hjelpe deg?"
-        ),
-    },
-    "sv": {
-        "morning": (
-            "God morgon och hjärtligt välkommen. Det glädjer oss att ha dig hos "
-            "oss. Jag är din concierge. Hur kan jag hjälpa dig?"
-        ),
-        "afternoon": (
-            "God dag och hjärtligt välkommen. Det glädjer oss att ha dig hos "
-            "oss. Jag är din concierge. Hur kan jag hjälpa dig?"
-        ),
-        "evening": (
-            "God kväll och hjärtligt välkommen. Det glädjer oss att ha dig hos "
-            "oss. Jag är din concierge. Hur kan jag hjälpa dig?"
-        ),
-    },
-    "th": {
-        "morning": (
-            "อรุณสวัสดิ์ ยินดีต้อนรับ เรายินดีมากที่คุณมาพัก " "คอนเซียร์จส่วนตัวของคุณพร้อมให้บริการ มีอะไรให้ช่วยไหม"
-        ),
-        "afternoon": (
-            "สวัสดีตอนบ่าย ยินดีต้อนรับ เรายินดีมากที่คุณมาพัก " "คอนเซียร์จส่วนตัวของคุณพร้อมให้บริการ มีอะไรให้ช่วยไหม"
-        ),
-        "evening": (
-            "สวัสดีตอนเย็น ยินดีต้อนรับ เรายินดีมากที่คุณมาพัก " "คอนเซียร์จส่วนตัวของคุณพร้อมให้บริการ มีอะไรให้ช่วยไหม"
-        ),
-    },
-    "uk": {
-        "morning": (
-            "Доброго ранку і ласкаво просимо. Ми раді вітати вас у нас. "
-            "Я ваш консьєрж. Чим я можу вам допомогти?"
-        ),
-        "afternoon": (
-            "Доброго дня і ласкаво просимо. Ми раді вітати вас у нас. "
-            "Я ваш консьєрж. Чим я можу вам допомогти?"
-        ),
-        "evening": (
-            "Доброго вечора і ласкаво просимо. Ми раді вітати вас у нас. "
-            "Я ваш консьєрж. Чим я можу вам допомогти?"
-        ),
-    },
-    "vi": {
-        "morning": (
-            "Chào buổi sáng và chào mừng quý khách. Chúng tôi rất hân hạnh được "
-            "đón tiếp quý khách. Tôi là nhân viên lễ tân riêng của quý khách. "
-            "Tôi có thể giúp gì cho quý khách?"
-        ),
-        "afternoon": (
-            "Chào buổi chiều và chào mừng quý khách. Chúng tôi rất hân hạnh được "
-            "đón tiếp quý khách. Tôi là nhân viên lễ tân riêng của quý khách. "
-            "Tôi có thể giúp gì cho quý khách?"
-        ),
-        "evening": (
-            "Chào buổi tối và chào mừng quý khách. Chúng tôi rất hân hạnh được "
-            "đón tiếp quý khách. Tôi là nhân viên lễ tân riêng của quý khách. "
-            "Tôi có thể giúp gì cho quý khách?"
-        ),
-    },
-}
+# only the opening time-of-day phrase changes. Languages that do not lexically
+# daypart (French afternoon, Korean, Hindi) intentionally repeat the neutral
+# phrasing — correct usage, not an oversight.
+TIMED_GREETINGS: dict[str, dict[str, str]] = _data["timed_greetings"]
+
+if DEFAULT_LANGUAGE not in GREETINGS:  # the English fallback must always exist
+    raise ValueError(f"greetings.json: missing required '{DEFAULT_LANGUAGE}' entry")
+
+# Per-language generic used when a greeting contains "{hotel_name}" but the bot
+# runs without a hotel config (e.g. plain demo) — "our hotel" and friends.
+GENERIC_HOTEL: dict[str, str] = _data.get("generic_hotel", {})
+
+
+def fill_hotel_name(text: str, hotel_name: str | None = None, lang: str = DEFAULT_LANGUAGE) -> str:
+    """Resolve the optional ``{hotel_name}`` placeholder in a greeting.
+
+    Uses the actual hotel name when known, otherwise the per-language generic
+    from ``generic_hotel`` ("our hotel"). Plain ``str.replace`` — not
+    ``str.format`` — so any other braces in the text are harmless.
+    """
+    if "{hotel_name}" not in text:
+        return text
+    name = (hotel_name or "").strip()
+    if not name:
+        name = GENERIC_HOTEL.get(lang) or GENERIC_HOTEL.get(DEFAULT_LANGUAGE) or "our hotel"
+    return text.replace("{hotel_name}", name)
+
+
+def apply_hotel_name(
+    hotel_name: str | None,
+) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+    """Return copies of (GREETINGS, TIMED_GREETINGS) with ``{hotel_name}`` resolved.
+
+    Called once at bot startup (pipeline.py) with the hotel's display name from
+    ``HotelConfig`` — the controllers then work with plain, ready-to-speak text.
+    """
+    g = {lang: fill_hotel_name(t, hotel_name, lang) for lang, t in GREETINGS.items()}
+    tg = {
+        lang: {part: fill_hotel_name(t, hotel_name, lang) for part, t in variants.items()}
+        for lang, variants in TIMED_GREETINGS.items()
+    }
+    return g, tg
 
 
 def daypart_for_hour(hour: int) -> str:
@@ -646,7 +155,12 @@ def _detect_system_language() -> str | None:
     return loc.split("_", 1)[0].lower()
 
 
-def resolve_greeting(preference: str = "auto", *, daypart: str | None = None) -> tuple[str, str]:
+def resolve_greeting(
+    preference: str = "auto",
+    *,
+    daypart: str | None = None,
+    hotel_name: str | None = None,
+) -> tuple[str, str]:
     """Pick a greeting and return ``(language_code, text)``.
 
     Args:
@@ -657,6 +171,9 @@ def resolve_greeting(preference: str = "auto", *, daypart: str | None = None) ->
             time-of-day variant is returned; otherwise the time-neutral one is.
             Boot-time callers leave this ``None`` (the browser hasn't reported
             the guest's timezone yet) — see ``GreetingController``.
+        hotel_name: the hotel's display name, used to resolve the optional
+            ``{hotel_name}`` placeholder; ``None`` falls back to the
+            per-language generic ("our hotel").
 
     Returns:
         A ``(code, text)`` tuple — ``code`` is the language chosen (useful for
@@ -676,6 +193,6 @@ def resolve_greeting(preference: str = "auto", *, daypart: str | None = None) ->
     if daypart:
         timed = TIMED_GREETINGS.get(code)
         if timed and daypart in timed:
-            return code, timed[daypart]
+            return code, fill_hotel_name(timed[daypart], hotel_name, code)
 
-    return code, GREETINGS[code]
+    return code, fill_hotel_name(GREETINGS[code], hotel_name, code)

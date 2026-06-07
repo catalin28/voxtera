@@ -260,7 +260,10 @@ async def test_scoped_with_session_hotel_runs_kb_path() -> None:
     # _run_kb must source it from the session, otherwise the scoped query
     # silently degrades to a generic broad search and returns the wrong hotel.
     assert compound.calls, "discover was never called"
-    assert compound.calls[0]["hotel_id"] == "rixos_belek"
+    # (name-detection probes the store first with no hotel_id; the scoped
+    # retrieval is the call that carries the hotel_id.)
+    kb_calls = [c for c in compound.calls if c.get("hotel_id")]
+    assert kb_calls and kb_calls[-1]["hotel_id"] == "rixos_belek"
     # And the post-filter keeps only the resolved hotel.
     assert [h["hotel_id"] for h in out["retrieval"]["hotels"]] == ["rixos_belek"]
 
@@ -302,8 +305,10 @@ async def test_scoped_empty_requirements_injects_overview_default() -> None:
     assert out["path"] == PATH_SCOPED
     # discover must be called with non-empty (injected) requirements + the hotel id.
     assert compound.calls, "discover was never called"
-    assert compound.calls[0]["requirements"], "requirements should have been injected, not empty"
-    assert compound.calls[0]["hotel_id"] == "rixos_belek"
+    kb_calls = [c for c in compound.calls if c.get("hotel_id")]
+    assert kb_calls, "no scoped retrieval call was made"
+    assert kb_calls[-1]["requirements"], "requirements should have been injected, not empty"
+    assert kb_calls[-1]["hotel_id"] == "rixos_belek"
     # And it does NOT fail closed — the hotel comes back.
     assert [h["hotel_id"] for h in out["retrieval"]["hotels"]] == ["rixos_belek"]
 

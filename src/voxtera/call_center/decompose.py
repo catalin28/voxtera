@@ -431,7 +431,7 @@ def _build_openai_decompose(model: str) -> DecomposeFn:
             max_tokens=1024,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": _DECOMPOSE_SYSTEM},
+                {"role": "system", "content": load_prompt("query_decomposer")},
                 {"role": "user", "content": f"{ctx_block}Utterance: {utterance}"},
             ],
         )
@@ -488,7 +488,7 @@ def _build_anthropic_decompose(model: str) -> DecomposeFn:
             system=[
                 {
                     "type": "text",
-                    "text": _DECOMPOSE_SYSTEM,
+                    "text": load_prompt("query_decomposer"),
                     "cache_control": {"type": "ephemeral"},
                 }
             ],

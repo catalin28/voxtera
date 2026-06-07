@@ -190,6 +190,20 @@ def _decide(
                 "reason": "hotel_resolved",
                 "needs": None,
             }
+        # No hotel anywhere, but the TURN names a place ("do you have any hotel
+        # in Kaş?", "what hotels are in that region?") — that's an AVAILABILITY
+        # question about a location, not a question about one hotel. Asking
+        # "which hotel exactly?" here is a dead-end; run a broad search instead.
+        if any(
+            isinstance(decomposition.get(k), str) and decomposition.get(k).strip()
+            for k in ("city", "district", "region")
+        ):
+            return {
+                "path": PATH_BROAD,
+                "sources": ["hotel_kb"],
+                "reason": "place_availability_to_broad",
+                "needs": None,
+            }
         return {
             "path": PATH_HOTEL_RESOLVE,
             "sources": [],
