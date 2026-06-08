@@ -322,6 +322,42 @@ details.debug summary:hover{color:var(--accent);}
 }
 .chip:hover{border-color:var(--accent);color:var(--accent-deep);background:var(--accent-tint);}
 
+/* ---------- EXPORT / PRINT ---------- */
+.export-btn{
+  font-family:'JetBrains Mono',monospace;font-size:0.74rem;
+  background:transparent;border:1px solid var(--line-strong);
+  padding:0.35rem 0.7rem;border-radius:4px;color:var(--ink);
+  text-transform:uppercase;letter-spacing:0.08em;cursor:pointer;
+  transition:all 0.2s ease;
+}
+.export-btn:hover{border-color:var(--accent);color:var(--accent-deep);background:var(--accent-tint);}
+.print-header{display:none;}
+
+@media print{
+  body::before{display:none;}
+  .site-nav,.topbar,.input-bar-wrap,.suggestions,.footnote,
+  .stage-eyebrow,.stage-title,.stage-sub{display:none!important;}
+  details.debug,.feedback-row,.feedback-form{display:none!important;}
+  body{background:#fff;}
+  main{max-width:100%;padding:0;}
+  .print-header{
+    display:block;margin-bottom:1.1rem;
+    border-bottom:2px solid #1a1814;padding-bottom:0.6rem;
+  }
+  .print-header h2{font-family:'Fraunces',serif;font-weight:600;font-size:1.25rem;color:#1a1814;}
+  .print-header .meta{font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:#555;letter-spacing:0.06em;}
+  .bubble{
+    max-width:100%;page-break-inside:avoid;
+    background:#fff!important;color:#1a1814!important;border:1px solid #bbb;
+  }
+  .bubble.user{background:#f3efe6!important;border-color:#999;}
+  .bubble.user .label{color:#8a5f2a;}
+  .bubble .label{color:#1f6e6a;}
+  .bubble.system{display:none;}
+  .hotel-card{background:#fff;border:1px solid #ccc;page-break-inside:avoid;}
+  .partial-banner{background:#fff;color:#a4391c;border-color:#a4391c;}
+}
+
 /* ---------- FOOTNOTE ---------- */
 .footnote{
   max-width:880px;margin:0.4rem auto 0 auto;
@@ -371,6 +407,7 @@ details.debug summary:hover{color:var(--accent);}
     <span class="mode-meta">Find hotels &amp; places — by what they offer.</span>
   </div>
   <div class="topbar-right">
+    <button class="export-btn" id="export-pdf" title="Save this conversation as a PDF">Export PDF</button>
     <label class="mono" for="region-pick" style="font-size:0.66rem;text-transform:uppercase;letter-spacing:0.14em;color:var(--ink-soft);">Region</label>
     <select class="region-pick" id="region-pick">
       <option value="" selected>All regions</option>
@@ -386,6 +423,11 @@ details.debug summary:hover{color:var(--accent);}
 
 <!-- MAIN STAGE -->
 <main>
+  <!-- Shown only when printing / exporting to PDF -->
+  <div class="print-header">
+    <h2>Voxtera Concierge — Conversation</h2>
+    <div class="meta" id="print-meta"></div>
+  </div>
   <div class="stage-eyebrow">Voxtera Concierge</div>
   <h1 class="stage-title">Find a hotel by <span class="italic">what it actually has.</span></h1>
   <p class="stage-sub">
@@ -765,6 +807,17 @@ async function ask(utterance){
     input.focus();
   }
 }
+
+// Export conversation as PDF — clean print view (header + bubbles only;
+// nav, input bar, debug drawers and feedback rows are hidden by print CSS).
+// window.print() keeps text vector/selectable and handles Turkish characters
+// correctly, with no external libraries; the user picks "Save as PDF".
+document.getElementById('export-pdf').addEventListener('click', () => {
+  const region = regionPick.options[regionPick.selectedIndex]?.text || 'All regions';
+  document.getElementById('print-meta').textContent =
+    new Date().toLocaleString() + ' · Region: ' + region + ' · voxtera.io';
+  window.print();
+});
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
