@@ -1,0 +1,53 @@
+status,confidence,hotel_id,name,old_url,corrected_url,note
+FIXED,high,parafly_1023974,Zeyda Lara Hotel,https://www.jurahotels.com.tr,https://zeydahotellara.com/,current official site (Lara/Kundu Antalya)
+FIXED,high,parafly_1025441,Jura Hotels Bodrum Resort,https://www.jurahotels.com.tr,https://www.jurahotelsbodrum.com/,official Jura Group Bodrum-Ortakent site
+FIXED,high,parafly_145,The Karia Princess Hotel,https://www.kariaprincess.com,https://thekariahotel.com/,rebranded Karia Princess -> The Karia Hotel
+FIXED,high,parafly_1024011,Siu Collection,https://aydinbeyhotels.com/,https://www.siucollection.com/,"official; Aydinbey Group, Beldibi/Kemer"
+FIXED,high,parafly_414938,Club Grand Aqua,https://www.sezergroup.com,https://www.sezergroup.com/EN/Club-Grand-Aqua/,"official Sezer Group page, Side-Colakli"
+FIXED,high,parafly_1298823,DoubleTree by Hilton Kars Sarıkamış,https://www.doubletreebyhiltonsarikamis.com,https://www.hilton.com/en/hotels/ksyutdi-doubletree-kars-sarikamis/,official Hilton brand page
+FIXED,high,parafly_873037,Crystal Club World Of Colours,https://www.crystalhotels.com,https://colours-tr.crystalhotels.com.tr/,correct domain is crystalhotels.com.tr
+FIXED,high,parafly_1285108,Cratos Premium Hotel,https://www.cratospremium.com,https://www.cratospremium.com.tr/,"correct domain is .com.tr (Kyrenia, N.Cyprus)"
+FIXED,high,parafly_147661,Mukarnas Spa Resort,https://www.mukarnashotel.com,https://mukarnashotel.com/,old domain confirmed live & correct
+FIXED,high,parafly_1367,AQI Pegasos Royal,https://www.tthotels.com,https://www.tthotels.com/en/hotel/aqi-pegasos-royal,official TT Hotels/AQI page
+FIXED,high,parafly_1023969,Jura Hotels Kemer Resort,https://www.jurahotelskemer.com,https://www.jurahotelskemer.com/,old domain confirmed live & correct
+FIXED,high,parafly_781396,Elamir Magic Dream Hotel,https://www.botanikresorthotel.com,https://elamirmagicdreamhotel.com/,official site (Kemer)
+FIXED,high,parafly_1019941,Oscar Seaside Hotel & Spa,https://bodrumoscarseasidehotel.com/,https://www.oscarseasidehotel.com/en/,official (Bodrum-Guvercinlik)
+FIXED,high,parafly_689,El Vino Hotels & Suites,https://www.elvinobodrum.com,https://elvinobodrum.com/,old domain confirmed live & correct
+FIXED,high,parafly_324646,AQI Pegasos World,https://www.tthotels.com,https://www.tthotels.com/en/hotel/aqi-pegasos-world,official AQI/TT Hotels page
+FIXED,high,parafly_139785,Kleopatra Royal Palm Hotel,https://www.feriahotels.com,https://kleopatraroyalpalmhotel.com/En,own official domain (Alanya)
+FIXED,high,parafly_593759,Moyo Luxury Hotel & Beach,https://www.moyohotel.com/iletisim,https://www.moyohotel.com/,old domain confirmed live & correct (Torba/Bodrum)
+FIXED,high,parafly_17,Forever Club (14+),https://www.foreverclub.com,http://www.foreverclub.com.tr/,correct domain is .com.tr (Icmeler/Bodrum)
+FIXED,high,parafly_144934,Akvaryum Hotel,https://www.isis.com.tr,https://gumbetakvaryum.com/,real site is gumbetakvaryum.com (Gumbet/Bodrum)
+FIXED,high,parafly_313675,Fun & Sun Family Club Saphire,https://www.larissahotels.com,https://funsunsaphire.com/en/,own official site (Tekirova/Kemer)
+FIXED,high,parafly_872579,Erdek Talia Beach Hotel,https://www.erdeksunbeachhotel.com/,https://erdektaliabeachotel.com/,own official site (Erdek)
+FIXED,high,parafly_1018546,Karaoz Light House,https://www.karaozlighthouse.com,https://www.karaozlighthouse.com/,old domain confirmed live & correct
+FIXED,high,parafly_415061,Side Miami Beach,https://www.sidemiamibeach.com,http://www.sidemiamibeach.com/?lang=en,old domain confirmed live & correct
+FIXED,high,parafly_418645,Ürgüp Konak Hotel,http://urgupkonak.com/index.html,https://urgupkonak.com/,old domain confirmed live & correct
+FIXED,high,parafly_414844,Hotel Golden Sun +12 Adult Only,https://www.otelgoldensun.com/,https://www.otelgoldensun.com/,old domain confirmed live & correct (Beldibi/Kemer)
+FIXED,high,parafly_1447,Club Hotel Rama,https://www.ramaotel.com,https://clubotelrama.com/,live site is clubotelrama.com (Beldibi/Kemer)
+FIXED,high,parafly_781113,Aslan Corner Otel,https://www.aslanhotels.com,https://corner.aslanhotels.com/en,official Aslan Hotels subdomain for the Corner property (Alanya)
+FIXED,high,parafly_239927,Olympos Village Relaxury Hotel,https://www.olymposvillage.com,https://olymposvillage.com/en,old domain confirmed live & correct (Cirali/Olympos)
+FIXED,high,parafly_1023581,Kamkat Otel,https://kamkatotel.com/,https://kamkatotel.com.tr/,primary domain is .com.tr (Goynuk/Kemer)
+FIXED,high,parafly_640925,Linda Beach Hotel,http://www.kaslindahotel.com/lindabeach/default.asp,http://www.kaslindahotel.com/,old domain confirmed live & correct (Kas)
+FIXED,high,parafly_416719,Cocopalm Boutique Hotel Alaçatı,https://www.cocopalmalacati.com,http://cocopalmalacati.com/,old domain confirmed live & correct (Alacati)
+FIXED,high,parafly_1025343,Alya Sierra Bodrum,https://www.alyasierrabodrum.com,https://alyasierrabodrum.com/,old domain confirmed live & correct (Torba/Bodrum)
+FIXED,high,parafly_1210682,Panjur Alaçatı,http://alacati.panjurs.com/,https://alacati.panjurs.com/,old domain confirmed live & correct (Alacati +16)
+FIXED,high,parafly_1210719,Milagre Cave Cappadocia,https://milagrecavehotel.com,https://milagrecavehotel.com/en/index.html,old domain confirmed live & correct (Cavusin/Cappadocia)
+FIXED,high,parafly_1264338,Kirman Belazur Resort & SPA,https://www.kirmanhotels.com.tr,https://www.belazur.com.tr/en,property-specific site belazur.com.tr (Belek/Bogazkent)
+FIXED,high,parafly_1264382,Rixos Downtown Antalya - The Land Of Legends Access,http://de.rixos.com/contact/list-acardion/contact/439/315/0,https://www.rixos.com/hotel-resort/rixos-downtown-antalya-land-legends-access,official Rixos property page
+FIXED,high,parafly_701,Grand Park Lara,https://www.corendonhotels.com.tr,https://www.corendonhotels.com/grand-park-lara/,official Corendon property page (.com not .com.tr)
+FIXED,medium,parafly_628,Kairaba Bodrum Imperial,https://www.tthotels.com,https://www.kairaba-hotels.com/bodrum-imperial,official Kairaba page; may be rebranding to Selectum
+FIXED,medium,parafly_874396,Ramona Kale Hotel,https://www.ramonakale.com,https://ramonakale.com/en/home-2/,domain live; verify city (search suggests Antalya not Pamukkale)
+FIXED,medium,parafly_64157,Selin' s Otel River,https://www.selinotelspabelek.com,http://www.selinotelspabelek.com/,old domain live (Selin Hotel Spa Belek); selinotelbelek.com also exists
+FIXED,medium,parafly_663114,Alder Hotel,https://www.alderotel.com,https://www.alderotels.com/,real site alderotels.com (trailing s); Ayvalik/Sarimsakli not Istanbul
+FIXED,medium,parafly_1020859,Kahya Hotel Kleopatra,https://www.kahyahotels.com,https://www.kahyahotel.com/en,"property site kahyahotel.com (Cleopatra Beach, Alanya)"
+FIXED,medium,parafly_377935,Arkın Palm Beach Hotel,http://www.arkinpalmbeach.com,https://www.arkingroup.com/palmbeachhotel,"official Arkin Group page (Famagusta, N.Cyprus)"
+FIXED,low,parafly_415304,Doris Aytur Otel,https://www.hoteldorisaytur.com,https://doris-aytur.mediterraneanhotels-tr.com/en/,OTA fallback; no own domain; listed Mahmutlar/Alanya (possible mismatch)
+FIXED,low,parafly_140885,Balim Hotel,http://www.hotelbalim.com/,https://www.marmaris-travel.com/balimhotel.htm,no live own site; third-party Marmaris listing fallback
+NOT FOUND,low,parafly_175126,Munamar Beach Residence,https://www.munamarbeachresidence.com,,"no official site found; only OTA pages (Club Munamar Beach Resort, Icmeler)"
+NOT FOUND,low,parafly_208854,Bodrum Golden Beach Hotel,https://www.goldenbeachbodrum.com,,no official site found; only OTA aggregators (Golden Beach Resort & Spa Bodrum)
+NOT FOUND,low,parafly_324955,Blue Sky Hotel & Suites,https://www.bluehotel.com,,could not confirm a Marmaris 'Blue Sky Hotel & Suites'; possible location mismatch
+NOT FOUND,low,parafly_593536,Beralisa Family Garden Resort - All inclusive,https://www.omorfigardenresort.com,,"no official site (ex-Monna Roza, Goynuk/Kemer); only OTAs/Facebook"
+NOT FOUND,low,parafly_876572,Sefine Otel,https://www.sefinehotel.com.tr/,,could not locate a Sefine hotel in Ayvalik/Cunda; may be closed/renamed
+NOT FOUND,low,parafly_45382,Blue Sea Garden (Adults Only),http://www.hotelblueseagarden.com,,old domain hijacked to gambling spam; no legit official site found (Icmeler adults-only)
+NOT FOUND,low,parafly_1413,Temenos Luxury Hotel & Spa,https://www.temenoshotel.com,,Faralya/Fethiye Temenos appears down/closed; only a different Bodrum 'Temenos' exists

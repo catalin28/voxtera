@@ -1153,9 +1153,10 @@
 
     <!-- Code entry view -->
     <div class="gate-code-view">
-      <h3>Enter your access code</h3>
-      <p>Paste the code from your email to unlock the full demo (voice + unlimited text).</p>
-      <input class="gate-input" id="gate-code-input" placeholder="Paste access code here…" autocomplete="off">
+      <h3>Enter your demo access code</h3>
+      <p>Paste a demo code from your email or tester list to unlock the full demo (voice + unlimited text).</p>
+      <p style="margin-top:-0.2rem;font-size:0.95rem;color:var(--ink-soft)">Admin tokens do not unlock this page.</p>
+      <input class="gate-input" id="gate-code-input" placeholder="Paste demo code from email or tester list" autocomplete="off">
       <div class="gate-error" id="gate-code-error"></div>
       <button class="gate-btn gate-btn-primary" id="gate-code-submit">Unlock demo</button>
       <p style="margin-top:1rem"><span class="gate-link" id="gate-show-request">Don't have a code? Request one free</span></p>
@@ -1191,6 +1192,7 @@
     <a href="voxtera.html#solution" data-i18n="nav.solution">Solution</a>
     <a href="voxtera-hotels.html" data-i18n="nav.for_hotels">For hotels</a>
     <a href="voxtera-demo.html" class="is-active" data-i18n="nav.try_demo">Try demo</a>
+    <a href="travel-agent.html" data-i18n="nav.travel_agent">Travel Agent</a>
     <a href="voxtera.html#languages" data-i18n="nav.languages">Languages</a>
     <a href="voxtera.html#compare" data-i18n="nav.compare">Compare</a>
     <a href="voxtera.html#pricing" data-i18n="nav.pricing">Pricing</a>
@@ -2857,11 +2859,34 @@
         const url  = URL.createObjectURL(blob);
         audioEl.src = url;
         let played = false;
-        try { await audioEl.play(); played = true; } catch (_) { /* autoplay blocked (Safari) */ }
+        try { await audioEl.play(); played = true; } catch (_) {
+          // Autoplay blocked (Safari). The scheduleGreeting probe can lie:
+          // its silent zero-length data-URI may resolve while real audible
+          // playback is still blocked. Decide on THIS play() instead — keep
+          // the audio loaded and surface the unmute button; the tap is the
+          // user gesture Safari wants.
+          const muteBtn = document.getElementById('safari-mute-btn');
+          if (muteBtn) {
+            muteBtn.classList.add('visible');
+            muteBtn.addEventListener('click', async () => {
+              muteBtn.classList.remove('visible');
+              if (inCall) { URL.revokeObjectURL(url); return; }  // call started meanwhile — skip the greeting
+              setOrbState('speaking');
+              setStatus('<strong>Voxtera is speaking…</strong>', 'Speaking');
+              try {
+                await audioEl.play();
+                await new Promise(resolve => { audioEl.onended = resolve; audioEl.onerror = resolve; });
+              } catch (_) { /* still blocked — give up quietly */ }
+              URL.revokeObjectURL(url);
+              setOrbState('');
+              setStatus('Tap the orb, or send a message below to begin.', 'Ready');
+            }, { once: true });
+          }
+        }
         if (played) {
           await new Promise(resolve => { audioEl.onended = resolve; audioEl.onerror = resolve; });
+          URL.revokeObjectURL(url);
         }
-        URL.revokeObjectURL(url);
       }
     } catch (e) {
       // TTS unavailable — bubble already visible, continue silently
@@ -2930,7 +2955,7 @@
       if (data.valid) {
         _demoSetToken(code);
       } else {
-        errEl.textContent = 'Invalid or expired code. Please try again.';
+        errEl.textContent = 'Invalid or expired demo code. Use a code from your email or tester list. Admin tokens will not work here.';
         errEl.style.display = '';
       }
     } catch (e) {

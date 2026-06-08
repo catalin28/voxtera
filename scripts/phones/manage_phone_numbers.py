@@ -196,11 +196,11 @@ def cmd_buy(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     result = resp.json()
-    print(f"\n  SUCCESS! Phone number purchased:")
+    print("\n  SUCCESS! Phone number purchased:")
     print(f"    Number: {result.get('number')}")
     print(f"    ID:     {result.get('id')}")
-    print(f"\n  This number can now receive PSTN dial-in calls to your Voxtera bot.")
-    print(f"  Configure pinless dial-in in your Daily dashboard or via API.")
+    print("\n  This number can now receive PSTN dial-in calls to your Voxtera bot.")
+    print("  Configure pinless dial-in in your Daily dashboard or via API.")
 
 
 def cmd_release(args: argparse.Namespace) -> None:
@@ -221,7 +221,7 @@ def cmd_release(args: argparse.Namespace) -> None:
         print(f"ERROR ({resp.status_code}): {resp.text}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"\n  Phone number released successfully.")
+    print("\n  Phone number released successfully.")
 
 
 # ---------------------------------------------------------------------------

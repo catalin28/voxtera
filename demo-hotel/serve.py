@@ -35,6 +35,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from collections import deque
@@ -50,23 +51,313 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import audit_log as _audit  # noqa: E402  — local module, writes logs/audit/
 
+# ── Admin-editable prompt registry ──────────────────────────────────────────
+# Every LLM prompt of the call-center concierge, with a plain-language
+# explanation shown in the admin editor. Files live in
+# src/voxtera/call_center/prompts/ and HOT-RELOAD on save (mtime cache in the
+# prompt loader; escalation_stems.json has its own mtime reload).
+_PROMPT_REGISTRY: dict[str, dict] = {
+    "concierge_persona": {
+        "file": "concierge_persona.md",
+        "title": "Persona (ONE place for tone & character)",
+        "description": (
+            "Who the assistant IS — tone, no stock openers, spoken format, "
+            "language behaviour. Automatically prepended to ALL THREE answer "
+            "writers (hotel, web, conversational), so the persona is changed "
+            "here ONCE and applies everywhere. The task prompts below contain "
+            "only their task-specific rules."
+        ),
+    },
+    "query_decomposer": {
+        "file": "query_decomposer.md",
+        "title": "Query decomposer (routing brain)",
+        "description": (
+            "Converts each guest message into the structured plan that drives "
+            "everything else: query type (hotel / destination / web / hybrid / "
+            "escalate / conversational), hotel mention, region, and the "
+            "requirements used for retrieval. Edit this to change how questions "
+            "are classified and what gets extracted."
+        ),
+    },
+    "concierge_render": {
+        "file": "concierge_render.md",
+        "title": "Hotel answer writer",
+        "description": (
+            "Writes the spoken answer from hotel knowledge-base results. Carries "
+            "the concierge persona, the grounding rules (never invent amenities, "
+            "locations or landmarks; admit region mismatches), and the "
+            "offer-to-check-online behaviour when a detail is missing."
+        ),
+    },
+    "concierge_web_synth": {
+        "file": "concierge_web_synth.md",
+        "title": "Web answer writer",
+        "description": (
+            "Writes the spoken answer from live web results, and the combined "
+            "hotel+web answer on hybrid turns. Controls persona, the on-site vs "
+            "arranged-nearby accuracy rule, the destination-question format "
+            "(top options + one clear recommendation), and the natural 'worth "
+            "confirming' note."
+        ),
+    },
+    "concierge_converse": {
+        "file": "concierge_converse.md",
+        "title": "Conversational turns",
+        "description": (
+            "Handles chitchat and meta turns answered from the conversation "
+            "history — greetings, thanks, 'what did I ask you?', 'where are we "
+            "with the itinerary?'. Explicitly forbidden from promising actions "
+            "it cannot perform (searching, booking, sending)."
+        ),
+    },
+    "concierge_web_query": {
+        "file": "concierge_web_query.md",
+        "title": "Web search query builder",
+        "description": (
+            "Rewrites the conversation into ONE self-contained web search query "
+            "— resolves 'there'/'they' to the actual hotel and place from the "
+            "dialog, so the web search is anchored even when the guest uses "
+            "pronouns."
+        ),
+    },
+    "escalation_classifier": {
+        "file": "escalation_classifier.md",
+        "title": "Escalation judge (LLM)",
+        "description": (
+            "Decides whether a turn must be handed to a human: booking, "
+            "cancellation/changes, live complaint, medical, urgency. Only runs "
+            "when the fast-gate word list (below) finds a trigger word."
+        ),
+    },
+    "escalation_stems": {
+        "file": "escalation_stems.json",
+        "title": "Escalation fast-gate word list (JSON)",
+        "description": (
+            "Stem list checked before the escalation judge. If a message "
+            "contains NONE of these stems, the LLM judge is skipped (saves "
+            "~1.5s on normal turns). Stems, not words: 'rezerv' matches "
+            "rezervasyon/rezervasyonumu. JSON must stay valid — saves are "
+            "validated. Hot-reloads instantly."
+        ),
+    },
+    "triage_questions": {
+        "file": "triage_questions.md",
+        "title": "Triage clarification questions",
+        "description": (
+            "The localised clarification questions triage can ask when a "
+            "request is missing a critical slot (per-locale '## <locale>' "
+            "sections with '- slot: text' lines)."
+        ),
+    },
+    "concierge_decompose_legacy": {
+        "file": "concierge_decompose_legacy.md",
+        "title": "Legacy decomposer (old endpoint)",
+        "description": (
+            "Used only by the older single-shot concierge endpoint, NOT by the "
+            "main pipeline. Kept for backwards compatibility."
+        ),
+    },
+}
+
+
+def _prompts_dir() -> Path:
+    from voxtera.call_center import prompts as _p
+
+    return Path(_p.__file__).resolve().parent
+
+
+# ── Voice-concierge prompt registry (Voice Concierge Prompts admin page) ────
+# Prompts of the HOTEL VOICE CONCIERGE — the real-time voice agent with the
+# "Her"-inspired persona. Unlike the call-center prompts above, these do NOT
+# hot-reload: the voice bot runs as a separate subprocess spawned per call and
+# imports its prompts at startup, so saves apply from the NEXT CALL.
+# Entries with "readonly": True are shown in the editor for transparency but
+# cannot be saved (Python modules / latency-critical code).
+_VOICE_PROMPT_REGISTRY: dict[str, dict] = {
+    "system_prompt": {
+        "file": "system_prompt.md",
+        "title": "Voice concierge system prompt (the 'Her' persona)",
+        "description": (
+            "THE main prompt of the voice agent. Three jobs in tension: "
+            "PRESENCE (the 'Her'-inspired persona — warm, polished, attentive, "
+            "never robotic), BREVITY (every word is ~330ms of TTS playback "
+            "during which the guest's mic is silenced — keep replies short), "
+            "and LANGUAGE CONSISTENCY (reply in the guest's language for the "
+            "whole call). ⚠️ This text is also embedded in audio.py as a "
+            "semantic fingerprint that calibrates the STT noise filter — tone "
+            "edits are fine, but do NOT strip the hotel/travel vocabulary "
+            "wholesale or the filter's baseline drifts. Applies from the NEXT "
+            "CALL (the bot reads it once at startup)."
+        ),
+    },
+    "greetings": {
+        "file": "greetings.json",
+        "title": "Startup greetings — 31 languages (JSON)",
+        "description": (
+            "What the bot says the moment a call starts, before the guest "
+            "speaks — spoken instantly with no LLM round-trip. Two sections: "
+            "'greetings' (one time-neutral greeting per language — the safe "
+            "default) and 'timed_greetings' (morning/afternoon/evening "
+            "variants, used when the browser reports the guest's timezone). "
+            "'en' is required; timed variants may repeat where a language "
+            "doesn't daypart (French afternoon, Korean, Hindi — intentional). "
+            "The optional {hotel_name} placeholder becomes the hotel's name at "
+            "bot startup ('Welcome to Casa Dell Arte'), or the 'generic_hotel' "
+            "phrase when no hotel is configured. Saves are validated. Applies "
+            "from the NEXT CALL; the TTS-test admin endpoint keeps the old "
+            "text until a server restart."
+        ),
+    },
+    "fillers": {
+        "file": "fillers.py",
+        "readonly": True,
+        "title": "Instant-ack fillers (read-only, Python)",
+        "description": (
+            "Short backchannels ('One moment.') spoken within ~100ms of the "
+            "guest finishing, masking STT→LLM→TTS latency. Read-only: "
+            "latency-critical and deliberately hardcoded — no file read or "
+            "validation may sit on this path. Edit in code if needed."
+        ),
+    },
+    "actions_fragment": {
+        "file": "../actions/prompt.py",
+        "readonly": True,
+        "title": "Action-taking fragment (read-only, Python)",
+        "description": (
+            "Teaches Claude the create_ticket flow (confirm before filing, "
+            "summary in the hotel's staff language). Read-only: this is "
+            "Python that GENERATES the prompt at bot startup, parameterised "
+            "by each hotel's config — there is no single text to edit."
+        ),
+    },
+}
+
+
+def _voice_prompts_dir() -> Path:
+    from voxtera import prompts as _vp
+
+    return Path(_vp.__file__).resolve().parent
+
+
+def _validate_greetings_json(content: str) -> str | None:
+    """Validate a greetings.json save. Returns an error string or None if OK.
+
+    The bot import fails loudly on malformed data — this keeps a bad save from
+    ever reaching disk, since a broken greetings.json would stop the voice bot
+    from starting at all.
+    """
+    try:
+        data = json.loads(content)
+    except ValueError as e:
+        return f"invalid JSON — {e}"
+    if not isinstance(data, dict):
+        return "top level must be an object"
+    for key in ("greetings", "timed_greetings"):
+        if not isinstance(data.get(key), dict):
+            return f"missing or invalid '{key}' object"
+    if "en" not in data["greetings"]:
+        return "'greetings' must contain an 'en' entry (the universal fallback)"
+    for lang, text in data["greetings"].items():
+        if not isinstance(text, str) or not text.strip():
+            return f"greetings['{lang}'] must be a non-empty string"
+    dayparts = {"morning", "afternoon", "evening"}
+    for lang, variants in data["timed_greetings"].items():
+        if not isinstance(variants, dict):
+            return f"timed_greetings['{lang}'] must be an object"
+        for part, text in variants.items():
+            if part not in dayparts:
+                return (
+                    f"timed_greetings['{lang}']: unknown daypart '{part}' "
+                    "(use morning/afternoon/evening)"
+                )
+            if not isinstance(text, str) or not text.strip():
+                return f"timed_greetings['{lang}']['{part}'] must be a non-empty string"
+    generic = data.get("generic_hotel", {})
+    if not isinstance(generic, dict):
+        return "'generic_hotel' must be an object of language → phrase"
+    for lang, text in generic.items():
+        if not isinstance(text, str) or not text.strip():
+            return f"generic_hotel['{lang}'] must be a non-empty string"
+    return None
+
+
+# ── Persistent concierge runtime ────────────────────────────────────────────
+# ONE background event loop + shared connections for ALL /api/concierge
+# requests. The previous per-request `asyncio.new_event_loop()` threw away
+# every connection pool after each turn, so each turn paid fresh TLS handshakes
+# to Anthropic/OpenAI, a Redis reconnect (the ~390ms "session_load"), and new
+# aiohttp connections to the remote ES/Qdrant box. One long-lived loop keeps
+# all of them warm; handlers submit work via run_coroutine_threadsafe.
+_concierge_rt: dict = {"loop": None, "deps": None}
+_concierge_rt_lock = threading.Lock()
+
+
+def _concierge_loop() -> asyncio.AbstractEventLoop:
+    with _concierge_rt_lock:
+        loop = _concierge_rt["loop"]
+        if loop is None or loop.is_closed():
+            loop = asyncio.new_event_loop()
+            threading.Thread(target=loop.run_forever, name="concierge-loop", daemon=True).start()
+            _concierge_rt["loop"] = loop
+            _concierge_rt["deps"] = None
+        return loop
+
+
+async def _concierge_deps() -> dict:
+    """Heavy shared deps, created ONCE on the persistent loop and reused.
+
+    Holds the warm aiohttp session (ES/Qdrant), the Redis-backed SessionStore,
+    and the LLM fn closures (whose Anthropic/OpenAI clients are module
+    singletons that now stay bound to this one loop). Per-request pipeline
+    objects are wired around these — cheap, and keeps per-run state isolated.
+    """
+    if _concierge_rt["deps"] is None:
+        import aiohttp as _aio
+
+        from voxtera.call_center.classifier import EscalationClassifier
+        from voxtera.call_center.concierge import (
+            _build_anthropic_converse,
+            _build_anthropic_render,
+            _build_anthropic_web_query,
+            _build_anthropic_web_synth,
+        )
+        from voxtera.call_center.decompose import QueryDecomposer
+        from voxtera.call_center.session import SessionStore
+
+        model = os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001")
+        _concierge_rt["deps"] = {
+            "http": _aio.ClientSession(),
+            "store": SessionStore(),
+            "classifier": EscalationClassifier(),
+            "decomposer": QueryDecomposer(),
+            "render_fn": _build_anthropic_render(model),
+            "web_synth_fn": _build_anthropic_web_synth(model),
+            "converse_fn": _build_anthropic_converse(model),
+            "web_query_fn": _build_anthropic_web_query(model),
+        }
+    return _concierge_rt["deps"]
+
+
 from voxtera.actions import (  # noqa: E402
     build_openai_tools,
     compose_system_prompt,
     load_hotel_config,
 )
 from voxtera.actions.logging_sink import LoggingSink  # noqa: E402
+from voxtera.actions.telegram_sink import TelegramSink  # noqa: E402
 from voxtera.actions.ticket import Category, Ticket  # noqa: E402
 from voxtera.admin import (  # noqa: E402
     DailyAPIError,
     create_room,
     delete_room,
-    detect_daily_geo,
     eject_participants,
     list_room_participants,
     list_rooms,
     list_rooms_with_presence,
 )
+from voxtera.call_center.embeddings import PREFIX_QUERY, embed_texts  # noqa: E402
+from voxtera.call_center.index_config import ES_INDEX  # noqa: E402
+from voxtera.call_center.kb_config import QDRANT_COLLECTION  # noqa: E402
 from voxtera.lang_config import (  # noqa: E402
     LANG_CONFIG,
     google_locale_for,
@@ -92,6 +383,89 @@ def _get_oai_client() -> "_openai_mod.OpenAI":
     if _oai_client is None:
         _oai_client = _openai_mod.OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
     return _oai_client
+
+
+def _es_base_url() -> str:
+    return os.environ.get("ELASTICSEARCH_URL", "http://138.197.142.222:9200").rstrip("/")
+
+
+def _qdrant_base_url() -> str:
+    return os.environ.get("QDRANT_URL", "http://138.197.142.222:6333").rstrip("/")
+
+
+def _json_http_request(
+    url: str,
+    method: str,
+    *,
+    payload: dict | list | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = 30.0,
+) -> tuple[int, object]:
+    req_headers = {"Accept": "application/json"}
+    if headers:
+        req_headers.update(headers)
+
+    data = None
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        req_headers["Content-Type"] = "application/json"
+
+    req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            if not raw:
+                return resp.status, {}
+            try:
+                return resp.status, json.loads(raw)
+            except json.JSONDecodeError:
+                return 502, {"error": "invalid_json", "detail": raw[:1000]}
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        if not raw:
+            return exc.code, {}
+        try:
+            return exc.code, json.loads(raw)
+        except json.JSONDecodeError:
+            return exc.code, {"detail": raw[:1000]}
+    except urllib.error.URLError as exc:
+        return 502, {"error": "upstream_unreachable", "detail": str(exc)}
+
+
+def _es_json_request(
+    method: str,
+    path: str,
+    *,
+    payload: dict | list | None = None,
+) -> tuple[int, object]:
+    user = os.environ.get("ELASTICSEARCH_USER", "elastic")
+    password = os.environ.get("ELASTICSEARCH_PASSWORD", "")
+    token = base64.b64encode(f"{user}:{password}".encode()).decode("ascii")
+    return _json_http_request(
+        f"{_es_base_url()}{path}",
+        method,
+        payload=payload,
+        headers={"Authorization": f"Basic {token}"},
+    )
+
+
+def _qdrant_json_request(
+    method: str,
+    path: str,
+    *,
+    payload: dict | list | None = None,
+) -> tuple[int, object]:
+    headers = {}
+    api_key = os.environ.get("QDRANT_API_KEY", "")
+    if api_key:
+        headers["api-key"] = api_key
+    return _json_http_request(
+        f"{_qdrant_base_url()}{path}",
+        method,
+        payload=payload,
+        headers=headers,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -805,7 +1179,19 @@ def _start_reaper_thread(session_id: str, proc: subprocess.Popen) -> None:
 # ---------------------------------------------------------------------------
 _hotel_config = load_hotel_config("demo")
 _ACTIONS_SYSTEM_PROMPT = compose_system_prompt(SYSTEM_PROMPT, _hotel_config)
-_logging_sink = LoggingSink()
+
+# Ticket sink for the HTTP chat path (/api/chat). Post to the same Telegram
+# channel the voice bot uses when the bot token is configured; otherwise fall
+# back to the terminal-only LoggingSink so the demo still works without creds.
+try:
+    _ticket_sink = TelegramSink(
+        bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+        channel_id=os.environ.get("TELEGRAM_CHANNEL_ID", "") or _hotel_config.telegram_channel_id,
+    )
+    print(f"[actions] /api/chat tickets → Telegram channel {_hotel_config.telegram_channel_id}")
+except ValueError:
+    _ticket_sink = LoggingSink()
+    print("[actions] TELEGRAM_BOT_TOKEN not set — /api/chat tickets go to the terminal only")
 
 # ---------------------------------------------------------------------------
 # Load tool definitions from one source (`voxtera.actions.tool`) and allow
@@ -1027,14 +1413,30 @@ def _handle_tool_call(tool_call, session_id: str) -> str:
 
 
 def _handle_create_ticket(args: dict, session_id: str) -> str:
-    """Execute a create_ticket tool call via LoggingSink and return result JSON."""
+    """Execute a create_ticket tool call via the ticket sink and return result JSON.
+
+    OpenAI function-calling does not hard-enforce the schema enum, so invented
+    categories ("Room Service") can arrive here. No alias lists: anything that
+    isn't an allowed category (matched case-insensitively against the enum's
+    own labels) is rejected WITH the valid list, and the LLM maps its invented
+    label to the closest valid one itself on the follow-up call.
+    """
     import asyncio
 
-    try:
-        category = Category(args["category"])
-    except (ValueError, KeyError):
+    raw_cat = str(args.get("category", "")).strip()
+    category = next((c for c in Category if c.value.lower() == raw_cat.lower()), None)
+    if category is not None and category not in _hotel_config.allowed_categories:
+        category = None
+    if category is None:
+        valid = ", ".join(c.value for c in _hotel_config.allowed_categories)
         return json.dumps(
-            {"status": "rejected", "reason": f"Invalid category: {args.get('category')}"}
+            {
+                "status": "rejected",
+                "reason": (
+                    f"Invalid category: {raw_cat!r}. Valid categories: {valid}. "
+                    "Call create_ticket again once with the closest valid category."
+                ),
+            }
         )
 
     ticket = Ticket(
@@ -1046,7 +1448,7 @@ def _handle_create_ticket(args: dict, session_id: str) -> str:
     )
 
     loop = asyncio.new_event_loop()
-    ok = loop.run_until_complete(_logging_sink.send(ticket))
+    ok = loop.run_until_complete(_ticket_sink.send(ticket))
     loop.close()
 
     if ok:
@@ -1123,7 +1525,8 @@ def _chat_completion(session_id: str, user_text: str, model: str, language: str)
                     "content": result,
                 }
             )
-        # Second LLM call to get the final spoken reply.
+        # Second LLM call to get the final spoken reply. Tools stay available
+        # so the model can fix a rejected call — bounded to one retry round.
         response2 = client.chat.completions.create(
             model=model,
             max_tokens=512,
@@ -1131,7 +1534,24 @@ def _chat_completion(session_id: str, user_text: str, model: str, language: str)
             tools=_TOOLS or None,
             tool_choice="auto" if _TOOLS else None,
         )
-        reply = response2.choices[0].message.content or ""
+        msg2 = response2.choices[0].message
+        if msg2.tool_calls:
+            messages.append(msg2.model_dump())
+            for tc2 in msg2.tool_calls:
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc2.id,
+                        "content": _handle_tool_call(tc2, session_id),
+                    }
+                )
+            # Final pass without tools so this can never loop.
+            response3 = client.chat.completions.create(
+                model=model, max_tokens=512, messages=messages
+            )
+            reply = response3.choices[0].message.content or ""
+        else:
+            reply = msg2.content or ""
         messages.append({"role": "assistant", "content": reply})
     else:
         reply = msg.content or ""
@@ -1609,6 +2029,22 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_sessions()
         if self.path == "/api/admin/rooms":
             return self._handle_admin_rooms()
+        if self.path == "/api/admin/prompts":
+            return self._handle_admin_prompts_list()
+        if self.path == "/api/admin/greetings":
+            return self._handle_admin_greetings_get()
+        if self.path == "/api/admin/voice-prompts":
+            return self._handle_admin_voice_prompts_list()
+        if self.path == "/api/admin/call-center/status":
+            return self._handle_admin_call_center_status()
+        if self.path.startswith("/api/admin/call-center/es/hotels"):
+            return self._handle_admin_call_center_es_hotels()
+        if self.path.startswith("/api/admin/call-center/es/search"):
+            return self._handle_admin_call_center_es_search()
+        if self.path.startswith("/api/admin/call-center/qdrant/collections"):
+            return self._handle_admin_call_center_qdrant_collections()
+        if self.path.startswith("/api/admin/call-center/qdrant/points"):
+            return self._handle_admin_call_center_qdrant_points()
         if self.path.startswith("/api/admin/calls"):
             return self._handle_admin_calls()
         if "/audio/" in self.path and self.path.startswith("/api/admin/call/"):
@@ -1623,8 +2059,6 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_visitors()
         if self.path.startswith("/api/admin/ip-lookup"):
             return self._handle_admin_ip_lookup()
-        if self.path == "/api/admin/greetings":
-            return self._handle_admin_greetings_get()
         if self.path == "/api/trace/snapshot":
             return self._handle_trace_snapshot()
         if self.path == "/api/trace/stream":
@@ -1638,6 +2072,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_audit_session_detail(filename)
         if self.path.startswith("/api/rag/chunks"):
             return self._handle_rag_chunks()
+        if self.path.startswith("/api/admin/concierge-logs"):
+            return self._handle_concierge_logs()
         if self.path.startswith("/api/trace/sessions/") and self.path.endswith("/events"):
             sid = self.path[len("/api/trace/sessions/") : -len("/events")]
             return self._handle_session_events(sid)
@@ -1681,6 +2117,12 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_tts_test()
         if self.path == "/api/chat":
             return self._handle_chat()
+        if self.path == "/api/concierge":
+            return self._handle_concierge()
+        if self.path == "/api/concierge/replay":
+            return self._handle_concierge_replay()
+        if self.path == "/api/concierge/feedback":
+            return self._handle_concierge_feedback()
         if self.path == "/api/product-chat":
             return self._handle_product_chat()
         if self.path == "/api/admin/eject":
@@ -1689,10 +2131,16 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_end_session()
         if self.path == "/api/admin/config":
             return self._handle_admin_config_post()
-        if self.path == "/api/admin/greetings":
-            return self._handle_admin_greetings_post()
         if self.path == "/api/admin/tune":
             return self._handle_admin_tune()
+        if self.path == "/api/admin/prompts":
+            return self._handle_admin_prompts_save()
+        if self.path == "/api/admin/greetings":
+            return self._handle_admin_greetings_post()
+        if self.path == "/api/admin/voice-prompts":
+            return self._handle_admin_voice_prompts_save()
+        if self.path == "/api/admin/call-center/qdrant/search":
+            return self._handle_admin_call_center_qdrant_search()
         # Phase 3 — on-demand bot launcher
         if self.path == "/api/start-session":
             return self._handle_start_session()
@@ -1717,7 +2165,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_DELETE(self):  # noqa: N802
         if self.path.startswith("/api/admin/greetings/"):
-            lang = self.path[len("/api/admin/greetings/") :]
+            lang = self.path[len("/api/admin/greetings/") :].split("?", 1)[0]
             return self._handle_admin_greetings_delete(lang)
         if self.path.startswith("/api/trace/sessions/"):
             sid = self.path[len("/api/trace/sessions/") :]
@@ -1791,18 +2239,27 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return {}
         return data if isinstance(data, dict) else {}
 
+    def _send_upstream_error(self, service: str, status: int, payload: object) -> None:
+        detail = payload if isinstance(payload, dict) else {"detail": payload}
+        self._send_json(
+            status if 400 <= status <= 599 else 502,
+            {"error": f"{service}_request_failed", "detail": detail},
+        )
+
     # ------------------------------------------------------------------
     # Admin auth + helpers
     # ------------------------------------------------------------------
 
-    def _admin_auth(self) -> tuple[bool, dict | None]:
+    def _admin_auth(self, *, require_daily: bool = True) -> tuple[bool, dict | None]:
         """Return (ok, error_response) for the current request.
 
         Centralised so every admin endpoint enforces the same gate. The
         precedence is intentional: if the *server* is misconfigured (no
         token, no Daily key) we report 503 — that's a deployment problem
         the operator needs to see, not "wrong password". Only when the
-        server is healthy do we check the operator's token (401).
+        server is healthy do we check the operator's token (401). Some
+        admin pages do not depend on Daily; those call this with
+        require_daily=False.
         """
         if not _ADMIN_TOKEN:
             self._send_json(
@@ -1813,7 +2270,9 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 },
             )
             return False, {}
-        if not _DAILY_API_KEY or (not _DAILY_ROOM_NAME and not _DAILY_DYNAMIC_ROOMS):
+        if require_daily and (
+            not _DAILY_API_KEY or (not _DAILY_ROOM_NAME and not _DAILY_DYNAMIC_ROOMS)
+        ):
             self._send_json(
                 503,
                 {
@@ -1887,116 +2346,6 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(401, {"error": "unauthorized"})
             return
         self._send_json(200, {"ok": True})
-
-    # ------------------------------------------------------------------
-    # /api/admin/greetings — CRUD for config/greetings.json
-    # ------------------------------------------------------------------
-
-    def _greetings_json_path(self) -> Path:
-        """Return the path to config/greetings.json."""
-        return Path(__file__).resolve().parent.parent / "config" / "greetings.json"
-
-    def _handle_admin_greetings_get(self) -> None:
-        """GET /api/admin/greetings — return full greetings JSON."""
-        ok, _ = self._admin_auth()
-        if not ok:
-            return
-        gpath = self._greetings_json_path()
-        if not gpath.is_file():
-            self._send_json(404, {"error": "greetings.json not found"})
-            return
-        data = json.loads(gpath.read_text(encoding="utf-8"))
-        self._send_json(200, data)
-
-    def _handle_admin_greetings_post(self) -> None:
-        """POST /api/admin/greetings — update or add a greeting.
-
-        Body: {"lang": "xx", "greeting": "...",
-               "timed": {"morning": "...", "afternoon": "...", "evening": "..."}}
-        If "timed" is omitted, only the neutral greeting is updated.
-        """
-        ok, _ = self._admin_auth()
-        if not ok:
-            return
-        body = self._read_json_body()
-        lang = body.get("lang", "").strip().lower()
-        greeting = body.get("greeting", "").strip()
-        timed = body.get("timed")
-
-        if not lang or not greeting:
-            self._send_json(400, {"error": "lang and greeting are required"})
-            return
-
-        gpath = self._greetings_json_path()
-        if gpath.is_file():
-            data = json.loads(gpath.read_text(encoding="utf-8"))
-        else:
-            data = {"greetings": {}, "timed_greetings": {}}
-
-        data["greetings"][lang] = greeting
-        if timed and isinstance(timed, dict):
-            data["timed_greetings"][lang] = timed
-
-        gpath.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-        # Reload in-memory greetings
-        from voxtera.prompts.greetings import GREETINGS as _G
-        from voxtera.prompts.greetings import TIMED_GREETINGS as _T
-        from voxtera.prompts.greetings import _load_greetings
-
-        new_g, new_t = _load_greetings()
-        _G.clear()
-        _G.update(new_g)
-        _T.clear()
-        _T.update(new_t)
-
-        self._send_json(200, {"ok": True, "lang": lang})
-
-    def _handle_admin_greetings_delete(self, lang: str) -> None:
-        """DELETE /api/admin/greetings/<lang> — remove a language from greetings."""
-        ok, _ = self._admin_auth()
-        if not ok:
-            return
-        lang = lang.strip().lower()
-        if not lang:
-            self._send_json(400, {"error": "language code required"})
-            return
-        if lang == "en":
-            self._send_json(400, {"error": "cannot delete English (fallback language)"})
-            return
-
-        gpath = self._greetings_json_path()
-        if not gpath.is_file():
-            self._send_json(404, {"error": "greetings.json not found"})
-            return
-
-        data = json.loads(gpath.read_text(encoding="utf-8"))
-        removed = False
-        if lang in data.get("greetings", {}):
-            del data["greetings"][lang]
-            removed = True
-        if lang in data.get("timed_greetings", {}):
-            del data["timed_greetings"][lang]
-            removed = True
-
-        if not removed:
-            self._send_json(404, {"error": f"language '{lang}' not found"})
-            return
-
-        gpath.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-        # Reload in-memory greetings
-        from voxtera.prompts.greetings import GREETINGS as _G
-        from voxtera.prompts.greetings import TIMED_GREETINGS as _T
-        from voxtera.prompts.greetings import _load_greetings
-
-        new_g, new_t = _load_greetings()
-        _G.clear()
-        _G.update(new_g)
-        _T.clear()
-        _T.update(new_t)
-
-        self._send_json(200, {"ok": True, "deleted": lang})
 
     # ------------------------------------------------------------------
     # /api/admin/visitors — parsed Caddy access log with enrichment
@@ -2844,7 +3193,6 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                     room_name=room_name,
                     expiry_secs=600,
                     max_participants=_DAILY_ROOM_MAX_PARTICIPANTS,
-                    geo=detect_daily_geo(),
                 )
                 print(
                     f"[launcher] created Daily room {room_name} "
@@ -3493,8 +3841,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                     )
                     _resp = urllib.request.urlopen(_req, timeout=3)
                     print(
-                        f"[pstn] sent max-duration goodbye"
-                        f" (session={sid[:8]}, status={_resp.status})"
+                        "[pstn] sent max-duration goodbye "
+                        f"(session={sid[:8]}, status={_resp.status})"
                     )
                     time.sleep(2.0)  # let TTS play before disconnecting
                 except Exception as exc:
@@ -3514,8 +3862,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                         time.sleep(0.2)
                     if _proc.poll() is None:
                         print(
-                            f"[pstn] process still alive after terminate,"
-                            f" killing (session={sid[:8]})"
+                            "[pstn] process still alive after terminate, killing "
+                            f"(session={sid[:8]})"
                         )
                         _proc.kill()
                 except Exception as exc:
@@ -4137,6 +4485,272 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             },
         )
 
+    def _handle_admin_call_center_status(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        payload = {"es": "error", "qdrant": "error"}
+
+        es_status, es_body = _es_json_request("GET", "/")
+        if es_status == 200 and isinstance(es_body, dict):
+            version = (es_body.get("version") or {}).get("number")
+            if version:
+                payload["es"] = "ok"
+                payload["es_version"] = version
+            else:
+                payload["es_error"] = es_body
+        else:
+            payload["es_error"] = es_body
+
+        qdrant_status, qdrant_body = _qdrant_json_request("GET", "/collections")
+        if qdrant_status == 200 and isinstance(qdrant_body, dict):
+            collections = (qdrant_body.get("result") or {}).get("collections") or []
+            payload["qdrant"] = "ok"
+            payload["qdrant_collections"] = len(collections)
+        else:
+            payload["qdrant_error"] = qdrant_body
+
+        self._send_json(200, payload)
+
+    def _handle_admin_call_center_es_hotels(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        status, body = _es_json_request(
+            "POST",
+            f"/{ES_INDEX}/_search",
+            payload={
+                "size": 1000,
+                "query": {"match_all": {}},
+                "_source": [
+                    "hotel_id",
+                    "name",
+                    "chain",
+                    "district",
+                    "price_tier",
+                    "board_type",
+                    "star_rating",
+                ],
+            },
+        )
+        if status != 200 or not isinstance(body, dict):
+            self._send_upstream_error("elasticsearch", status, body)
+            return
+
+        hits = (body.get("hits") or {}).get("hits") or []
+        hotels = [hit.get("_source", {}) for hit in hits]
+        self._send_json(200, {"count": len(hotels), "hotels": hotels})
+
+    def _handle_admin_call_center_es_search(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
+        query = (params.get("q") or [""])[0].strip()
+        if not query:
+            self._send_json(400, {"error": "missing_query", "detail": "Missing ?q= parameter"})
+            return
+
+        status, body = _es_json_request(
+            "POST",
+            f"/{ES_INDEX}/_search",
+            payload={
+                "size": 10,
+                "query": {
+                    "multi_match": {
+                        "query": query,
+                        "fields": ["name^3", "aliases^2", "chain", "district", "city"],
+                        "type": "best_fields",
+                        "fuzziness": "AUTO",
+                    }
+                },
+            },
+        )
+        if status != 200 or not isinstance(body, dict):
+            self._send_upstream_error("elasticsearch", status, body)
+            return
+
+        hits = (body.get("hits") or {}).get("hits") or []
+        results = [
+            {
+                "hotel_id": (hit.get("_source") or {}).get("hotel_id"),
+                "name": (hit.get("_source") or {}).get("name"),
+                "score": hit.get("_score", 0.0),
+            }
+            for hit in hits
+        ]
+        self._send_json(200, {"query": query, "count": len(results), "results": results})
+
+    def _handle_admin_call_center_qdrant_collections(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        status, body = _qdrant_json_request("GET", "/collections")
+        if status != 200 or not isinstance(body, dict):
+            self._send_upstream_error("qdrant", status, body)
+            return
+
+        collections = (body.get("result") or {}).get("collections") or []
+        self._send_json(200, {"collections": collections})
+
+    def _handle_admin_call_center_qdrant_points(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
+        collection = (params.get("collection") or [QDRANT_COLLECTION])[0]
+        hotel_id = (params.get("hotel_id") or [""])[0].strip()
+        try:
+            limit = max(1, min(int((params.get("limit") or ["20"])[0]), 100))
+        except ValueError:
+            limit = 20
+
+        payload = {"limit": limit, "with_payload": True, "with_vector": False}
+        if hotel_id:
+            payload["filter"] = {"must": [{"key": "hotel_id", "match": {"value": hotel_id}}]}
+
+        status, body = _qdrant_json_request(
+            "POST",
+            f"/collections/{collection}/points/scroll",
+            payload=payload,
+        )
+        if status != 200 or not isinstance(body, dict):
+            self._send_upstream_error("qdrant", status, body)
+            return
+
+        points = (body.get("result") or {}).get("points") or []
+        self._send_json(200, {"collection": collection, "count": len(points), "points": points})
+
+    def _handle_admin_call_center_qdrant_search(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        body = self._read_json_body()
+        query = str(body.get("query") or "").strip()
+        hotel_id = str(body.get("hotel_id") or "").strip()
+        try:
+            limit = max(1, min(int(body.get("limit", 5)), 20))
+        except (TypeError, ValueError):
+            limit = 5
+
+        if not query:
+            self._send_json(400, {"error": "missing_query", "detail": "Missing 'query' in body"})
+            return
+
+        try:
+            t0 = time.perf_counter()
+            embeddings = embed_texts([query], prefix=PREFIX_QUERY)
+            embed_ms = (time.perf_counter() - t0) * 1000
+        except Exception as exc:
+            self._send_json(500, {"error": "embed_failed", "detail": str(exc)})
+            return
+
+        payload = {"vector": embeddings[0], "limit": limit, "with_payload": True}
+        if hotel_id:
+            payload["filter"] = {"must": [{"key": "hotel_id", "match": {"value": hotel_id}}]}
+
+        status, qdrant_body = _qdrant_json_request(
+            "POST",
+            f"/collections/{QDRANT_COLLECTION}/points/search",
+            payload=payload,
+        )
+        if status != 200 or not isinstance(qdrant_body, dict):
+            self._send_upstream_error("qdrant", status, qdrant_body)
+            return
+
+        results = qdrant_body.get("result") or []
+        self._send_json(
+            200,
+            {
+                "query": query,
+                "embed_ms": round(embed_ms, 1),
+                "count": len(results),
+                "results": [
+                    {
+                        "score": result.get("score"),
+                        "hotel_id": (result.get("payload") or {}).get("hotel_id"),
+                        "hotel_name": (result.get("payload") or {}).get("hotel_name"),
+                        "category": (result.get("payload") or {}).get("category"),
+                        "text": (result.get("payload") or {}).get("text"),
+                        "text_en": (result.get("payload") or {}).get("text_en"),
+                    }
+                    for result in results
+                ],
+            },
+        )
+
+    def _handle_concierge_logs(self):
+        """GET /api/admin/concierge-logs?date=YYYY-MM-DD — return all log entries for a day."""
+        from urllib.parse import parse_qs, urlparse
+
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        date_str = (params.get("date") or [None])[0]
+
+        # Check both possible log directories (CWD/logs and project-root/logs)
+        log_dirs = []
+        log_dirs.append(Path(os.environ.get("CONCIERGE_LOG_DIR", "logs")))
+        project_root = Path(os.path.dirname(os.path.abspath(__file__))).parent / "logs"
+        if project_root.exists() and project_root not in log_dirs:
+            log_dirs.append(project_root)
+
+        # If no date, list available days
+        if not date_str:
+            days = set()
+            for log_dir in log_dirs:
+                if log_dir.exists():
+                    for f in log_dir.glob("travel_agent_consierge-*.jsonl"):
+                        day = f.stem.replace("travel_agent_consierge-", "")
+                        if "_" not in day:  # skip files like -2026-06-05_old_test
+                            days.add(day)
+            self._send_json(200, {"days": sorted(days, reverse=True)})
+            return
+
+        # Find the log file
+        log_file = None
+        for log_dir in log_dirs:
+            candidate = log_dir / f"travel_agent_consierge-{date_str}.jsonl"
+            if candidate.exists():
+                log_file = candidate
+                break
+
+        if not log_file:
+            self._send_json(200, {"entries": [], "sessions": []})
+            return
+
+        entries = []
+        for line in log_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+        # Group session ids preserving order of first appearance
+        seen = {}
+        for e in entries:
+            sid = e.get("session_id") or "unknown"
+            if sid not in seen:
+                seen[sid] = {
+                    "session_id": sid,
+                    "first_ts": e.get("ts"),
+                    "turns": 0,
+                    "first_utterance": e.get("utterance", "")[:60],
+                }
+            seen[sid]["turns"] += 1
+
+        self._send_json(200, {"entries": entries, "sessions": list(seen.values())})
+
     def _handle_languages(self):
         """GET /api/languages — full language config for the demo UI.
 
@@ -4182,10 +4796,17 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 lang = "en"
 
             # Use pre-built greeting if available, otherwise translate via LLM.
+            # fill_hotel_name resolves the optional {hotel_name} placeholder to
+            # the per-language generic ("our hotel") — the TTS test page has no
+            # hotel context.
+            from voxtera.prompts import fill_hotel_name
+
             text = GREETINGS.get(lang)
             if not text:
-                base = GREETINGS["en"]
+                base = fill_hotel_name(GREETINGS["en"], None, "en")
                 text = _translate_greeting(base, lang, model)
+            else:
+                text = fill_hotel_name(text, None, lang)
 
             if provider == "google":
                 audio = _tts_google(text, voice, lang)
@@ -4516,11 +5137,33 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 messages.append({"role": "tool", "tool_call_id": tcd["id"], "content": result})
             try:
                 t0_llm2 = _time.monotonic()
+                # Keep tools available so the model can FIX a rejected call
+                # (e.g. invalid category) — bounded to one retry round below.
                 r2 = oai_client.chat.completions.create(
-                    model=model, max_tokens=150, messages=messages, stream=False
+                    model=model,
+                    max_tokens=150,
+                    messages=messages,
+                    stream=False,
+                    tools=_TOOLS or None,
+                    tool_choice="auto" if _TOOLS else None,
                 )
                 print(f"[timing] llm_tool_followup={(_time.monotonic() - t0_llm2) * 1000:.0f}ms")
-                full_text = (r2.choices[0].message.content or "").strip()
+                msg2 = r2.choices[0].message
+                if msg2.tool_calls:
+                    # One corrected retry, then a final text-only pass (no
+                    # tools) so this can never loop.
+                    messages.append(msg2.model_dump())
+                    for tc2 in msg2.tool_calls:
+                        result2 = _handle_tool_call(tc2, session_id)
+                        messages.append(
+                            {"role": "tool", "tool_call_id": tc2.id, "content": result2}
+                        )
+                    r3 = oai_client.chat.completions.create(
+                        model=model, max_tokens=150, messages=messages, stream=False
+                    )
+                    full_text = (r3.choices[0].message.content or "").strip()
+                else:
+                    full_text = (msg2.content or "").strip()
                 messages.append({"role": "assistant", "content": full_text})
                 push({"type": "text", "chunk": full_text})
             except Exception as e2:
@@ -4573,6 +5216,414 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         )
         push({"type": "done", "session_id": session_id, "text": full_text})
         finish()
+
+    def _handle_admin_prompts_list(self) -> None:
+        """GET /api/admin/prompts — every editable prompt with its explanation."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        pdir = _prompts_dir()
+        out = []
+        for name, meta in _PROMPT_REGISTRY.items():
+            path = pdir / meta["file"]
+            try:
+                content = path.read_bytes().decode("utf-8")
+                mtime = path.stat().st_mtime
+            except OSError:
+                content, mtime = "", None
+            out.append(
+                {
+                    "name": name,
+                    "file": meta["file"],
+                    "title": meta["title"],
+                    "description": meta["description"],
+                    "content": content,
+                    "mtime": mtime,
+                }
+            )
+        self._send_json(200, {"prompts": out})
+
+    def _handle_admin_prompts_save(self) -> None:
+        """POST /api/admin/prompts — save one prompt {name, content}.
+
+        Whitelisted names only (no path traversal); JSON prompts are validated
+        before writing; the previous version is backed up to
+        logs/prompt_backups/. Changes hot-reload — no restart needed.
+        """
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        name = (body.get("name") or "").strip()
+        content = body.get("content")
+        meta = _PROMPT_REGISTRY.get(name)
+        if meta is None or not isinstance(content, str) or not content.strip():
+            self._send_json(400, {"error": "unknown_prompt_or_empty_content"})
+            return
+        if meta["file"].endswith(".json"):
+            try:
+                json.loads(content)
+            except ValueError as e:
+                self._send_json(400, {"error": "invalid_json", "detail": str(e)})
+                return
+        path = _prompts_dir() / meta["file"]
+        try:
+            backup_dir = Path(__file__).resolve().parent.parent / "logs" / "prompt_backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            # Save time in the filename (same convention as the audit logs), e.g.
+            # concierge_render.md.2026-06-06_18-42-07.bak
+            stamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
+            (backup_dir / f"{meta['file']}.{stamp}.bak").write_bytes(path.read_bytes())
+        except OSError:
+            pass  # backup is best-effort; never block a save on it
+        path.write_bytes(content.encode("utf-8"))
+        self._send_json(200, {"ok": True, "name": name, "mtime": path.stat().st_mtime})
+
+    # Legacy compatibility: keep the old Greetings Editor API working.
+    def _greetings_json_path(self) -> Path:
+        return (_voice_prompts_dir() / _VOICE_PROMPT_REGISTRY["greetings"]["file"]).resolve()
+
+    def _load_greetings_json(self) -> tuple[Path, dict] | tuple[Path, None]:
+        path = self._greetings_json_path()
+        if not path.is_file():
+            return path, None
+        data = json.loads(path.read_bytes().decode("utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("greetings.json top level must be an object")
+        if not isinstance(data.get("greetings"), dict):
+            data["greetings"] = {}
+        if not isinstance(data.get("timed_greetings"), dict):
+            data["timed_greetings"] = {}
+        if not isinstance(data.get("generic_hotel"), dict):
+            data["generic_hotel"] = {}
+        return path, data
+
+    def _write_greetings_json(self, path: Path, data: dict) -> None:
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+        err = _validate_greetings_json(content)
+        if err:
+            raise ValueError(err)
+        path.write_bytes((content + "\n").encode("utf-8"))
+
+    def _handle_admin_greetings_get(self) -> None:
+        """GET /api/admin/greetings — return full greetings JSON."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        try:
+            _, data = self._load_greetings_json()
+        except (ValueError, OSError) as exc:
+            self._send_json(500, {"error": "invalid_greetings_file", "detail": str(exc)})
+            return
+        if data is None:
+            self._send_json(404, {"error": "greetings.json not found"})
+            return
+        self._send_json(200, data)
+
+    def _handle_admin_greetings_post(self) -> None:
+        """POST /api/admin/greetings — update or add one language greeting."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        lang = (body.get("lang") or "").strip().lower()
+        greeting_raw = body.get("greeting")
+        greeting = greeting_raw.strip() if isinstance(greeting_raw, str) else ""
+        timed = body.get("timed")
+        if not lang or not greeting:
+            self._send_json(400, {"error": "lang and greeting are required"})
+            return
+        if timed is not None and not isinstance(timed, dict):
+            self._send_json(400, {"error": "timed must be an object when provided"})
+            return
+        try:
+            path, data = self._load_greetings_json()
+        except (ValueError, OSError) as exc:
+            self._send_json(500, {"error": "invalid_greetings_file", "detail": str(exc)})
+            return
+        if data is None:
+            data = {"greetings": {}, "timed_greetings": {}, "generic_hotel": {}}
+
+        data["greetings"][lang] = greeting
+        if isinstance(timed, dict):
+            morning = (timed.get("morning") or "").strip() or greeting
+            afternoon = (timed.get("afternoon") or "").strip() or greeting
+            evening = (timed.get("evening") or "").strip() or greeting
+            data["timed_greetings"][lang] = {
+                "morning": morning,
+                "afternoon": afternoon,
+                "evening": evening,
+            }
+
+        try:
+            self._write_greetings_json(path, data)
+        except ValueError as exc:
+            self._send_json(400, {"error": "invalid_greetings", "detail": str(exc)})
+            return
+        except OSError as exc:
+            self._send_json(500, {"error": "write_failed", "detail": str(exc)})
+            return
+        self._send_json(200, {"ok": True, "lang": lang})
+
+    def _handle_admin_greetings_delete(self, lang: str) -> None:
+        """DELETE /api/admin/greetings/<lang> — remove one language."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        lang = (lang or "").strip().lower()
+        if not lang:
+            self._send_json(400, {"error": "language code required"})
+            return
+        if lang == "en":
+            self._send_json(400, {"error": "cannot delete English (fallback language)"})
+            return
+
+        try:
+            path, data = self._load_greetings_json()
+        except (ValueError, OSError) as exc:
+            self._send_json(500, {"error": "invalid_greetings_file", "detail": str(exc)})
+            return
+        if data is None:
+            self._send_json(404, {"error": "greetings.json not found"})
+            return
+
+        removed = False
+        if lang in data["greetings"]:
+            del data["greetings"][lang]
+            removed = True
+        if lang in data["timed_greetings"]:
+            del data["timed_greetings"][lang]
+            removed = True
+        if lang in data["generic_hotel"]:
+            del data["generic_hotel"][lang]
+            removed = True
+
+        if not removed:
+            self._send_json(404, {"error": f"language '{lang}' not found"})
+            return
+
+        try:
+            self._write_greetings_json(path, data)
+        except ValueError as exc:
+            self._send_json(400, {"error": "invalid_greetings", "detail": str(exc)})
+            return
+        except OSError as exc:
+            self._send_json(500, {"error": "write_failed", "detail": str(exc)})
+            return
+        self._send_json(200, {"ok": True, "deleted": lang})
+
+    def _handle_admin_voice_prompts_list(self) -> None:
+        """GET /api/admin/voice-prompts — voice-concierge prompts + explanations."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        pdir = _voice_prompts_dir()
+        out = []
+        for name, meta in _VOICE_PROMPT_REGISTRY.items():
+            path = (pdir / meta["file"]).resolve()
+            try:
+                content = path.read_bytes().decode("utf-8")
+                mtime = path.stat().st_mtime
+            except OSError:
+                content, mtime = "", None
+            out.append(
+                {
+                    "name": name,
+                    "file": Path(meta["file"]).name,
+                    "title": meta["title"],
+                    "description": meta["description"],
+                    "readonly": bool(meta.get("readonly")),
+                    "content": content,
+                    "mtime": mtime,
+                }
+            )
+        self._send_json(200, {"prompts": out})
+
+    def _handle_admin_voice_prompts_save(self) -> None:
+        """POST /api/admin/voice-prompts — save one prompt {name, content}.
+
+        Whitelisted names only; readonly entries are rejected; greetings.json
+        gets structural validation (a bad save would stop the voice bot from
+        booting). Backup to logs/prompt_backups/ before every write. NO
+        hot-reload here: the voice bot imports its prompts at startup, so the
+        save applies from the NEXT CALL.
+
+        Bytes are written exactly as received (UTF-8, no newline
+        normalisation) — audio.py embeds system_prompt.md as a byte-stable
+        semantic fingerprint.
+        """
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        name = (body.get("name") or "").strip()
+        content = body.get("content")
+        meta = _VOICE_PROMPT_REGISTRY.get(name)
+        if meta is None or not isinstance(content, str) or not content.strip():
+            self._send_json(400, {"error": "unknown_prompt_or_empty_content"})
+            return
+        if meta.get("readonly"):
+            self._send_json(403, {"error": "readonly_prompt"})
+            return
+        if name == "greetings":
+            err = _validate_greetings_json(content)
+            if err:
+                self._send_json(400, {"error": "invalid_greetings", "detail": err})
+                return
+        path = (_voice_prompts_dir() / meta["file"]).resolve()
+        try:
+            backup_dir = Path(__file__).resolve().parent.parent / "logs" / "prompt_backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
+            (backup_dir / f"{path.name}.{stamp}.bak").write_bytes(path.read_bytes())
+        except OSError:
+            pass  # backup is best-effort; never block a save on it
+        path.write_bytes(content.encode("utf-8"))
+        self._send_json(200, {"ok": True, "name": name, "mtime": path.stat().st_mtime})
+
+    def _handle_concierge(self) -> None:
+        """POST /api/concierge — synchronous JSON Q&A backed by ConciergePipeline.
+
+        Request:  {"utterance": str, "region": str, "session_id": str | None}
+        Response: full ConciergePipeline.run() dict
+                  (session_id, path, reason, answer, escalation,
+                   clarification, decomposition, router, retrieval, timings).
+        """
+        from voxtera.call_center.compound import CompoundAndDiscovery
+        from voxtera.call_center.pipeline import ConciergePipeline
+        from voxtera.call_center.resolver import HotelResolver
+        from voxtera.call_center.router import SourceRouter
+        from voxtera.call_center.triage import Triage
+        from voxtera.call_center.web_retriever import WebRetriever
+
+        body = self._read_json_body()
+        utterance = (body.get("utterance") or "").strip()
+        # Preserve empty string as explicit "all regions" signal (distinct from None/absent).
+        raw_region = body.get("region")
+        region = raw_region.strip() if isinstance(raw_region, str) else None
+        session_id = (body.get("session_id") or "").strip() or None
+        if not utterance:
+            self._send_json(400, {"error": "utterance_required"})
+            return
+
+        async def _run() -> dict:
+            # Shared warm deps (connections, LLM fns) + cheap per-request wiring
+            # so per-run pipeline state stays isolated across concurrent requests.
+            deps = await _concierge_deps()
+            pipeline = ConciergePipeline(
+                session_store=deps["store"],
+                classifier=deps["classifier"],
+                decomposer=deps["decomposer"],
+                triage=Triage(),
+                router=SourceRouter(),
+                compound=CompoundAndDiscovery(session=deps["http"]),
+                resolver=HotelResolver(session=deps["http"]),
+                web_retriever=WebRetriever(),
+                render_fn=deps["render_fn"],
+                web_synth_fn=deps["web_synth_fn"],
+                converse_fn=deps["converse_fn"],
+                web_query_fn=deps["web_query_fn"],
+            )
+            return await pipeline.run(
+                utterance=utterance,
+                session_id=session_id,
+                region=region,
+            )
+
+        try:
+            result = asyncio.run_coroutine_threadsafe(_run(), _concierge_loop()).result(timeout=120)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[concierge] error: {exc}")
+            self._send_json(500, {"error": str(exc)})
+            return
+        self._send_json(200, result)
+
+    def _handle_concierge_feedback(self) -> None:
+        """POST /api/concierge/feedback — store a thumbs up/down rating + comment.
+
+        Request:  {"session_id": str|null, "utterance": str, "answer": str,
+                   "rating": "up"|"down", "comment": str}
+        Appended as a ``{"type": "feedback"}`` NDJSON record to the same daily
+        ``travel_agent_consierge-*.jsonl`` log as the dialog records, so each
+        conversation and its user feedback live in one file.
+        """
+        from voxtera.call_center.pipeline import append_feedback_record
+
+        body = self._read_json_body()
+        rating = (body.get("rating") or "").strip().lower()
+        if rating not in ("up", "down"):
+            self._send_json(400, {"error": "rating_must_be_up_or_down"})
+            return
+        append_feedback_record(
+            {
+                "session_id": (body.get("session_id") or "").strip() or None,
+                "utterance": str(body.get("utterance") or "")[:2000],
+                "answer": str(body.get("answer") or "")[:4000],
+                "rating": rating,
+                "comment": str(body.get("comment") or "")[:2000],
+            }
+        )
+        self._send_json(200, {"ok": True})
+
+    def _handle_concierge_replay(self) -> None:
+        """POST /api/concierge/replay — DEBUG: run the pipeline from a user-edited
+        decomposition, skipping the LLM decompose step.
+
+        Lets you fix a field (e.g. set hotel_mention) in the debug drawer and see
+        whether the DOWNSTREAM (triage → route → resolve → retrieve → render) then
+        works — isolating decomposer bugs from retrieval bugs. The decomposition
+        is used VERBATIM (no coerce), so what you type is exactly what runs.
+
+        Request:  {"utterance": str, "region": str|null, "session_id": str|null,
+                   "decomposition": {...edited fields...}}
+        Response: same shape as /api/concierge.
+        """
+        from voxtera.call_center.compound import CompoundAndDiscovery
+        from voxtera.call_center.pipeline import ConciergePipeline
+        from voxtera.call_center.resolver import HotelResolver
+        from voxtera.call_center.router import SourceRouter
+        from voxtera.call_center.triage import Triage
+
+        body = self._read_json_body()
+        utterance = (body.get("utterance") or "").strip()
+        raw_region = body.get("region")
+        region = raw_region.strip() if isinstance(raw_region, str) else None
+        session_id = (body.get("session_id") or "").strip() or None
+        edited = body.get("decomposition")
+        if not utterance or not isinstance(edited, dict):
+            self._send_json(400, {"error": "utterance_and_decomposition_required"})
+            return
+
+        class _FixedDecomposer:
+            """Returns the operator's edited decomposition verbatim (no LLM, no coerce)."""
+
+            async def decompose(self, _utterance: str, _ctx: dict) -> dict:
+                return dict(edited)
+
+        async def _run() -> dict:
+            deps = await _concierge_deps()
+            pipeline = ConciergePipeline(
+                session_store=deps["store"],
+                classifier=deps["classifier"],
+                decomposer=_FixedDecomposer(),  # <-- the only difference from /api/concierge
+                triage=Triage(),
+                router=SourceRouter(),
+                compound=CompoundAndDiscovery(session=deps["http"]),
+                resolver=HotelResolver(session=deps["http"]),
+                render_fn=deps["render_fn"],
+                web_synth_fn=deps["web_synth_fn"],
+                converse_fn=deps["converse_fn"],
+                web_query_fn=deps["web_query_fn"],
+            )
+            return await pipeline.run(utterance=utterance, session_id=session_id, region=region)
+
+        try:
+            result = asyncio.run_coroutine_threadsafe(_run(), _concierge_loop()).result(timeout=120)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[concierge-replay] error: {exc}")
+            self._send_json(500, {"error": str(exc)})
+            return
+        self._send_json(200, result)
 
     def _handle_product_chat(self):
         """POST /api/product-chat — streaming NDJSON: Voxtera product Q&A backed by the
@@ -4771,6 +5822,47 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------
     # Clean up orphaned rooms from previous server runs before accepting traffic.
     _cleanup_orphaned_rooms()
+
+    # --------------------------------------------------------------------------
+    # Pre-warm the call-center embedding model (e5-large) in a background
+    # thread so the first /api/concierge request doesn't pay the ~3s cold
+    # load. Embedding the warmup string forces sentence-transformers to
+    # load weights now.
+    def _warm_call_center_embed() -> None:
+        try:
+            from voxtera.call_center.embeddings import embed_query
+
+            t0 = time.perf_counter()
+            embed_query("warmup")
+            print(f"[warmup] call_center embed model ready in {time.perf_counter() - t0:.1f}s")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[warmup] embed pre-warm failed: {exc}")
+        # Also warm the persistent concierge runtime so the first guest turn
+        # doesn't pay it: create the shared loop + deps (Redis client, aiohttp
+        # session) and fire a 1-token Anthropic ping to establish the TLS/HTTP2
+        # connection the decompose/render calls will reuse.
+        try:
+            t0 = time.perf_counter()
+
+            async def _warm_deps() -> None:
+                deps = await _concierge_deps()
+                # touch Redis so the connection is established now
+                await deps["store"].load("warmup")
+                if os.environ.get("ANTHROPIC_API_KEY"):
+                    from voxtera.call_center.clients import anthropic_client
+
+                    await anthropic_client().messages.create(
+                        model=os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001"),
+                        max_tokens=1,
+                        messages=[{"role": "user", "content": "ping"}],
+                    )
+
+            asyncio.run_coroutine_threadsafe(_warm_deps(), _concierge_loop()).result(timeout=60)
+            print(f"[warmup] concierge runtime warm in {time.perf_counter() - t0:.1f}s")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[warmup] concierge runtime pre-warm failed: {exc}")
+
+    threading.Thread(target=_warm_call_center_embed, daemon=True).start()
     # --------------------------------------------------------------------------
     socketserver.ThreadingTCPServer.allow_reuse_address = True
     with socketserver.ThreadingTCPServer(("", port), DemoHandler) as httpd:

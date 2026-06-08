@@ -1240,12 +1240,22 @@
     max-width:1400px;margin:0 auto;
     padding-top:2rem;
     display:flex;justify-content:space-between;align-items:center;
+    gap:1rem;
+    padding-right:min(21rem, 28vw);
     font-family:'JetBrains Mono',monospace;
     font-size:0.72rem;
     letter-spacing:0.1em;
     text-transform:uppercase;
     color:rgba(244,237,225,0.4);
   }
+  .footer-bottom a{
+    color:var(--cream);
+    text-decoration:underline;
+    text-decoration-thickness:1px;
+    text-underline-offset:0.22em;
+    transition:color .25s ease;
+  }
+  .footer-bottom a:hover{color:var(--gold);}
 
   /* ============ RESPONSIVE ============ */
   @media (max-width:1024px){
@@ -1325,7 +1335,7 @@
     .dialogue{padding:1.8rem;}
     .dialogue-row{grid-template-columns:1fr;gap:0.6rem;padding:1rem 0;}
     .footer-grid{grid-template-columns:1fr;gap:2rem;}
-    .footer-bottom{flex-direction:column;gap:1rem;text-align:center;}
+    .footer-bottom{flex-direction:column;gap:1rem;text-align:center;padding-right:0;}
   }
 
   /* fade-in on scroll */
@@ -1503,6 +1513,7 @@
     <a href="voxtera-hotels.html" data-i18n="nav.for_hotels">For hotels</a>
     <a href="voxtera-cloudbeds.html" data-i18n="cb.nav_link">Cloudbeds</a>
     <a href="voxtera-demo.html" data-i18n="nav.try_demo">Try demo</a>
+    <a href="travel-agent.html" data-i18n="nav.travel_agent">Travel Agent</a>
     <a href="#languages" data-i18n="nav.languages">Languages</a>
     <a href="#compare" data-i18n="nav.compare">Compare</a>
     <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
@@ -2166,7 +2177,7 @@
   </div>
   <div class="footer-bottom">
     <span data-i18n="footer.copyright">© 2026 Voxtera — Built in Canada</span>
-    <span data-i18n="footer.legal">Privacy · Terms · GDPR · DPA</span>
+    <span data-i18n-html="footer.legal"><a href="/privacy.html" style="color:inherit;">Privacy</a> · Terms · GDPR · DPA</span>
   </div>
 </footer>
 

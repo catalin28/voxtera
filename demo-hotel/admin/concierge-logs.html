@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voxtera — Concierge Logs</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f4ede1; color: #1a1814; height: 100vh; display: flex; flex-direction: column; }
+
+/* Top bar */
+.topbar { background: #1a1814; color: #e7e9ea; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.topbar h1 { font-size: 1.1rem; font-weight: 600; color: #b8884a; }
+.topbar label { font-size: 0.8rem; color: #8899a6; }
+.topbar input[type="date"] { background: #2f3336; border: 1px solid #444; color: #e7e9ea; border-radius: 6px; padding: 6px 10px; font-size: 0.85rem; }
+.topbar .stats { margin-left: auto; font-size: 0.75rem; color: #8899a6; }
+
+/* Main layout */
+.main { flex: 1; display: flex; overflow: hidden; }
+
+/* Left panel - sessions */
+.sessions-panel { width: 280px; border-right: 1px solid rgba(26,24,20,0.14); background: #faf6ec; overflow-y: auto; flex-shrink: 0; }
+.sessions-panel h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: #8899a6; padding: 12px 14px 8px; border-bottom: 1px solid rgba(26,24,20,0.1); }
+.session-item { padding: 10px 14px; border-bottom: 1px solid rgba(26,24,20,0.08); cursor: pointer; transition: background 0.15s; }
+.session-item:hover { background: rgba(184,136,74,0.08); }
+.session-item.active { background: rgba(184,136,74,0.15); border-left: 3px solid #b8884a; }
+.session-item .sid { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: #8899a6; }
+.session-item .preview { font-size: 0.82rem; color: #1a1814; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-item .meta { font-size: 0.68rem; color: #b8884a; margin-top: 2px; }
+
+/* Center - conversation */
+.conversation-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.conversation-scroll { flex: 1; overflow-y: auto; padding: 20px; }
+.no-selection { display: flex; align-items: center; justify-content: center; height: 100%; color: #8899a6; font-style: italic; }
+
+.turn { margin-bottom: 24px; }
+.turn-user { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.turn-user .bubble { background: #1a1814; color: #f4ede1; padding: 10px 14px; border-radius: 14px 14px 4px 14px; max-width: 70%; font-size: 0.9rem; line-height: 1.4; }
+.turn-bot { margin-bottom: 8px; }
+.turn-bot .bubble { background: #faf6ec; border: 1px solid rgba(26,24,20,0.14); border-left: 3px solid #b8884a; padding: 10px 14px; border-radius: 14px 14px 14px 4px; max-width: 85%; font-size: 0.9rem; line-height: 1.5; }
+.turn-bot .bubble.clarification { border-left-color: #1d9bf0; }
+.turn-bot .bubble.escalation { border-left-color: #f4212e; }
+.turn-label { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.12em; color: #8899a6; margin-bottom: 4px; }
+.turn-label.user { text-align: right; color: #555; }
+.turn-label.bot { color: #b8884a; }
+.turn-ts { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; color: #aaa; margin-top: 3px; }
+
+/* Debug toggle */
+.debug-toggle { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: #1d9bf0; cursor: pointer; margin-top: 6px; user-select: none; }
+.debug-toggle:hover { text-decoration: underline; }
+.debug-section { display: none; margin-top: 10px; background: #f9f5ed; border: 1px solid rgba(26,24,20,0.1); border-radius: 8px; padding: 12px; font-size: 0.78rem; }
+.debug-section.open { display: block; }
+
+/* Timing badges */
+.timings { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.timing-badge { display: inline-block; background: #e8e2d5; border: 1px solid rgba(26,24,20,0.12); border-radius: 4px; padding: 3px 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: #1a1814; }
+
+/* Debug grid */
+.debug-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.debug-box { background: #fff; border: 1px solid rgba(26,24,20,0.1); border-radius: 6px; padding: 10px; }
+.debug-box h4 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #8899a6; margin-bottom: 6px; }
+.debug-box pre { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; white-space: pre-wrap; word-break: break-word; color: #333; max-height: 300px; overflow-y: auto; }
+
+/* Path badge */
+.path-badge { display: inline-block; background: #1a1814; color: #b8884a; font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; margin-left: 8px; }
+.reason-badge { display: inline-block; background: rgba(29,155,240,0.1); color: #1d9bf0; font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; margin-left: 4px; }
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(26,24,20,0.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(26,24,20,0.35); }
+
+@media (max-width: 768px) {
+  .sessions-panel { width: 200px; }
+  .debug-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Concierge Logs</h1>
+  <label for="date-picker">Day:</label>
+  <input type="date" id="date-picker">
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="main">
+  <div class="sessions-panel">
+    <h2>Sessions</h2>
+    <div id="session-list"></div>
+  </div>
+  <div class="conversation-panel">
+    <div class="conversation-scroll" id="conversation">
+      <div class="no-selection">Select a session to view the conversation</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const datePicker = document.getElementById('date-picker');
+const sessionList = document.getElementById('session-list');
+const conversation = document.getElementById('conversation');
+const statsEl = document.getElementById('stats');
+
+let allEntries = [];
+let sessions = [];
+let activeSessionId = null;
+
+// Set today as default
+const today = new Date().toISOString().split('T')[0];
+datePicker.value = today;
+
+async function loadDays() {
+  const r = await fetch('/api/admin/concierge-logs');
+  const data = await r.json();
+  // If today has no data, try the most recent day
+  if (data.days && data.days.length > 0 && !data.days.includes(today)) {
+    datePicker.value = data.days[0];
+  }
+  loadDay(datePicker.value);
+}
+
+async function loadDay(date) {
+  const r = await fetch(`/api/admin/concierge-logs?date=${date}`);
+  const data = await r.json();
+  allEntries = data.entries || [];
+  sessions = data.sessions || [];
+  activeSessionId = null;
+  renderSessions();
+  conversation.innerHTML = '<div class="no-selection">Select a session to view the conversation</div>';
+  statsEl.textContent = `${sessions.length} sessions · ${allEntries.length} turns`;
+}
+
+function renderSessions() {
+  sessionList.innerHTML = '';
+  for (const s of sessions) {
+    const div = document.createElement('div');
+    div.className = 'session-item';
+    div.dataset.sid = s.session_id;
+    const time = s.first_ts ? new Date(s.first_ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+    div.innerHTML = `
+      <div class="sid">${s.session_id.substring(0, 8)}… · ${time}</div>
+      <div class="preview">${escHtml(s.first_utterance)}</div>
+      <div class="meta">${s.turns} turn${s.turns !== 1 ? 's' : ''}</div>
+    `;
+    div.addEventListener('click', () => selectSession(s.session_id));
+    sessionList.appendChild(div);
+  }
+}
+
+function selectSession(sid) {
+  activeSessionId = sid;
+  // Highlight
+  document.querySelectorAll('.session-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.sid === sid);
+  });
+  renderConversation(sid);
+}
+
+function renderConversation(sid) {
+  const turns = allEntries.filter(e => e.session_id === sid);
+  if (!turns.length) {
+    conversation.innerHTML = '<div class="no-selection">No turns found</div>';
+    return;
+  }
+
+  let html = '';
+  for (let i = 0; i < turns.length; i++) {
+    const t = turns[i];
+    const ts = t.ts ? new Date(t.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '';
+    const path = t.path || '';
+    const reason = t.reason || '';
+
+    html += '<div class="turn">';
+
+    // User message
+    html += `<div class="turn-label user">YOU · ${ts}</div>`;
+    html += `<div class="turn-user"><div class="bubble">${escHtml(t.utterance || '')}</div></div>`;
+
+    // Bot response
+    const answer = t.answer || t.clarification || t.escalation || '(no response)';
+    const bubbleClass = t.clarification ? 'clarification' : (t.escalation ? 'escalation' : '');
+    html += `<div class="turn-label bot">CONCIERGE <span class="path-badge">${path}</span><span class="reason-badge">${reason}</span></div>`;
+    html += `<div class="turn-bot"><div class="bubble ${bubbleClass}">${escHtml(answer)}</div></div>`;
+
+    // Debug toggle
+    html += `<div class="debug-toggle" onclick="toggleDebug(${i})">▶ Debug · Decomposition + Timings</div>`;
+    html += `<div class="debug-section" id="debug-${i}">`;
+
+    // Timings
+    const timings = t.timings || {};
+    html += '<div class="timings">';
+    for (const [k, v] of Object.entries(timings)) {
+      html += `<span class="timing-badge">${k} ${typeof v === 'number' ? v.toFixed(1) + 'ms' : v}</span>`;
+    }
+    html += '</div>';
+
+    // Debug grid
+    html += '<div class="debug-grid">';
+
+    // Decomposition
+    html += '<div class="debug-box"><h4>Decomposition</h4><pre>' + escHtml(JSON.stringify(t.decomposition, null, 2) || 'null') + '</pre></div>';
+
+    // Retrieval + Trace
+    let traceHtml = '';
+    const rs = t.retrieval_summary || {};
+    traceHtml += `reason: ${rs.reason || '-'}\n`;
+    traceHtml += `hotels: ${rs.count || 0}\n`;
+    if (rs.hotels) {
+      for (const h of rs.hotels) {
+        traceHtml += `  • ${h.name || h.hotel_id} (score: ${h.score})\n`;
+      }
+    }
+    if (rs.missing_requirements && rs.missing_requirements.length) {
+      traceHtml += `missing: ${rs.missing_requirements.join(', ')}\n`;
+    }
+    traceHtml += '\n';
+    const trace = t.trace || {};
+    if (trace.qdrant && trace.qdrant.length) {
+      traceHtml += `QDRANT ×${trace.qdrant.length}\n`;
+      for (const q of trace.qdrant) {
+        traceHtml += `  [${q.stage}] query: "${q.query}"`;
+        if (q.region) traceHtml += ` region: ${q.region}`;
+        if (q.hotel_id) traceHtml += ` hotel: ${q.hotel_id}`;
+        if (q.resolved) traceHtml += `\n    → ${q.resolved}`;
+        traceHtml += '\n';
+      }
+    }
+    if (trace.es && trace.es.length) {
+      traceHtml += `\nELASTICSEARCH ×${trace.es.length}\n`;
+      for (const e of trace.es) {
+        traceHtml += `  [${e.stage}] query: "${e.query}" → ${e.resolved || ''}\n`;
+      }
+    }
+    if (t.web) {
+      traceHtml += `\nWEB (Tavily)\n`;
+      traceHtml += `  query: "${t.web.query || ''}"\n`;
+      if (t.web.elapsed_ms) traceHtml += `  elapsed: ${t.web.elapsed_ms}ms\n`;
+      if (t.web.sources) {
+        for (const u of t.web.sources) { if (u) traceHtml += `  • ${u}\n`; }
+      }
+    }
+    html += '<div class="debug-box"><h4>Retrieval + Trace</h4><pre>' + escHtml(traceHtml) + '</pre></div>';
+
+    html += '</div>'; // debug-grid
+    html += '</div>'; // debug-section
+    html += '</div>'; // turn
+  }
+
+  conversation.innerHTML = html;
+  conversation.scrollTop = 0;
+}
+
+function toggleDebug(i) {
+  const el = document.getElementById(`debug-${i}`);
+  const toggle = el.previousElementSibling;
+  if (el.classList.contains('open')) {
+    el.classList.remove('open');
+    toggle.textContent = '▶ Debug · Decomposition + Timings';
+  } else {
+    el.classList.add('open');
+    toggle.textContent = '▼ Debug · Decomposition + Timings';
+  }
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+datePicker.addEventListener('change', () => loadDay(datePicker.value));
+
+// Init
+loadDays();
+</script>
+</body>
+</html>

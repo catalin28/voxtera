@@ -79,6 +79,7 @@ async def web_search(
     max_results: int = 5,
     search_depth: str = "basic",
     include_answer: bool = True,
+    include_domains: list[str] | None = None,
     timeout_s: float = _DEFAULT_TIMEOUT_S,
     api_key: str | None = None,
 ) -> SearchResult:
@@ -122,6 +123,10 @@ async def web_search(
         "include_answer": include_answer,
         "topic": "general",
     }
+    # Restrict to specific sites (e.g. review domains: TripAdvisor, Booking, …)
+    # so a "reviews" question pulls from review sources, not the open web.
+    if include_domains:
+        payload["include_domains"] = list(include_domains)
     headers = {
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",

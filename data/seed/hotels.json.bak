@@ -1,0 +1,693 @@
+[
+  {
+    "hotel_id": "rixos_premium_belek",
+    "name": "Rixos Premium Belek",
+    "aliases": ["Rixos Belek", "Rixos Premium", "Rixos Land of Legends"],
+    "chain": "Rixos",
+    "city": "Antalya",
+    "district": "Belek",
+    "region": "Turkish Riviera",
+    "country": "Turkey",
+    "price_tier": "ultra_luxury",
+    "coordinates": [36.8435, 31.0965],
+    "activity_tags": ["water_park", "kids_club", "spa", "golf", "beach", "entertainment", "aquapark"],
+    "beachfront": true,
+    "adults_only": false,
+    "kids_age_min": 0,
+    "kids_age_max": 17,
+    "board_type": "ultra_all_inclusive",
+    "star_rating": 5,
+    "chunks": [
+      {
+        "category": "overview",
+        "text": "Rixos Premium Belek, Antalya'nın Belek bölgesinde yer alan ultra her şey dahil konseptli 5 yıldızlı bir lüks tatil köyüdür. Otel, The Land of Legends tema parkına özel erişim sunmaktadır. 750 odası bulunan tesis, geniş bir plaj alanı, çok sayıda restoran ve bar, spor tesisleri ve eğlence programları ile ailelere ve çiftlere hitap etmektedir. Otelin konumu Antalya havalimanına yaklaşık 35 km mesafededir.",
+        "text_en": "Rixos Premium Belek is a 5-star luxury resort with ultra all-inclusive concept located in the Belek area of Antalya. The hotel offers exclusive access to The Land of Legends theme park. With 750 rooms, the property features a large beach area, numerous restaurants and bars, sports facilities and entertainment programs catering to families and couples. The hotel is approximately 35 km from Antalya airport."
+      },
+      {
+        "category": "rooms",
+        "text": "Rixos Premium Belek'te Standart Oda, Deluxe Oda, Junior Suite, Family Suite ve King Suite olmak üzere farklı oda tipleri mevcuttur. Tüm odalarda klima, minibar, LCD TV, WiFi, kasa ve banyo bulunmaktadır. Family Suite odaları çocuklu aileler için özel olarak tasarlanmış olup ayrı bir yaşam alanı sunmaktadır. Odalar bahçe manzaralı veya deniz manzaralı seçenekleriyle sunulmaktadır.",
+        "text_en": "Rixos Premium Belek offers various room types including Standard Room, Deluxe Room, Junior Suite, Family Suite and King Suite. All rooms have air conditioning, minibar, LCD TV, WiFi, safe and bathroom. Family Suites are specially designed for families with children and offer a separate living area. Rooms are available with garden view or sea view options."
+      },
+      {
+        "category": "amenities",
+        "text": "Otelde 8 açık havuz, kapalı havuz, aquapark, özel plaj, fitness merkezi, tenis kortları, basketbol sahası, mini golf ve bisiklet kiralama hizmeti bulunmaktadır. WiFi tüm alanlarda ücretsizdir. Otopark ücretsizdir. 24 saat oda servisi mevcuttur. Otel bünyesinde alışveriş mağazaları, kuaför ve güzellik merkezi de yer almaktadır.",
+        "text_en": "The hotel has 8 outdoor pools, indoor pool, aquapark, private beach, fitness center, tennis courts, basketball court, mini golf and bicycle rental. WiFi is free in all areas. Parking is free. 24-hour room service is available. The hotel also has shopping stores, hairdresser and beauty center."
+      },
+      {
+        "category": "food_beverage",
+        "text": "Rixos Premium Belek'te 6 ana restoran ve 8 à la carte restoran bulunmaktadır. Türk, İtalyan, Uzak Doğu, Meksika ve deniz ürünleri mutfakları sunulmaktadır. 24 saat açık snack bar ve patisserie mevcuttur. Ultra her şey dahil konseptinde yerli ve ithal içecekler dahildir. Lobide ve havuz başında bar hizmeti verilmektedir.",
+        "text_en": "Rixos Premium Belek has 6 main restaurants and 8 à la carte restaurants. Turkish, Italian, Far Eastern, Mexican and seafood cuisines are offered. 24-hour snack bar and patisserie are available. Domestic and imported beverages are included in the ultra all-inclusive concept. Bar service is provided in the lobby and poolside."
+      },
+      {
+        "category": "wellness",
+        "text": "Anjana Spa, 3500 metrekarelik alanda Türk hamamı, sauna, buhar odası, masaj odaları ve terapi havuzları sunmaktadır. Bali tarzı masaj, aromaterapi, cilt bakımı ve detoks programları mevcuttur. Spa hizmetleri ek ücretlidir. Fitness merkezi 24 saat açıktır ve kişisel antrenör hizmeti sunulmaktadır.",
+        "text_en": "Anjana Spa offers Turkish bath, sauna, steam room, massage rooms and therapy pools in a 3,500 sqm area. Balinese massage, aromatherapy, skincare and detox programs are available. Spa services are at extra charge. The fitness center is open 24 hours and personal trainer service is offered."
+      },
+      {
+        "category": "children",
+        "text": "Rixy Kids Club 4-12 yaş arası çocuklara yönelik aktiviteler sunmaktadır. Mini disco, çocuk havuzu, oyun parkı, sanat atölyesi ve tiyatro gösterileri düzenlenmektedir. 0-3 yaş için bebek bakım odası mevcuttur. The Land of Legends tema parkına ücretsiz shuttle servisi sağlanmaktadır. Çocuk menüsü tüm restoranlarda mevcuttur. Bebek yatağı ve mama sandalyesi ücretsiz olarak temin edilmektedir.",
+        "text_en": "Rixy Kids Club offers activities for children aged 4-12. Mini disco, kids pool, playground, art workshop and theater shows are organized. A baby care room is available for ages 0-3. Free shuttle service to The Land of Legends theme park is provided. Kids menu is available in all restaurants. Baby cot and high chair are provided free of charge."
+      },
+      {
+        "category": "activities",
+        "text": "Su sporları (jet ski, banana, parasailing), dalış okulu, su kaydırağı, The Land of Legends tema parkı erişimi, akşam eğlence programları, canlı müzik, DJ performansları ve plaj partileri düzenlenmektedir. Golf sahası otelin yakınındadır. Animasyon ekibi gündüz ve akşam aktiviteleri organize etmektedir.",
+        "text_en": "Water sports (jet ski, banana, parasailing), diving school, water slides, access to The Land of Legends theme park, evening entertainment programs, live music, DJ performances and beach parties are organized. Golf course is near the hotel. Animation team organizes daytime and evening activities."
+      },
+      {
+        "category": "policies",
+        "text": "Giriş saati 14:00, çıkış saati 12:00'dir. Erken giriş ve geç çıkış müsaitlik durumuna göre ek ücretle mümkündür. Evcil hayvan kabul edilmemektedir. Ücretsiz iptal son tarihinden önce yapılmalıdır. Otel, Türk lirası ve Euro kabul etmektedir. Kredi kartı ile ödeme mümkündür.",
+        "text_en": "Check-in is at 14:00, check-out at 12:00. Early check-in and late check-out are possible at extra charge subject to availability. Pets are not allowed. Free cancellation must be made before the deadline. The hotel accepts Turkish lira and Euro. Credit card payment is available."
+      },
+      {
+        "category": "location",
+        "text": "Rixos Premium Belek, Antalya'nın Serik ilçesine bağlı Belek turizm bölgesinde, Akdeniz kıyısında yer almaktadır. Antalya Havalimanı'na 35 km, Belek merkezine 5 km, Side antik kentine 45 km mesafededir. Otel, özel kumlu plaja sahiptir ve The Land of Legends tema parkına yürüme mesafesindedir.",
+        "text_en": "Rixos Premium Belek is located in the Belek tourism zone of Antalya's Serik district, on the Mediterranean coast. It is 35 km from Antalya Airport, 5 km from Belek center, and 45 km from the ancient city of Side. The hotel has a private sandy beach and is within walking distance of The Land of Legends theme park."
+      }
+    ]
+  },
+  {
+    "hotel_id": "maxx_royal_belek",
+    "name": "Maxx Royal Belek Golf Resort",
+    "aliases": ["Maxx Royal Belek", "Maxx Royal", "Max Royal"],
+    "chain": "Maxx Royal",
+    "city": "Antalya",
+    "district": "Belek",
+    "region": "Turkish Riviera",
+    "country": "Turkey",
+    "price_tier": "ultra_luxury",
+    "coordinates": [36.8486, 31.0707],
+    "activity_tags": ["golf", "spa", "beach", "kids_club", "water_park", "fine_dining"],
+    "beachfront": true,
+    "adults_only": false,
+    "kids_age_min": 0,
+    "kids_age_max": 17,
+    "board_type": "ultra_all_inclusive",
+    "star_rating": 5,
+    "chunks": [
+      {
+        "category": "overview",
+        "text": "Maxx Royal Belek Golf Resort, Belek'in en prestijli ultra lüks tatil köylerinden biridir. 2014 yılında açılan otel, 18 çukurlu golf sahası, özel villa seçenekleri ve dünya standartlarında spa merkezi ile tanınmaktadır. Tüm odalar suite konseptindedir. Otel, minimalist tasarımı ve üstün hizmet kalitesiyle dünya çapında ödüller kazanmıştır.",
+        "text_en": "Maxx Royal Belek Golf Resort is one of Belek's most prestigious ultra-luxury resorts. Opened in 2014, the hotel is known for its 18-hole golf course, private villa options and world-class spa center. All rooms are suite-concept. The hotel has won worldwide awards for its minimalist design and superior service quality."
+      },
+      {
+        "category": "rooms",
+        "text": "Maxx Royal Belek'te tüm odalar en az 60 m² büyüklüğünde suite olarak tasarlanmıştır. Oda tipleri: Garden Suite, Lagoon Suite, Family Suite, King Suite ve Royal Villa. Tüm odalarda Jacuzzi küvet, Rain Dance duş, Nespresso makinesi, Bose ses sistemi ve akıllı oda kontrol sistemi bulunmaktadır. Villalarda özel havuz ve butler hizmeti mevcuttur.",
+        "text_en": "All rooms at Maxx Royal Belek are designed as suites of at least 60 sqm. Room types: Garden Suite, Lagoon Suite, Family Suite, King Suite and Royal Villa. All rooms feature Jacuzzi bathtub, Rain Dance shower, Nespresso machine, Bose sound system and smart room control system. Villas have private pool and butler service."
+      },
+      {
+        "category": "amenities",
+        "text": "Otelde 5 açık havuz, 1 kapalı havuz, dalga havuzu, özel plaj, 18 çukurlu golf sahası, tenis kortları, bowling salonu ve sinema salonu mevcuttur. Otel genelinde yüksek hızlı WiFi ücretsizdir. 24 saat oda servisi ve butler hizmeti sunulmaktadır. Özel havalimanı transfer hizmeti dahildir.",
+        "text_en": "The hotel has 5 outdoor pools, 1 indoor pool, wave pool, private beach, 18-hole golf course, tennis courts, bowling alley and cinema hall. High-speed WiFi is free throughout the hotel. 24-hour room service and butler service are offered. Private airport transfer is included."
+      },
+      {
+        "category": "food_beverage",
+        "text": "7 farklı à la carte restoran bulunmaktadır: Türk mutfağı, İtalyan, Japon (Teppanyaki), Fransız, Uzak Doğu, deniz ürünleri ve steak house. Ana restoran 24 saat açık büfe sunmaktadır. Premium içecekler ve şampanya ultra her şey dahil konseptine dahildir. Özel şef masası deneyimi talep üzerine sunulmaktadır.",
+        "text_en": "7 different à la carte restaurants: Turkish cuisine, Italian, Japanese (Teppanyaki), French, Far Eastern, seafood and steak house. Main restaurant offers 24-hour open buffet. Premium beverages and champagne are included in the ultra all-inclusive concept. Private chef's table experience is offered upon request."
+      },
+      {
+        "category": "wellness",
+        "text": "Maxx Royal Spa 5000 m² alanda hizmet vermektedir. Türk hamamı, sauna, buhar odası, buz odası, Rasul ritüeli, Vichy duşu ve terapi havuzları mevcuttur. Ayrıca Thalasso tedavi merkezi bulunmaktadır. Kişiye özel wellness programları tasarlanmaktadır. Fitness merkezi son teknoloji Technogym ekipmanlarına sahiptir.",
+        "text_en": "Maxx Royal Spa operates in a 5,000 sqm area. Turkish bath, sauna, steam room, ice room, Rasul ritual, Vichy shower and therapy pools are available. There is also a Thalasso treatment center. Personalized wellness programs are designed. The fitness center has state-of-the-art Technogym equipment."
+      },
+      {
+        "category": "children",
+        "text": "Maxxiland çocuk kulübü 4-12 yaş arası çocuklara yöneliktir. Kapalı ve açık oyun alanları, mini aquapark, bilim atölyesi, aşçılık kursu ve macera parkı mevcuttur. 0-4 yaş için bebek bakım hizmeti ek ücretle sunulmaktadır. Çocuk havuzu ve çocuk restoranı ayrıdır. Teenzone 13-17 yaş için oyun konsolu ve aktivite programları sunmaktadır.",
+        "text_en": "Maxxiland kids club is for children aged 4-12. Indoor and outdoor play areas, mini aquapark, science workshop, cooking classes and adventure park are available. Baby care for ages 0-4 is offered at extra charge. Kids pool and kids restaurant are separate. Teenzone offers game consoles and activity programs for ages 13-17."
+      },
+      {
+        "category": "activities",
+        "text": "18 çukurlu golf sahası (Montgomery Maxx Royal), su sporları, dalış merkezi, jet ski, wakeboard, tenis akademisi ve archery (okçuluk) mevcuttur. Akşamları dünya çapında sanatçıların canlı performansları, DJ setleri ve tematik partiler düzenlenmektedir.",
+        "text_en": "18-hole golf course (Montgomery Maxx Royal), water sports, diving center, jet ski, wakeboard, tennis academy and archery are available. In the evenings, live performances by world-class artists, DJ sets and themed parties are organized."
+      },
+      {
+        "category": "policies",
+        "text": "Giriş saati 14:00, çıkış saati 12:00'dir. Erken giriş ve geç çıkış müsaitlik durumuna göre sağlanabilir. Evcil hayvan kabul edilmemektedir. Otel çocuklu ailelere açıktır, adults-only değildir. Havalimanı VIP transfer ücretsizdir.",
+        "text_en": "Check-in is at 14:00, check-out at 12:00. Early check-in and late check-out can be arranged subject to availability. Pets are not allowed. The hotel is open to families with children, it is not adults-only. Airport VIP transfer is free."
+      },
+      {
+        "category": "location",
+        "text": "Maxx Royal Belek, Belek turizm bölgesinde, Akdeniz kıyısında yer almaktadır. Antalya Havalimanı'na 30 km mesafededir. Otelin 500 metre özel kumlu plajı bulunmaktadır. Belek merkezine 3 km, Aspendos antik tiyatrosuna 20 km mesafededir.",
+        "text_en": "Maxx Royal Belek is located in the Belek tourism zone, on the Mediterranean coast. It is 30 km from Antalya Airport. The hotel has a 500-meter private sandy beach. It is 3 km from Belek center and 20 km from Aspendos ancient theater."
+      }
+    ]
+  },
+  {
+    "hotel_id": "cornelia_de_luxe",
+    "name": "Cornelia De Luxe Resort",
+    "aliases": ["Cornelia Belek", "Cornelia De Luxe", "Cornelia Resort"],
+    "chain": "Cornelia",
+    "city": "Antalya",
+    "district": "Belek",
+    "region": "Turkish Riviera",
+    "country": "Turkey",
+    "price_tier": "luxury",
+    "coordinates": [36.8593, 30.9949],
+    "activity_tags": ["golf", "spa", "beach", "kids_club", "water_park", "tennis"],
+    "beachfront": true,
+    "adults_only": false,
+    "kids_age_min": 0,
+    "kids_age_max": 17,
+    "board_type": "all_inclusive",
+    "star_rating": 5,
+    "chunks": [
+      {
+        "category": "overview",
+        "text": "Cornelia De Luxe Resort, Belek'te 60.000 m² alan üzerinde kurulu 5 yıldızlı bir aile dostu tatil köyüdür. Otel, Nick Faldo tasarımı 27 çukurlu golf sahası ile golf tutkunları arasında ünlüdür. 570 odalı tesis, geniş havuz alanları, çeşitli restoranlar ve kapsamlı spor tesisleri sunmaktadır.",
+        "text_en": "Cornelia De Luxe Resort is a family-friendly 5-star resort built on 60,000 sqm in Belek. The hotel is famous among golf enthusiasts for its Nick Faldo-designed 27-hole golf course. The 570-room property offers large pool areas, various restaurants and comprehensive sports facilities."
+      },
+      {
+        "category": "rooms",
+        "text": "Standart Oda, Superior Oda, Deluxe Oda, Family Room ve Suite seçenekleri mevcuttur. Odalar 30-85 m² arasında değişmektedir. Tüm odalarda balkon veya teras, LCD TV, minibar, klima, ücretsiz WiFi ve elektronik kasa bulunmaktadır. Family Room'lar çocuklu aileler için bağlantılı oda seçeneği sunmaktadır.",
+        "text_en": "Standard Room, Superior Room, Deluxe Room, Family Room and Suite options are available. Rooms range from 30-85 sqm. All rooms have balcony or terrace, LCD TV, minibar, air conditioning, free WiFi and electronic safe. Family Rooms offer connecting room option for families with children."
+      },
+      {
+        "category": "amenities",
+        "text": "7 açık havuz (biri olimpik boyutta), 2 kapalı havuz, çocuk havuzları, özel plaj (mavi bayraklı), fitness merkezi, tenis kortları, voleybol sahası ve futbol sahası bulunmaktadır. WiFi tüm alanlarda ücretsizdir. Havuz başı şezlong ve şemsiye ücretsizdir.",
+        "text_en": "7 outdoor pools (one Olympic-size), 2 indoor pools, kids pools, private beach (Blue Flag), fitness center, tennis courts, volleyball court and football field. WiFi is free in all areas. Poolside sunbeds and umbrellas are free."
+      },
+      {
+        "category": "food_beverage",
+        "text": "3 açık büfe restoran ve 6 à la carte restoran mevcuttur. Mutfak seçenekleri: Türk, İtalyan, Uzak Doğu, Meksika, balık ve steak house. Patisserie ve dondurma büfesi gün boyu açıktır. Lobide, havuz başında ve plajda bar hizmeti verilmektedir. Her şey dahil konseptinde yerli ve belirli ithal içecekler dahildir.",
+        "text_en": "3 open buffet restaurants and 6 à la carte restaurants. Cuisine options: Turkish, Italian, Far Eastern, Mexican, fish and steak house. Patisserie and ice cream buffet open all day. Bar service in lobby, poolside and beach. Domestic and selected imported beverages included in all-inclusive."
+      },
+      {
+        "category": "wellness",
+        "text": "Cornelia Spa'da Türk hamamı, sauna, buhar odası, kapalı havuz, masaj odaları ve güzellik merkezi bulunmaktadır. Bali masajı, aromaterapi, hot stone ve refleksoloji gibi tedaviler sunulmaktadır. Spa kullanımı her şey dahile dahildir, masaj ve özel tedaviler ek ücretlidir.",
+        "text_en": "Cornelia Spa has Turkish bath, sauna, steam room, indoor pool, massage rooms and beauty center. Treatments like Bali massage, aromatherapy, hot stone and reflexology are offered. Spa access is included in all-inclusive; massages and special treatments are at extra charge."
+      },
+      {
+        "category": "children",
+        "text": "Çocuk kulübü 4-12 yaş arası için hizmet vermektedir. Mini disco, çocuk tiyatrosu, boyama atölyesi, mini golf ve çocuk havuzları mevcuttur. Bebek bakım hizmeti ek ücretle sunulmaktadır. Çocuk büfesi restoranlarda ayrı olarak düzenlenmiştir. Bebek arabası ve bebek yatağı ücretsiz temin edilmektedir.",
+        "text_en": "Kids club serves ages 4-12. Mini disco, children's theater, painting workshop, mini golf and kids pools are available. Baby care service is offered at extra charge. Kids buffet is arranged separately in restaurants. Stroller and baby cot are provided free of charge."
+      },
+      {
+        "category": "activities",
+        "text": "27 çukurlu Nick Faldo golf sahası (Cornelia Golf Club), tenis akademisi, su sporları (kano, windsurf, su kayağı), dalış merkezi, bisiklet turları, bocce, dart ve masa tenisi mevcuttur. Akşam eğlence programları, canlı müzik ve dans gösterileri düzenlenmektedir.",
+        "text_en": "27-hole Nick Faldo golf course (Cornelia Golf Club), tennis academy, water sports (canoe, windsurf, water skiing), diving center, bicycle tours, bocce, darts and table tennis. Evening entertainment programs, live music and dance shows are organized."
+      },
+      {
+        "category": "policies",
+        "text": "Giriş saati 14:00, çıkış saati 12:00'dir. Evcil hayvan kabul edilmemektedir. Otel çocuklu ailelere ve çiftlere uygundur. Plajda ve havuz başında havlu hizmeti ücretsizdir. Doktor otel bünyesinde 24 saat hizmet vermektedir.",
+        "text_en": "Check-in at 14:00, check-out at 12:00. Pets are not allowed. Hotel is suitable for families with children and couples. Towel service at beach and poolside is free. On-site doctor available 24 hours."
+      },
+      {
+        "category": "location",
+        "text": "Cornelia De Luxe Resort, Belek'te Akdeniz kıyısında konumlanmıştır. Antalya Havalimanı'na 40 km, Belek merkezine 4 km, Perge antik kentine 25 km mesafededir. Mavi bayraklı özel kumlu plaja sahiptir.",
+        "text_en": "Cornelia De Luxe Resort is located on the Mediterranean coast in Belek. 40 km from Antalya Airport, 4 km from Belek center, 25 km from Perge ancient city. It has a Blue Flag private sandy beach."
+      }
+    ]
+  },
+  {
+    "hotel_id": "voyage_belek",
+    "name": "Voyage Belek Golf & Spa",
+    "aliases": ["Voyage Belek", "Voyage Golf", "Voyage Resort"],
+    "chain": "Voyage",
+    "city": "Antalya",
+    "district": "Belek",
+    "region": "Turkish Riviera",
+    "country": "Turkey",
+    "price_tier": "luxury",
+    "coordinates": [36.8520, 31.0530],
+    "activity_tags": ["golf", "spa", "beach", "kids_club", "sports", "entertainment"],
+    "beachfront": true,
+    "adults_only": false,
+    "kids_age_min": 0,
+    "kids_age_max": 17,
+    "board_type": "all_inclusive",
+    "star_rating": 5,
+    "chunks": [
+      {
+        "category": "overview",
+        "text": "Voyage Belek Golf & Spa, Belek'te denize sıfır konumda 5 yıldızlı bir aile tatil köyüdür. Otel, 18 çukurlu golf sahası, geniş havuz alanları ve zengin animasyon programıyla bilinmektedir. 592 oda kapasitesiyle büyük ölçekli bir tesistir. Aileler ve aktif tatilciler için ideal bir seçenektir.",
+        "text_en": "Voyage Belek Golf & Spa is a 5-star family resort in Belek with direct beach access. The hotel is known for its 18-hole golf course, large pool areas and rich animation program. It is a large-scale facility with 592 rooms. Ideal choice for families and active vacationers."
+      },
+      {
+        "category": "rooms",
+        "text": "Standart Oda, Superior Oda, Family Room, Suite ve Villa seçenekleri sunulmaktadır. Standart odalar 33 m², Family Room'lar 50 m² büyüklüğündedir. Tüm odalarda balkon, klima, minibar, LCD TV, WiFi ve saç kurutma makinesi bulunmaktadır. Villalarda özel havuz ve bahçe mevcuttur.",
+        "text_en": "Standard Room, Superior Room, Family Room, Suite and Villa options are offered. Standard rooms are 33 sqm, Family Rooms are 50 sqm. All rooms have balcony, air conditioning, minibar, LCD TV, WiFi and hair dryer. Villas have private pool and garden."
+      },
+      {
+        "category": "food_beverage",
+        "text": "Ana restoran ve 5 à la carte restoran bulunmaktadır: İtalyan, Uzak Doğu, Türk Ege mutfağı, deniz ürünleri ve steak house. Gece geç saatlere kadar açık snack bar mevcuttur. Her şey dahil konseptinde yerli ve ithal alkollü-alkolsüz içecekler dahildir. Diyet ve vejetaryen menü seçenekleri sunulmaktadır.",
+        "text_en": "Main restaurant and 5 à la carte restaurants: Italian, Far Eastern, Turkish Aegean cuisine, seafood and steak house. Late-night snack bar available. Domestic and imported alcoholic/non-alcoholic beverages included in all-inclusive. Diet and vegetarian menu options are offered."
+      },
+      {
+        "category": "wellness",
+        "text": "Voyage Spa'da Türk hamamı, sauna, buhar odası, masaj odaları ve güzellik salonu mevcuttur. Kapalı havuz kış aylarında da kullanılabilmektedir. Thai masajı, hot stone masaj ve cilt bakım programları sunulmaktadır. Spa girişi ücretsiz, tedaviler ek ücretlidir.",
+        "text_en": "Voyage Spa has Turkish bath, sauna, steam room, massage rooms and beauty salon. Indoor pool is available year-round. Thai massage, hot stone massage and skincare programs are offered. Spa entry is free, treatments are at extra charge."
+      },
+      {
+        "category": "children",
+        "text": "Mini Club 4-12 yaş arası çocuklar için aktivite programı sunmaktadır. Çocuk havuzu, kaydıraklı aquapark alanı, oyun parkı ve mini disco bulunmaktadır. Baby Room 0-3 yaş bebekler için ek ücretle bakım hizmeti vermektedir. Çocuk büfesi ve çocuk animasyon ekibi mevcuttur.",
+        "text_en": "Mini Club offers activity programs for children aged 4-12. Kids pool, aquapark area with slides, playground and mini disco are available. Baby Room provides care for ages 0-3 at extra charge. Kids buffet and children's animation team are available."
+      },
+      {
+        "category": "activities",
+        "text": "18 çukurlu golf sahası (Voyage Golf Club), tenis, voleybol, futbol, su sporları, okçuluk, bocce ve bilardo mevcuttur. Aquapark kaydırakları tüm yaş gruplarına uygundur. Akşam showları, canlı müzik, tematik geceler ve dans kursları düzenlenmektedir. Plajda su sporları (jet ski, parasailing, banana) ek ücretlidir.",
+        "text_en": "18-hole golf course (Voyage Golf Club), tennis, volleyball, football, water sports, archery, bocce and billiards. Aquapark slides suitable for all ages. Evening shows, live music, themed nights and dance classes are organized. Beach water sports (jet ski, parasailing, banana) are at extra charge."
+      },
+      {
+        "category": "policies",
+        "text": "Giriş saati 14:00, çıkış saati 12:00'dir. 0-12 yaş bir çocuk ücretsizdir (anne-baba ile aynı odada). Evcil hayvan kabul edilmemektedir. Plaj ve havuz havluları ücretsiz verilmektedir.",
+        "text_en": "Check-in at 14:00, check-out at 12:00. One child aged 0-12 is free (sharing room with parents). Pets are not allowed. Beach and pool towels are provided free."
+      },
+      {
+        "category": "location",
+        "text": "Voyage Belek, Belek turizm bölgesinde denize sıfır konumdadır. Antalya Havalimanı'na 35 km, Belek merkezine 2 km mesafededir. 450 metre kumlu özel plaja sahiptir.",
+        "text_en": "Voyage Belek is beachfront in the Belek tourism zone. 35 km from Antalya Airport, 2 km from Belek center. Has a 450-meter private sandy beach."
+      }
+    ]
+  },
+  {
+    "hotel_id": "gloria_sports_arena",
+    "name": "Gloria Sports Arena",
+    "aliases": ["Gloria Sports", "Gloria Arena", "Gloria Belek"],
+    "chain": "Gloria",
+    "city": "Antalya",
+    "district": "Belek",
+    "region": "Turkish Riviera",
+    "country": "Turkey",
+    "price_tier": "premium",
+    "coordinates": [36.8610, 31.0150],
+    "activity_tags": ["sports", "football", "tennis", "fitness", "spa", "training_camp"],
+    "beachfront": false,
+    "adults_only": false,
+    "kids_age_min": 0,
+    "kids_age_max": 17,
+    "board_type": "all_inclusive",
+    "star_rating": 5,
+    "chunks": [
+      {
+        "category": "overview",
+        "text": "Gloria Sports Arena, profesyonel ve amatör sporculara yönelik Türkiye'nin en büyük spor otellerinden biridir. Belek'te yer alan tesis, FIFA standartlarında futbol sahaları, olimpik yüzme havuzu, atletizm pisti ve kapsamlı fitness merkeziyle kamp dönemlerinde dünya çapında takımlara ev sahipliği yapmaktadır. Aile tatili için de uygundur.",
+        "text_en": "Gloria Sports Arena is one of Turkey's largest sports hotels for professional and amateur athletes. Located in Belek, the facility hosts world-class teams during training camps with its FIFA-standard football pitches, Olympic swimming pool, athletics track and comprehensive fitness center. Also suitable for family holidays."
+      },
+      {
+        "category": "rooms",
+        "text": "Standart Oda ve Suite olmak üzere 238 oda mevcuttur. Odalar modern tasarımla döşenmiştir. Tüm odalarda klima, LED TV, minibar, WiFi, kasa ve duş/küvet bulunmaktadır. Sporcular için özel beslenme programına uygun oda servisi sunulmaktadır.",
+        "text_en": "238 rooms available as Standard Room and Suite. Rooms are furnished with modern design. All rooms have air conditioning, LED TV, minibar, WiFi, safe and shower/bathtub. Room service adapted to special nutrition programs for athletes is offered."
+      },
+      {
+        "category": "amenities",
+        "text": "9 futbol sahası (4'ü doğal çim, 5'i sentetik), olimpik yüzme havuzu, atletizm pisti, 8 tenis kortu, basketbol sahası, voleybol sahası, badminton, masa tenisi ve kapsamlı fitness merkezi bulunmaktadır. Tüm spor alanları aydınlatmalıdır ve gece kullanımına uygundur.",
+        "text_en": "9 football pitches (4 natural grass, 5 synthetic), Olympic swimming pool, athletics track, 8 tennis courts, basketball court, volleyball court, badminton, table tennis and comprehensive fitness center. All sports areas are floodlit and suitable for night use."
+      },
+      {
+        "category": "food_beverage",
+        "text": "Ana restoran açık büfe ve 2 à la carte restoran mevcuttur. Sporculara özel beslenme programları ve protein ağırlıklı menüler hazırlanmaktadır. Diyetisyen eşliğinde kişiye özel beslenme planı oluşturulmaktadır. Vitamin bar ve enerji içecekleri spor alanlarında sunulmaktadır.",
+        "text_en": "Main restaurant open buffet and 2 à la carte restaurants. Special nutrition programs and protein-rich menus prepared for athletes. Personalized nutrition plans created with dietitian guidance. Vitamin bar and energy drinks offered at sports areas."
+      },
+      {
+        "category": "wellness",
+        "text": "Spa merkezinde Türk hamamı, sauna, buhar odası, masaj ve fizyoterapi hizmetleri verilmektedir. Spor yaralanmaları için rehabilitasyon merkezi bulunmaktadır. Kriyoterapi odası ve oksijen tedavisi mevcuttur. Kapalı yüzme havuzu ve jakuzi spa bünyesindedir.",
+        "text_en": "Spa center offers Turkish bath, sauna, steam room, massage and physiotherapy services. Rehabilitation center for sports injuries is available. Cryotherapy room and oxygen therapy available. Indoor swimming pool and jacuzzi are part of the spa."
+      },
+      {
+        "category": "activities",
+        "text": "Profesyonel futbol kampları, tenis akademisi, atletizm eğitimleri, yüzme kursları, fitness programları ve takım sporları organizasyonları düzenlenmektedir. Bireysel antrenör hizmeti mevcuttur. Video analiz odası ile performans değerlendirmesi yapılmaktadır.",
+        "text_en": "Professional football camps, tennis academy, athletics training, swimming courses, fitness programs and team sports organizations are arranged. Personal trainer service available. Performance evaluation with video analysis room."
+      },
+      {
+        "category": "policies",
+        "text": "Giriş saati 14:00, çıkış saati 12:00'dir. Takım kampları için özel fiyatlandırma uygulanmaktadır. Grup rezervasyonlarında minimum 20 kişi koşulu vardır. Spor alanları 06:00-22:00 arasında kullanılabilmektedir.",
+        "text_en": "Check-in at 14:00, check-out at 12:00. Special pricing for team camps. Group bookings require minimum 20 people. Sports areas available 06:00-22:00."
+      },
+      {
+        "category": "location",
+        "text": "Gloria Sports Arena, Belek'te Gloria Hotels kompleksi bünyesinde yer almaktadır. Antalya Havalimanı'na 38 km mesafededir. Gloria Golf Resort ve Gloria Serenity Resort ile ortak alan kullanımı mevcuttur. Denize 1.5 km mesafede olup plaja shuttle servisi sağlanmaktadır.",
+        "text_en": "Gloria Sports Arena is part of the Gloria Hotels complex in Belek. 38 km from Antalya Airport. Shared facilities with Gloria Golf Resort and Gloria Serenity Resort. 1.5 km from the sea with shuttle service to the beach."
+      }
+    ]
+  },
+  {
+    "hotel_id": "xanadu_resort",
+    "name": "Xanadu Resort Hotel",
+    "aliases": ["Xanadu Belek", "Xanadu Resort", "Xanadu"],
+    "chain": "Xanadu",
+    "city": "Antalya",
+    "district": "Belek",
+    "region": "Turkish Riviera",
+    "country": "Turkey",
+    "price_tier": "luxury",
+    "coordinates": [36.8550, 31.0400],
+    "activity_tags": ["beach", "spa", "kids_club", "water_park", "entertainment", "sports"],
+    "beachfront": true,
+    "adults_only": false,
+    "kids_age_min": 0,
+    "kids_age_max": 17,
+    "board_type": "ultra_all_inclusive",
+    "star_rating": 5,
+    "chunks": [
+      {
+        "category": "overview",
+        "text": "Xanadu Resort Hotel, Belek'te 80.000 m² arazi üzerinde kurulu ultra her şey dahil 5 yıldızlı bir tatil köyüdür. Otel, özellikle ailelere yönelik zengin aktivite programı ve geniş aquapark alanıyla öne çıkmaktadır. 486 oda kapasitesiyle misafirlerine konforlu bir tatil deneyimi sunmaktadır.",
+        "text_en": "Xanadu Resort Hotel is an ultra all-inclusive 5-star resort built on 80,000 sqm in Belek. The hotel stands out with its rich activity program for families and large aquapark area. With 486 rooms, it offers guests a comfortable holiday experience."
+      },
+      {
+        "category": "rooms",
+        "text": "Standart Oda, Club Room, Deluxe Room, Family Suite ve Xanadu Suite seçenekleri mevcuttur. Odalar 35-100 m² arasındadır. Tüm odalarda balkon, klima, minibar (günlük yenilenen), LED TV, WiFi ve duş/küvet bulunmaktadır. Family Suite'lerde çocuklar için ayrı bir bölüm tasarlanmıştır.",
+        "text_en": "Standard Room, Club Room, Deluxe Room, Family Suite and Xanadu Suite options available. Rooms range from 35-100 sqm. All rooms have balcony, air conditioning, minibar (daily refilled), LED TV, WiFi and shower/bathtub. Family Suites have a separate section designed for children."
+      },
+      {
+        "category": "food_beverage",
+        "text": "Ana restoran ve 7 à la carte restoran bulunmaktadır: İtalyan, Meksika, Uzak Doğu, Türk, Osmanlı, balık ve steak house. 24 saat açık snack bar ve gece restoran hizmeti mevcuttur. Ultra her şey dahil konseptinde premium ithal içecekler dahildir. Detaylı diyet ve alerjen bilgisi restoranlarda sunulmaktadır.",
+        "text_en": "Main restaurant and 7 à la carte restaurants: Italian, Mexican, Far Eastern, Turkish, Ottoman, fish and steak house. 24-hour snack bar and late-night restaurant service available. Premium imported beverages included in ultra all-inclusive. Detailed diet and allergen information provided in restaurants."
+      },
+      {
+        "category": "wellness",
+        "text": "Xanadu Spa'da Türk hamamı, sauna, buhar odası, aroma terapi odası, masaj ve güzellik bakımı hizmetleri verilmektedir. Kapalı havuz ve jakuzi spa alanında yer almaktadır. Hint masajı, Bali masajı ve ayurveda tedavileri sunulmaktadır.",
+        "text_en": "Xanadu Spa offers Turkish bath, sauna, steam room, aromatherapy room, massage and beauty care services. Indoor pool and jacuzzi are in the spa area. Indian massage, Bali massage and ayurveda treatments are offered."
+      },
+      {
+        "category": "children",
+        "text": "Çocuk kulübü 4-12 yaş arası çocuklara yöneliktir. Aquapark (6 kaydırak), çocuk havuzu, oyun odası, mini sinema, PlayStation odası ve çocuk disco bulunmaktadır. Baby Club 0-3 yaş bebeklere özel alan sunmaktadır. Gençler için ayrı teen lounge mevcuttur.",
+        "text_en": "Kids club is for children aged 4-12. Aquapark (6 slides), kids pool, game room, mini cinema, PlayStation room and kids disco available. Baby Club offers a dedicated area for ages 0-3. Separate teen lounge available for teenagers."
+      },
+      {
+        "category": "activities",
+        "text": "Aquapark, su sporları, tenis, voleybol, basketbol, futbol, okçuluk, bocce, darts ve fitness mevcuttur. Plajda parasailing, jet ski, banana ve kano yapılabilmektedir. Akşamları profesyonel show programları, canlı müzik, DJ performansları ve tematik partiler düzenlenmektedir.",
+        "text_en": "Aquapark, water sports, tennis, volleyball, basketball, football, archery, bocce, darts and fitness available. Parasailing, jet ski, banana and canoe at the beach. Professional show programs, live music, DJ performances and themed parties organized in the evenings."
+      },
+      {
+        "category": "policies",
+        "text": "Giriş saati 14:00, çıkış saati 12:00'dir. 0-6 yaş bir çocuk ücretsizdir. Evcil hayvan kabul edilmemektedir. Ultra her şey dahil 07:00-02:00 saatleri arasında geçerlidir. Oda temizliği günlük yapılmaktadır.",
+        "text_en": "Check-in at 14:00, check-out at 12:00. One child aged 0-6 is free. Pets not allowed. Ultra all-inclusive valid from 07:00-02:00. Daily room cleaning."
+      },
+      {
+        "category": "location",
+        "text": "Xanadu Resort Hotel, Belek'te özel kumlu plaja sahip bir konumdadır. Antalya Havalimanı'na 37 km, Belek merkezine 3 km mesafededir. Aspendos antik tiyatrosuna 18 km, Side antik kentine 40 km uzaklıktadır.",
+        "text_en": "Xanadu Resort Hotel is located with a private sandy beach in Belek. 37 km from Antalya Airport, 3 km from Belek center. 18 km from Aspendos ancient theater, 40 km from the ancient city of Side."
+      }
+    ]
+  },
+  {
+    "hotel_id": "limak_atlantis",
+    "name": "Limak Atlantis De Luxe Hotel & Resort",
+    "aliases": ["Limak Atlantis", "Limak Belek", "Atlantis Hotel"],
+    "chain": "Limak",
+    "city": "Antalya",
+    "district": "Belek",
+    "region": "Turkish Riviera",
+    "country": "Turkey",
+    "price_tier": "luxury",
+    "coordinates": [36.8480, 31.0600],
+    "activity_tags": ["water_park", "beach", "kids_club", "spa", "entertainment", "sports"],
+    "beachfront": true,
+    "adults_only": false,
+    "kids_age_min": 0,
+    "kids_age_max": 17,
+    "board_type": "ultra_all_inclusive",
+    "star_rating": 5,
+    "chunks": [
+      {
+        "category": "overview",
+        "text": "Limak Atlantis De Luxe Hotel & Resort, Belek'te Atlantis temalı mimari tasarımıyla dikkat çeken 5 yıldızlı ultra her şey dahil bir tatil köyüdür. 578 odalı tesis, büyük aquapark alanı, geniş plaj ve zengin yiyecek-içecek seçenekleriyle ailelerin favorisidir. Otelin tasarımı antik Atlantis medeniyetinden ilham almıştır.",
+        "text_en": "Limak Atlantis De Luxe Hotel & Resort is a 5-star ultra all-inclusive resort in Belek notable for its Atlantis-themed architectural design. The 578-room property is a family favorite with its large aquapark area, wide beach and rich food & beverage options. The hotel's design is inspired by the ancient Atlantis civilization."
+      },
+      {
+        "category": "rooms",
+        "text": "Land Room, Sea Room, Family Room, Deluxe Suite ve King Suite oda tipleri mevcuttur. Odalar 30-120 m² arasında değişmektedir. Tüm odalarda balkon, klima, minibar, LCD TV, WiFi, kasa, saç kurutma makinesi ve bornoz-terlik bulunmaktadır. Family Room'larda çocuk yatağı hazır sunulmaktadır.",
+        "text_en": "Room types include Land Room, Sea Room, Family Room, Deluxe Suite and King Suite. Rooms range from 30-120 sqm. All rooms have balcony, air conditioning, minibar, LCD TV, WiFi, safe, hair dryer and bathrobe-slippers. Family Rooms come with child bed ready."
+      },
+      {
+        "category": "food_beverage",
+        "text": "4 ana restoran ve 6 à la carte restoran bulunmaktadır. Mutfak çeşitleri: Türk, İtalyan, Meksika, Japon, Çin ve deniz ürünleri. 24 saat açık büfe ve gece snack servisi mevcuttur. Patisserie, dondurma büfesi ve waffle bar gün boyu hizmet vermektedir. Ultra her şey dahilde ithal premium içecekler dahildir.",
+        "text_en": "4 main restaurants and 6 à la carte restaurants. Cuisine varieties: Turkish, Italian, Mexican, Japanese, Chinese and seafood. 24-hour open buffet and late-night snack service. Patisserie, ice cream buffet and waffle bar serve all day. Imported premium beverages included in ultra all-inclusive."
+      },
+      {
+        "category": "wellness",
+        "text": "Atlantis Spa 4000 m² alanda Türk hamamı, Finlandiya saunası, buhar odası, şok havuzu, masaj odaları ve VIP masaj süitleri sunmaktadır. Thai masajı, aromaterapi, çikolata masajı ve altın maskeli yüz bakımı gibi özel tedaviler mevcuttur. Kapalı havuz ve jakuzi spa bünyesindedir.",
+        "text_en": "Atlantis Spa offers Turkish bath, Finnish sauna, steam room, shock pool, massage rooms and VIP massage suites in a 4,000 sqm area. Special treatments like Thai massage, aromatherapy, chocolate massage and gold mask facial are available. Indoor pool and jacuzzi are part of the spa."
+      },
+      {
+        "category": "children",
+        "text": "Atlantis Kids City 4-12 yaş arası çocuklar için açık ve kapalı oyun alanları, mini disco, kostüm partileri, face painting ve sanat atölyeleri sunmaktadır. Aquapark 12 farklı kaydırağa sahiptir. 0-3 yaş için bebek bakım odası mevcuttur. Çocuk restoranı ayrı olarak hizmet vermektedir. 2 çocuk (0-12 yaş) ücretsizdir.",
+        "text_en": "Atlantis Kids City offers indoor and outdoor play areas, mini disco, costume parties, face painting and art workshops for children aged 4-12. Aquapark has 12 different slides. Baby care room available for ages 0-3. Children's restaurant operates separately. 2 children (ages 0-12) stay free."
+      },
+      {
+        "category": "activities",
+        "text": "12 kaydıraklı aquapark, dalga havuzu, tembel nehir, su sporları, tenis, voleybol, futbol, basketbol, bocce, dart ve fitness merkezi mevcuttur. Akşamları profesyonel sahne gösterileri, akrobasi, ateş dansı, canlı müzik ve DJ performansları düzenlenmektedir.",
+        "text_en": "Aquapark with 12 slides, wave pool, lazy river, water sports, tennis, volleyball, football, basketball, bocce, darts and fitness center. Professional stage shows, acrobatics, fire dance, live music and DJ performances organized in the evenings."
+      },
+      {
+        "category": "policies",
+        "text": "Giriş saati 14:00, çıkış saati 12:00'dir. 0-12 yaş 2 çocuk anne-baba ile aynı odada ücretsizdir. Evcil hayvan kabul edilmemektedir. Ultra her şey dahil konsepti gece 02:00'ye kadar geçerlidir. Doktor 24 saat otel bünyesindedir.",
+        "text_en": "Check-in at 14:00, check-out at 12:00. 2 children aged 0-12 stay free in parents' room. Pets not allowed. Ultra all-inclusive valid until 02:00. On-site doctor available 24 hours."
+      },
+      {
+        "category": "location",
+        "text": "Limak Atlantis, Belek'te denize sıfır konumda yer almaktadır. Antalya Havalimanı'na 32 km, Belek merkezine 4 km mesafededir. 350 metre özel kumlu plaja sahiptir. Perge ve Aspendos antik kentlerine yakın konumdadır.",
+        "text_en": "Limak Atlantis is beachfront in Belek. 32 km from Antalya Airport, 4 km from Belek center. Has a 350-meter private sandy beach. Close to Perge and Aspendos ancient cities."
+      }
+    ]
+  },
+  {
+    "hotel_id": "selectum_luxury_belek",
+    "name": "Selectum Luxury Resort Belek",
+    "aliases": ["Selectum Belek", "Selectum Luxury", "Selectum Resort"],
+    "chain": "Selectum",
+    "city": "Antalya",
+    "district": "Belek",
+    "region": "Turkish Riviera",
+    "country": "Turkey",
+    "price_tier": "luxury",
+    "coordinates": [36.8500, 31.0450],
+    "activity_tags": ["beach", "spa", "kids_club", "entertainment", "sports", "aquapark"],
+    "beachfront": true,
+    "adults_only": false,
+    "kids_age_min": 0,
+    "kids_age_max": 17,
+    "board_type": "ultra_all_inclusive",
+    "star_rating": 5,
+    "chunks": [
+      {
+        "category": "overview",
+        "text": "Selectum Luxury Resort Belek, 2019 yılında açılan modern tasarımlı ultra her şey dahil 5 yıldızlı bir tatil köyüdür. Otel, çağdaş mimarisi, geniş havuz konsepti ve detaylı hizmet anlayışıyla öne çıkmaktadır. 467 odası bulunan tesis, ailelere ve çiftlere yönelik farklı bölümlerle tasarlanmıştır.",
+        "text_en": "Selectum Luxury Resort Belek is a modern-design ultra all-inclusive 5-star resort opened in 2019. The hotel stands out with its contemporary architecture, large pool concept and detailed service approach. The 467-room property is designed with separate sections for families and couples."
+      },
+      {
+        "category": "rooms",
+        "text": "Standard Room, Superior Room, Family Room, Swim-Up Room ve Suite olmak üzere farklı kategoriler mevcuttur. Swim-Up odalarda odadan havuza direkt erişim bulunmaktadır. Tüm odalarda balkon/teras, klima, minibar, 55 inç LED TV, WiFi, Nespresso makinesi, bornoz ve terlik mevcuttur.",
+        "text_en": "Different categories available: Standard Room, Superior Room, Family Room, Swim-Up Room and Suite. Swim-Up rooms have direct pool access from the room. All rooms have balcony/terrace, air conditioning, minibar, 55-inch LED TV, WiFi, Nespresso machine, bathrobe and slippers."
+      },
+      {
+        "category": "food_beverage",
+        "text": "Ana restoran ve 5 à la carte restoran hizmet vermektedir: İtalyan, Uzak Doğu, Türk, steak house ve deniz ürünleri. Havuz başı bar, plaj bar, lobby bar ve vitamin bar mevcuttur. Ultra her şey dahilde premium kokteyl ve ithal içkiler dahildir. 24 saat snack servisi sunulmaktadır.",
+        "text_en": "Main restaurant and 5 à la carte restaurants: Italian, Far Eastern, Turkish, steak house and seafood. Pool bar, beach bar, lobby bar and vitamin bar available. Premium cocktails and imported drinks included in ultra all-inclusive. 24-hour snack service offered."
+      },
+      {
+        "category": "wellness",
+        "text": "SPA merkezi Türk hamamı, sauna, buhar odası, tuz odası, buz odası, masaj süitleri ve güzellik merkezi sunmaktadır. Couples spa paketi, Bali masajı ve aromaterapi tedavileri mevcuttur. Kapalı havuz ve jakuzi spa alanındadır. Fitness merkezi Technogym ekipmanlarıyla donatılmıştır.",
+        "text_en": "SPA center offers Turkish bath, sauna, steam room, salt room, ice room, massage suites and beauty center. Couples spa package, Bali massage and aromatherapy treatments available. Indoor pool and jacuzzi in spa area. Fitness center equipped with Technogym equipment."
+      },
+      {
+        "category": "children",
+        "text": "Kids Club 4-12 yaş arası çocuklara yönelik aktiviteler (sanat, spor, mini disco) sunmaktadır. Çocuk aquaparkı ve çocuk havuzları mevcuttur. 0-4 yaş baby lounge hizmeti verilmektedir. Teen Zone 13-17 yaş gençler için oyun konsolu ve aktivite alanı sunmaktadır.",
+        "text_en": "Kids Club offers activities (art, sports, mini disco) for children aged 4-12. Kids aquapark and kids pools available. Baby lounge service for ages 0-4. Teen Zone offers game consoles and activity area for ages 13-17."
+      },
+      {
+        "category": "activities",
+        "text": "Aquapark, tenis, voleybol, su jimi, fitness, aerobik, yoga, pilates, okçuluk ve bocce mevcuttur. Su sporları (kano, SUP, pedalbot) ücretsizdir. Motorlu su sporları ek ücretlidir. Akşam eğlence programları, canlı performanslar ve DJ setleri düzenlenmektedir.",
+        "text_en": "Aquapark, tennis, volleyball, water gymnastics, fitness, aerobics, yoga, pilates, archery and bocce available. Water sports (canoe, SUP, pedal boat) are free. Motorized water sports at extra charge. Evening entertainment programs, live performances and DJ sets organized."
+      },
+      {
+        "category": "policies",
+        "text": "Giriş saati 14:00, çıkış saati 12:00'dir. 0-12 yaş bir çocuk ücretsizdir. Evcil hayvan kabul edilmemektedir. Odada sigara içilmemektedir. Ultra her şey dahil konsepti 24 saat geçerlidir.",
+        "text_en": "Check-in at 14:00, check-out at 12:00. One child aged 0-12 is free. Pets not allowed. No smoking in rooms. Ultra all-inclusive concept valid 24 hours."
+      },
+      {
+        "category": "location",
+        "text": "Selectum Luxury Resort, Belek'te denize sıfır konumda yer almaktadır. Antalya Havalimanı'na 33 km, Belek merkezine 3 km mesafededir. Otelin 400 metre özel kumlu plajı bulunmaktadır.",
+        "text_en": "Selectum Luxury Resort is beachfront in Belek. 33 km from Antalya Airport, 3 km from Belek center. The hotel has a 400-meter private sandy beach."
+      }
+    ]
+  },
+  {
+    "hotel_id": "regnum_carya",
+    "name": "Regnum Carya Golf & Spa Resort",
+    "aliases": ["Regnum Carya", "Regnum Belek", "Regnum The Crown", "Regnum"],
+    "chain": "Regnum",
+    "city": "Antalya",
+    "district": "Belek",
+    "region": "Turkish Riviera",
+    "country": "Turkey",
+    "price_tier": "ultra_luxury",
+    "coordinates": [36.8450, 31.0800],
+    "activity_tags": ["golf", "spa", "beach", "fine_dining", "luxury", "convention"],
+    "beachfront": true,
+    "adults_only": false,
+    "kids_age_min": 0,
+    "kids_age_max": 17,
+    "board_type": "ultra_all_inclusive",
+    "star_rating": 5,
+    "chunks": [
+      {
+        "category": "overview",
+        "text": "Regnum Carya Golf & Spa Resort, Belek'in en prestijli ultra lüks otellerinden biridir. G20 zirvesine ev sahipliği yapmasıyla uluslararası tanınırlık kazanmıştır. 532 odalı tesis, 18 çukurlu Carya Golf Club, dünya standartlarında spa ve özel plaj ile misafirlerine eşsiz bir deneyim sunmaktadır.",
+        "text_en": "Regnum Carya Golf & Spa Resort is one of Belek's most prestigious ultra-luxury hotels. It gained international recognition by hosting the G20 summit. The 532-room property offers guests a unique experience with its 18-hole Carya Golf Club, world-class spa and private beach."
+      },
+      {
+        "category": "rooms",
+        "text": "Deluxe Room, Family Suite, Lagoon Suite, King Suite ve Presidential Suite olmak üzere geniş oda yelpazesi sunulmaktadır. Tüm odalar minimum 42 m² büyüklüğündedir. Marble banyo, rain shower, Molton Brown banyo ürünleri, ortopedik yatak, akıllı TV ve yüksek hızlı WiFi standarttır. Lagoon Suite'lerde özel terasta jakuzi mevcuttur.",
+        "text_en": "Wide room range offered: Deluxe Room, Family Suite, Lagoon Suite, King Suite and Presidential Suite. All rooms are minimum 42 sqm. Marble bathroom, rain shower, Molton Brown bath products, orthopedic bed, smart TV and high-speed WiFi are standard. Lagoon Suites have jacuzzi on private terrace."
+      },
+      {
+        "category": "food_beverage",
+        "text": "8 restoran ve 6 bar bulunmaktadır. Dünya mutfaklarından İtalyan, Fransız, Japon, Türk ve Akdeniz seçenekleri sunulmaktadır. Michelin yıldızlı şefler özel menüler hazırlamaktadır. Premium şampanya, ithal şaraplar ve vintage kokteyl koleksiyonu ultra her şey dahile dahildir. Özel şef masası deneyimi mevcuttur.",
+        "text_en": "8 restaurants and 6 bars. World cuisines including Italian, French, Japanese, Turkish and Mediterranean. Michelin-starred chefs prepare special menus. Premium champagne, imported wines and vintage cocktail collection included in ultra all-inclusive. Private chef's table experience available."
+      },
+      {
+        "category": "wellness",
+        "text": "Regnum Spa 6000 m² alanda hizmet vermektedir. Türk hamamı, Finlandiya saunası, bio sauna, buz çeşmesi, thalasso havuzu, Vichy duşu ve 12 masaj odası bulunmaktadır. La Prairie ve ESPA markalı ürünlerle tedaviler uygulanmaktadır. Anti-aging programları ve detox paketleri sunulmaktadır.",
+        "text_en": "Regnum Spa operates in a 6,000 sqm area. Turkish bath, Finnish sauna, bio sauna, ice fountain, thalasso pool, Vichy shower and 12 massage rooms. Treatments with La Prairie and ESPA branded products. Anti-aging programs and detox packages offered."
+      },
+      {
+        "category": "children",
+        "text": "Regnum Kids Club 4-12 yaş arası çocuklara kapsamlı aktivite programı (mutfak atölyesi, bilim deneyleri, mini olimpiyatlar, sanat kursu) sunmaktadır. 0-4 yaş baby care hizmeti mevcuttur. Çocuk havuzu ve mini aquapark bulunmaktadır. Genç misafirler için teen lounge PlayStation ve bilardo ile donatılmıştır.",
+        "text_en": "Regnum Kids Club offers comprehensive activity program for ages 4-12 (cooking workshop, science experiments, mini Olympics, art course). Baby care for ages 0-4 available. Kids pool and mini aquapark. Teen lounge equipped with PlayStation and billiards for young guests."
+      },
+      {
+        "category": "activities",
+        "text": "18 çukurlu Carya Golf Club (Peter Thomson tasarımı), tenis akademisi, su sporları, dalış merkezi, bisiklet turları ve doğa yürüyüşleri mevcuttur. Otelin konser alanında uluslararası sanatçılar ağırlanmaktadır. Beach club'da DJ performansları düzenlenmektedir.",
+        "text_en": "18-hole Carya Golf Club (Peter Thomson design), tennis academy, water sports, diving center, bicycle tours and nature walks. International artists hosted at the hotel's concert venue. DJ performances at the beach club."
+      },
+      {
+        "category": "policies",
+        "text": "Giriş saati 15:00, çıkış saati 12:00'dir. VIP misafirler için erken giriş garantisi sunulmaktadır. Evcil hayvan kabul edilmemektedir. Smart-casual dress code akşam restoranlarında geçerlidir. Butler hizmeti King Suite ve üzeri odalarda mevcuttur.",
+        "text_en": "Check-in at 15:00, check-out at 12:00. Early check-in guaranteed for VIP guests. Pets not allowed. Smart-casual dress code applies at evening restaurants. Butler service available in King Suite and above."
+      },
+      {
+        "category": "location",
+        "text": "Regnum Carya, Belek'te Akdeniz kıyısında, Antalya'nın en prestijli turizm bölgesinde konumlanmıştır. Antalya Havalimanı'na 28 km, Belek merkezine 5 km mesafededir. 600 metre özel plaja sahiptir. G20 Summit'e ev sahipliği yapmıştır.",
+        "text_en": "Regnum Carya is on the Mediterranean coast in Belek, Antalya's most prestigious tourism zone. 28 km from Antalya Airport, 5 km from Belek center. Has a 600-meter private beach. Hosted the G20 Summit."
+      }
+    ]
+  },
+  {
+    "hotel_id": "akra_kemer",
+    "name": "Akra Kemer",
+    "aliases": ["Akra Hotel Kemer", "Akra Resort"],
+    "chain": "Akra",
+    "city": "Antalya",
+    "district": "Kemer",
+    "region": "Turkish Riviera",
+    "country": "Turkey",
+    "price_tier": "premium",
+    "coordinates": [36.5980, 30.5580],
+    "activity_tags": ["beach", "spa", "nature", "hiking", "diving", "boutique"],
+    "beachfront": true,
+    "adults_only": false,
+    "kids_age_min": 0,
+    "kids_age_max": 17,
+    "board_type": "all_inclusive",
+    "star_rating": 5,
+    "chunks": [
+      {
+        "category": "overview",
+        "text": "Akra Kemer, Antalya'nın Kemer ilçesinde Toros dağları ile Akdeniz arasında konumlanan 5 yıldızlı bir oteldir. Doğayla iç içe atmosferi, butik otel hissiyatı ve sakin ortamıyla romantik tatil ve doğa severler için idealdir. Otel, daha küçük ve samimi bir tatil deneyimi sunmak üzere tasarlanmıştır.",
+        "text_en": "Akra Kemer is a 5-star hotel in Antalya's Kemer district, located between the Taurus mountains and the Mediterranean. Ideal for romantic holidays and nature lovers with its nature-immersed atmosphere, boutique hotel feel and peaceful environment. The hotel is designed to offer a smaller, more intimate holiday experience."
+      },
+      {
+        "category": "rooms",
+        "text": "Standard Room, Superior Room, Deluxe Sea View, Suite ve Terrace Suite seçenekleri mevcuttur. Odalar 28-65 m² arasında değişmektedir. Deniz manzaralı odalarda geniş balkon bulunmaktadır. Tüm odalarda klima, minibar, LCD TV, WiFi, kasa ve banyo (duş + küvet) standarttır.",
+        "text_en": "Standard Room, Superior Room, Deluxe Sea View, Suite and Terrace Suite options available. Rooms range from 28-65 sqm. Sea view rooms have large balconies. All rooms have air conditioning, minibar, LCD TV, WiFi, safe and bathroom (shower + bathtub) as standard."
+      },
+      {
+        "category": "food_beverage",
+        "text": "Ana restoran açık büfe ve 3 à la carte restoran (Türk, İtalyan, balık) hizmet vermektedir. Lobby bar, havuz bar ve plaj bar mevcuttur. Her şey dahil konseptinde yerli alkollü ve alkolsüz içecekler dahildir. Akşam restoranlarında taze balık ve deniz ürünleri özellikle tavsiye edilmektedir.",
+        "text_en": "Main restaurant open buffet and 3 à la carte restaurants (Turkish, Italian, fish). Lobby bar, pool bar and beach bar available. Domestic alcoholic and non-alcoholic drinks included in all-inclusive. Fresh fish and seafood especially recommended at evening restaurants."
+      },
+      {
+        "category": "wellness",
+        "text": "Spa merkezinde Türk hamamı, sauna, buhar odası, masaj odaları ve güzellik merkezi bulunmaktadır. Kapalı havuz kış aylarında da hizmet vermektedir. Açık hava yoga ve meditasyon seansları sabah saatlerinde düzenlenmektedir.",
+        "text_en": "Spa center has Turkish bath, sauna, steam room, massage rooms and beauty center. Indoor pool operates year-round. Outdoor yoga and meditation sessions organized in the morning hours."
+      },
+      {
+        "category": "children",
+        "text": "Mini Club 4-12 yaş arası çocuklara yönelik aktiviteler sunmaktadır. Çocuk havuzu ve oyun parkı mevcuttur. Bebek yatağı ve mama sandalyesi talep üzerine ücretsiz temin edilmektedir.",
+        "text_en": "Mini Club offers activities for children aged 4-12. Kids pool and playground available. Baby cot and high chair provided free upon request."
+      },
+      {
+        "category": "activities",
+        "text": "Dalış merkezi (PADI sertifikalı), kano, SUP, tenis, voleybol, masa tenisi ve fitness mevcuttur. Toros dağlarına doğa yürüyüşü (trekking) turları organizasyonu yapılmaktadır. Phaselis ve Olympos antik kentlerine günübirlik turlar düzenlenmektedir. Akşam canlı müzik ve lounge DJ bulunmaktadır.",
+        "text_en": "Diving center (PADI certified), canoe, SUP, tennis, volleyball, table tennis and fitness available. Trekking tours to the Taurus mountains organized. Day trips to Phaselis and Olympos ancient cities arranged. Live music and lounge DJ in the evenings."
+      },
+      {
+        "category": "policies",
+        "text": "Giriş saati 14:00, çıkış saati 12:00'dir. Evcil hayvan kabul edilmemektedir. Otel sessiz ve huzurlu ortamı nedeniyle yüksek sesli etkinlikler düzenlememektedir. Plaj çakıl taşıdır.",
+        "text_en": "Check-in at 14:00, check-out at 12:00. Pets not allowed. The hotel does not organize loud events due to its quiet and peaceful atmosphere. Beach is pebble stone."
+      },
+      {
+        "category": "location",
+        "text": "Akra Kemer, Kemer ilçe merkezine 3 km, Antalya Havalimanı'na 55 km mesafededir. Toros dağları manzarası ve Akdeniz kıyısı bir arada sunulmaktadır. Phaselis antik kentine 15 km, Göynük Kanyonu'na 10 km mesafededir. Plaj çakıl taşıdır ve deniz kristal berraklığındadır.",
+        "text_en": "Akra Kemer is 3 km from Kemer center, 55 km from Antalya Airport. Taurus mountain views and Mediterranean coastline combined. 15 km from Phaselis ancient city, 10 km from Göynük Canyon. Beach is pebble stone and the sea is crystal clear."
+      },
+      {
+        "category": "atmosphere",
+        "text": "Akra Kemer, büyük tatil köylerinin kalabalığından uzak, butik ve samimi bir atmosfer sunmaktadır. Doğa ile iç içe, sessiz ve huzurlu ortamıyla romantik çiftler, balayı tatilcileri ve doğa severler için idealdir. Küçük ölçekli yapısı sayesinde kişisel ilgi ve özel hizmet ön plandadır.",
+        "text_en": "Akra Kemer offers a boutique and intimate atmosphere away from the crowds of large resorts. Ideal for romantic couples, honeymooners and nature lovers with its nature-immersed, quiet and peaceful environment. Personal attention and special service are prioritized thanks to its small-scale structure."
+      }
+    ]
+  },
+  {
+    "hotel_id": "crystal_tat_beach",
+    "name": "Crystal Tat Beach Pearl Collection",
+    "aliases": ["Crystal Tat Beach", "Crystal Belek", "Crystal Pearl"],
+    "chain": "Crystal",
+    "city": "Antalya",
+    "district": "Belek",
+    "region": "Turkish Riviera",
+    "country": "Turkey",
+    "price_tier": "premium",
+    "coordinates": [36.8560, 31.0300],
+    "activity_tags": ["beach", "kids_club", "aquapark", "entertainment", "sports", "family"],
+    "beachfront": true,
+    "adults_only": false,
+    "kids_age_min": 0,
+    "kids_age_max": 17,
+    "board_type": "ultra_all_inclusive",
+    "star_rating": 5,
+    "chunks": [
+      {
+        "category": "overview",
+        "text": "Crystal Tat Beach Pearl Collection, Belek'te ailelere yönelik ultra her şey dahil 5 yıldızlı bir tatil köyüdür. 531 odalı tesis, geniş havuz alanları, büyük aquapark ve zengin animasyon programıyla özellikle çocuklu ailelerin tercihi olmaktadır. Ekonomik lüks segment'te güçlü bir konuma sahiptir.",
+        "text_en": "Crystal Tat Beach Pearl Collection is a family-oriented ultra all-inclusive 5-star resort in Belek. The 531-room property is especially preferred by families with children for its large pool areas, big aquapark and rich animation program. It holds a strong position in the affordable luxury segment."
+      },
+      {
+        "category": "rooms",
+        "text": "Standard Room, Family Room, Duplex Family Room ve Suite seçenekleri mevcuttur. Family Room'lar 45 m² olup çocuklar için ayrı bir uyku alanı sunmaktadır. Tüm odalarda balkon, klima, minibar, LED TV, WiFi, kasa ve saç kurutma makinesi bulunmaktadır.",
+        "text_en": "Standard Room, Family Room, Duplex Family Room and Suite options available. Family Rooms are 45 sqm with a separate sleeping area for children. All rooms have balcony, air conditioning, minibar, LED TV, WiFi, safe and hair dryer."
+      },
+      {
+        "category": "food_beverage",
+        "text": "Ana restoran açık büfe (3 öğün) ve 4 à la carte restoran bulunmaktadır: İtalyan, Uzak Doğu, Türk ve steak house. Gece geç snack servisi 00:00-02:00 arasında sunulmaktadır. Çocuk büfesi ana restoranda ayrı olarak düzenlenmiştir. Dondurma ve waffle bar gün boyu ücretsizdir.",
+        "text_en": "Main restaurant open buffet (3 meals) and 4 à la carte restaurants: Italian, Far Eastern, Turkish and steak house. Late-night snack service from 00:00-02:00. Kids buffet arranged separately in main restaurant. Ice cream and waffle bar free all day."
+      },
+      {
+        "category": "wellness",
+        "text": "Spa alanında Türk hamamı, sauna, buhar odası ve masaj odaları mevcuttur. Kapalı havuz spa bünyesindedir. Masaj ve özel bakım tedavileri ek ücretlidir. Spa girişi tüm misafirlere ücretsizdir.",
+        "text_en": "Spa area has Turkish bath, sauna, steam room and massage rooms. Indoor pool is part of the spa. Massages and special treatments at extra charge. Spa entry is free for all guests."
+      },
+      {
+        "category": "children",
+        "text": "Crystal Kids Club 4-12 yaş arası çocuklara yönelik kapsamlı bir program sunmaktadır: mini disco, çocuk tiyatrosu, olimpiyat oyunları, yaratıcı atölyeler ve su oyunları. Büyük aquapark 8 farklı kaydırağa sahiptir ve çocuklar için güvenli sığ bölümleri mevcuttur. 0-3 yaş baby room hizmeti verilmektedir. 2 çocuk (0-12 yaş) anne-baba ile aynı odada ücretsizdir.",
+        "text_en": "Crystal Kids Club offers comprehensive program for ages 4-12: mini disco, children's theater, Olympic games, creative workshops and water games. Large aquapark has 8 different slides with safe shallow sections for children. Baby room service for ages 0-3. 2 children (0-12) stay free in parents' room."
+      },
+      {
+        "category": "activities",
+        "text": "Aquapark, su sporları, tenis, voleybol, basketbol, futbol, okçuluk, bocce, dart, fitness ve aerobik mevcuttur. Plajda motorlu ve motorsuz su sporları sunulmaktadır. Gündüz ve akşam animasyon programı profesyonel ekip tarafından yürütülmektedir. Foam party, su oyunları ve tematik geceler düzenlenmektedir.",
+        "text_en": "Aquapark, water sports, tennis, volleyball, basketball, football, archery, bocce, darts, fitness and aerobics available. Motorized and non-motorized water sports at the beach. Daytime and evening animation program run by professional team. Foam party, water games and themed nights organized."
+      },
+      {
+        "category": "policies",
+        "text": "Giriş saati 14:00, çıkış saati 12:00'dir. 0-12 yaş 2 çocuk ücretsizdir. Evcil hayvan kabul edilmemektedir. All inclusive 07:00-02:00 saatleri arasında geçerlidir. Havuz başı şezlong ücretsizdir.",
+        "text_en": "Check-in at 14:00, check-out at 12:00. 2 children aged 0-12 stay free. Pets not allowed. All-inclusive valid from 07:00-02:00. Poolside sunbeds are free."
+      },
+      {
+        "category": "location",
+        "text": "Crystal Tat Beach, Belek'te denize sıfır konumdadır. Antalya Havalimanı'na 36 km, Belek merkezine 3 km mesafededir. 300 metre kumlu özel plaja sahiptir.",
+        "text_en": "Crystal Tat Beach is beachfront in Belek. 36 km from Antalya Airport, 3 km from Belek center. Has a 300-meter private sandy beach."
+      }
+    ]
+  }
+]

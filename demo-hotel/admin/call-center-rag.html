@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voxtera - Call Center RAG</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0f1117;
+  color: #e4e4e7;
+  min-height: 100vh;
+}
+.hidden { display: none !important; }
+.token-gate {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.token-box {
+  width: 100%;
+  max-width: 380px;
+  background: #1a1b23;
+  border: 1px solid #2a2b35;
+  border-radius: 12px;
+  padding: 32px;
+}
+.token-box h1 {
+  font-size: 22px;
+  color: #fff;
+  margin-bottom: 8px;
+}
+.token-box p {
+  color: #9ca3af;
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.token-box input {
+  width: 100%;
+  background: #0f1117;
+  border: 1px solid #3a3b45;
+  color: #e4e4e7;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.token-box button,
+button {
+  background: #8b5cf6;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.token-box button { width: 100%; }
+button:hover { background: #7c3aed; }
+button.secondary {
+  background: #374151;
+}
+button.secondary:hover {
+  background: #4b5563;
+}
+.token-error {
+  color: #ef4444;
+  font-size: 13px;
+  min-height: 18px;
+  margin-top: 10px;
+}
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.topbar {
+  background: #1a1b23;
+  border-bottom: 1px solid #2a2b35;
+  padding: 18px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.topbar h1 {
+  font-size: 22px;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.topbar p {
+  color: #9ca3af;
+  font-size: 14px;
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.link-btn {
+  color: #c4b5fd;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+.link-btn:hover {
+  color: #ddd6fe;
+}
+.tag {
+  background: #221f35;
+  border: 1px solid #3f365f;
+  color: #c4b5fd;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 8px;
+  border-radius: 999px;
+}
+.page {
+  width: min(1240px, calc(100% - 32px));
+  margin: 18px auto 28px;
+}
+.status-card,
+.panel {
+  background: #1a1b23;
+  border: 1px solid #2a2b35;
+  border-radius: 12px;
+}
+.status-card {
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+.status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 10px;
+  color: #d1d5db;
+  font-size: 14px;
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #4b5563;
+}
+.dot.ok { background: #10b981; }
+.dot.err { background: #ef4444; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.panel {
+  padding: 18px 20px 20px;
+}
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.panel-header h2 {
+  font-size: 17px;
+  color: #fff;
+}
+.panel-header span {
+  color: #9ca3af;
+  font-size: 12px;
+}
+.actions,
+.search-row,
+.filter-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+input,
+select {
+  background: #0f1117;
+  border: 1px solid #3a3b45;
+  color: #e4e4e7;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+input[type="text"] {
+  flex: 1 1 260px;
+}
+select {
+  min-width: 180px;
+}
+.loader {
+  color: #9ca3af;
+  font-size: 13px;
+  margin: 4px 0 10px;
+  display: none;
+}
+.loader.active {
+  display: block;
+}
+.result-box {
+  background: #11131a;
+  border: 1px solid #232530;
+  border-radius: 10px;
+  min-height: 320px;
+  max-height: 520px;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+.empty-state {
+  color: #6b7280;
+  font-size: 14px;
+  padding: 10px 2px;
+}
+.result-item {
+  border-bottom: 1px solid #232530;
+  padding: 10px 0;
+}
+.result-item:last-child {
+  border-bottom: none;
+}
+.hotel-name {
+  color: #ddd6fe;
+  font-weight: 600;
+}
+.score {
+  color: #34d399;
+  font-weight: 700;
+}
+.category {
+  color: #fbbf24;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.badge {
+  display: inline-block;
+  background: #232530;
+  color: #cbd5e1;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  margin: 2px 6px 2px 0;
+}
+.text-preview {
+  margin-top: 8px;
+  color: #cbd5e1;
+  line-height: 1.55;
+  cursor: pointer;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.text-preview.expanded {
+  color: #e5e7eb;
+}
+.expand-hint {
+  color: #8b5cf6;
+  font-size: 11px;
+  margin-left: 6px;
+}
+.error-box {
+  background: #31161b;
+  border: 1px solid #5f222d;
+  color: #fca5a5;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+@media (max-width: 980px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="token-gate" id="token-gate">
+  <div class="token-box">
+    <h1>Call Center RAG</h1>
+    <p>Enter the admin token to verify the Elasticsearch hotel resolver and the Qdrant knowledge base from the main application server.</p>
+    <input type="password" id="token-input" placeholder="VOXTERA_ADMIN_TOKEN" autocomplete="off">
+    <button id="token-submit">Authenticate</button>
+    <div class="token-error" id="token-error"></div>
+  </div>
+</div>
+
+<div class="shell hidden" id="app-shell">
+  <div class="topbar">
+    <div>
+      <h1>Call Center RAG</h1>
+      <p>Read-only verification surface for ES hotel matching and Qdrant semantic search.</p>
+    </div>
+    <div class="topbar-actions">
+      <span class="tag">App Server</span>
+      <a class="link-btn" href="/admin/index.html">Back to Admin</a>
+      <button class="secondary" id="btn-logout">Logout</button>
+    </div>
+  </div>
+
+  <div class="page">
+    <div class="status-card">
+      <div class="panel-header">
+        <h2>System Status</h2>
+        <button id="btn-status">Refresh Status</button>
+      </div>
+      <div class="status-row" id="status-row">
+        <span class="status-pill"><span class="dot"></span>Checking services...</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Elasticsearch Hotel Resolver</h2>
+          <span>List hotels and test resolver matches</span>
+        </div>
+        <div class="actions">
+          <button id="btn-es-hotels">List Hotels</button>
+        </div>
+        <div class="search-row">
+          <input type="text" id="es-search-q" placeholder="Search hotels, chains, districts...">
+          <button id="btn-es-search">Search</button>
+        </div>
+        <div class="loader" id="es-loader">Loading Elasticsearch data...</div>
+        <div class="result-box" id="es-results">
+          <div class="empty-state">No Elasticsearch data loaded yet.</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Qdrant Knowledge Base</h2>
+          <span>Browse points and run semantic search</span>
+        </div>
+        <div class="actions">
+          <button id="btn-qdrant-collections">Collections</button>
+        </div>
+        <div class="filter-row">
+          <select id="qdrant-hotel-filter">
+            <option value="">All hotels</option>
+          </select>
+          <button id="btn-qdrant-browse">Browse Points</button>
+        </div>
+        <div class="search-row">
+          <input type="text" id="qdrant-query" placeholder="Semantic search, for example spa services or airport transfer">
+          <button id="btn-qdrant-search">Semantic Search</button>
+        </div>
+        <div class="loader" id="qdrant-loader">Loading Qdrant data...</div>
+        <div class="result-box" id="qdrant-results">
+          <div class="empty-state">No Qdrant data loaded yet.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+let token = '';
+const API = '/api/admin/call-center';
+
+const tokenGate = document.getElementById('token-gate');
+const appShell = document.getElementById('app-shell');
+const tokenInput = document.getElementById('token-input');
+const tokenError = document.getElementById('token-error');
+const esResults = document.getElementById('es-results');
+const qdrantResults = document.getElementById('qdrant-results');
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function showLoader(id, active) {
+  document.getElementById(id).classList.toggle('active', active);
+}
+
+function showError(target, message) {
+  target.innerHTML = `<div class="error-box">${escapeHtml(message)}</div>`;
+}
+
+async function apiJSON(path, options = {}) {
+  const headers = Object.assign({}, options.headers || {}, { 'X-Admin-Token': token });
+  const response = await fetch(`${API}${path}`, Object.assign({}, options, { headers }));
+  const raw = await response.text();
+  let data = {};
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error(raw);
+    }
+  }
+  if (!response.ok) {
+    const detail = data && typeof data === 'object' ? (data.detail || data.error) : raw;
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+  }
+  return data;
+}
+
+async function tryAuth(candidate) {
+  tokenError.textContent = '';
+  try {
+    const response = await fetch('/api/admin/verify', { headers: { 'X-Admin-Token': candidate } });
+    if (!response.ok) {
+      tokenError.textContent = 'Invalid token.';
+      return;
+    }
+    token = candidate;
+    sessionStorage.setItem('voxtera_admin_token', candidate);
+    tokenGate.classList.add('hidden');
+    appShell.classList.remove('hidden');
+    await initialLoad();
+  } catch {
+    tokenError.textContent = 'Cannot reach server.';
+  }
+}
+
+async function initialLoad() {
+  await checkStatus();
+  await esListHotels();
+  await qdrantBrowse();
+}
+
+function renderStatus(status) {
+  const esOk = status.es === 'ok';
+  const qdrantOk = status.qdrant === 'ok';
+  const esText = esOk ? `Elasticsearch v${status.es_version}` : `Elasticsearch error: ${JSON.stringify(status.es_error || {})}`;
+  const qdrantText = qdrantOk ? `Qdrant ${status.qdrant_collections} collections` : `Qdrant error: ${JSON.stringify(status.qdrant_error || {})}`;
+  document.getElementById('status-row').innerHTML = `
+    <span class="status-pill"><span class="dot ${esOk ? 'ok' : 'err'}"></span>${escapeHtml(esText)}</span>
+    <span class="status-pill"><span class="dot ${qdrantOk ? 'ok' : 'err'}"></span>${escapeHtml(qdrantText)}</span>
+  `;
+}
+
+async function checkStatus() {
+  try {
+    const status = await apiJSON('/status');
+    renderStatus(status);
+  } catch (error) {
+    document.getElementById('status-row').innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function populateHotelFilter(hotels) {
+  const select = document.getElementById('qdrant-hotel-filter');
+  const previous = select.value;
+  select.innerHTML = '<option value="">All hotels</option>';
+  for (const hotel of hotels || []) {
+    const option = document.createElement('option');
+    option.value = hotel.hotel_id || '';
+    option.textContent = hotel.name || hotel.hotel_id || 'Unknown hotel';
+    select.appendChild(option);
+  }
+  if (previous) {
+    select.value = previous;
+  }
+}
+
+async function esListHotels() {
+  showLoader('es-loader', true);
+  try {
+    const data = await apiJSON('/es/hotels');
+    populateHotelFilter(data.hotels || []);
+    if (!data.hotels || !data.hotels.length) {
+      esResults.innerHTML = '<div class="empty-state">No hotels returned from Elasticsearch.</div>';
+      return;
+    }
+    let html = `<div class="result-item"><strong>${escapeHtml(data.count)}</strong> hotels indexed</div>`;
+    for (const hotel of data.hotels) {
+      html += '<div class="result-item">';
+      html += `<div><span class="hotel-name">${escapeHtml(hotel.name || '?')}</span></div>`;
+      if (hotel.district) html += `<span class="badge">${escapeHtml(hotel.district)}</span>`;
+      if (hotel.price_tier) html += `<span class="badge">${escapeHtml(hotel.price_tier)}</span>`;
+      if (hotel.board_type) html += `<span class="badge">${escapeHtml(hotel.board_type)}</span>`;
+      if (hotel.star_rating) html += `<span class="badge">${escapeHtml(hotel.star_rating)} star</span>`;
+      html += '</div>';
+    }
+    esResults.innerHTML = html;
+  } catch (error) {
+    showError(esResults, error.message);
+  } finally {
+    showLoader('es-loader', false);
+  }
+}
+
+async function esSearch() {
+  const query = document.getElementById('es-search-q').value.trim();
+  if (!query) return;
+  showLoader('es-loader', true);
+  try {
+    const data = await apiJSON(`/es/search?q=${encodeURIComponent(query)}`);
+    if (!data.results || !data.results.length) {
+      esResults.innerHTML = `<div class="empty-state">No hotels matched "${escapeHtml(query)}".</div>`;
+      return;
+    }
+    let html = `<div class="result-item"><strong>${escapeHtml(data.count)}</strong> matches for "${escapeHtml(data.query)}"</div>`;
+    for (const result of data.results) {
+      html += '<div class="result-item">';
+      html += `<span class="score">${Number(result.score || 0).toFixed(2)}</span> `;
+      html += `<span class="hotel-name">${escapeHtml(result.name || result.hotel_id || '?')}</span>`;
+      if (result.hotel_id) html += ` <span class="badge">${escapeHtml(result.hotel_id)}</span>`;
+      html += '</div>';
+    }
+    esResults.innerHTML = html;
+  } catch (error) {
+    showError(esResults, error.message);
+  } finally {
+    showLoader('es-loader', false);
+  }
+}
+
+async function qdrantCollections() {
+  showLoader('qdrant-loader', true);
+  try {
+    const data = await apiJSON('/qdrant/collections');
+    const collections = data.collections || [];
+    if (!collections.length) {
+      qdrantResults.innerHTML = '<div class="empty-state">No Qdrant collections returned.</div>';
+      return;
+    }
+    let html = `<div class="result-item"><strong>${escapeHtml(collections.length)}</strong> collections available</div>`;
+    for (const collection of collections) {
+      html += `<div class="result-item"><span class="hotel-name">${escapeHtml(collection.name || '?')}</span></div>`;
+    }
+    qdrantResults.innerHTML = html;
+  } catch (error) {
+    showError(qdrantResults, error.message);
+  } finally {
+    showLoader('qdrant-loader', false);
+  }
+}
+
+function renderTextPreview(text, limit) {
+  const preview = text.slice(0, limit);
+  const truncated = text.length > limit;
+  const encodedPreview = encodeURIComponent(preview);
+  const encodedFull = encodeURIComponent(text);
+  const hint = truncated ? '<span class="expand-hint">click to expand</span>' : '';
+  return `<div class="text-preview" onclick="toggleChunk(this)" data-preview="${encodedPreview}" data-full="${encodedFull}" data-truncated="${truncated ? '1' : '0'}">${escapeHtml(preview)}${hint}</div>`;
+}
+
+async function qdrantBrowse() {
+  showLoader('qdrant-loader', true);
+  try {
+    const hotelId = document.getElementById('qdrant-hotel-filter').value;
+    let path = '/qdrant/points?limit=30';
+    if (hotelId) path += `&hotel_id=${encodeURIComponent(hotelId)}`;
+    const data = await apiJSON(path);
+    const points = data.points || [];
+    if (!points.length) {
+      qdrantResults.innerHTML = '<div class="empty-state">No Qdrant points matched the current filter.</div>';
+      return;
+    }
+    let html = `<div class="result-item"><strong>${escapeHtml(data.count)}</strong> points in ${escapeHtml(data.collection || 'collection')}</div>`;
+    for (const point of points) {
+      const payload = point.payload || {};
+      const text = String(payload.text_en || payload.text || '');
+      html += '<div class="result-item">';
+      html += `<div><span class="hotel-name">${escapeHtml(payload.hotel_name || '?')}</span> `;
+      if (payload.category) html += `<span class="category">${escapeHtml(payload.category)}</span>`;
+      html += '</div>';
+      html += renderTextPreview(text, 180);
+      html += '</div>';
+    }
+    qdrantResults.innerHTML = html;
+  } catch (error) {
+    showError(qdrantResults, error.message);
+  } finally {
+    showLoader('qdrant-loader', false);
+  }
+}
+
+async function qdrantSearch() {
+  const query = document.getElementById('qdrant-query').value.trim();
+  if (!query) return;
+  showLoader('qdrant-loader', true);
+  try {
+    const hotelId = document.getElementById('qdrant-hotel-filter').value;
+    const data = await apiJSON('/qdrant/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, hotel_id: hotelId, limit: 8 })
+    });
+    const results = data.results || [];
+    if (!results.length) {
+      qdrantResults.innerHTML = `<div class="empty-state">No semantic matches for "${escapeHtml(query)}".</div>`;
+      return;
+    }
+    let html = `<div class="result-item"><strong>${escapeHtml(data.count)}</strong> results, embedding in ${escapeHtml(data.embed_ms)}ms</div>`;
+    for (const result of results) {
+      const text = String(result.text_en || result.text || '');
+      html += '<div class="result-item">';
+      html += `<div><span class="score">${Number(result.score || 0).toFixed(4)}</span> <span class="hotel-name">${escapeHtml(result.hotel_name || '?')}</span>`;
+      if (result.category) html += ` <span class="category">${escapeHtml(result.category)}</span>`;
+      html += ` <span class="badge">${escapeHtml(text.length)} chars</span></div>`;
+      html += renderTextPreview(text, 220);
+      html += '</div>';
+    }
+    qdrantResults.innerHTML = html;
+  } catch (error) {
+    showError(qdrantResults, error.message);
+  } finally {
+    showLoader('qdrant-loader', false);
+  }
+}
+
+function toggleChunk(element) {
+  if (element.dataset.truncated !== '1') return;
+  const preview = decodeURIComponent(element.dataset.preview || '');
+  const full = decodeURIComponent(element.dataset.full || '');
+  if (element.classList.contains('expanded')) {
+    element.classList.remove('expanded');
+    element.textContent = preview;
+    const hint = document.createElement('span');
+    hint.className = 'expand-hint';
+    hint.textContent = 'click to expand';
+    element.appendChild(hint);
+    return;
+  }
+  element.classList.add('expanded');
+  element.textContent = full;
+}
+
+document.getElementById('token-submit').addEventListener('click', () => {
+  const candidate = tokenInput.value.trim();
+  if (candidate) tryAuth(candidate);
+});
+tokenInput.addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    const candidate = tokenInput.value.trim();
+    if (candidate) tryAuth(candidate);
+  }
+});
+
+document.getElementById('btn-logout').addEventListener('click', () => {
+  sessionStorage.removeItem('voxtera_admin_token');
+  location.reload();
+});
+document.getElementById('btn-status').addEventListener('click', checkStatus);
+document.getElementById('btn-es-hotels').addEventListener('click', esListHotels);
+document.getElementById('btn-es-search').addEventListener('click', esSearch);
+document.getElementById('es-search-q').addEventListener('keydown', event => {
+  if (event.key === 'Enter') esSearch();
+});
+document.getElementById('btn-qdrant-collections').addEventListener('click', qdrantCollections);
+document.getElementById('btn-qdrant-browse').addEventListener('click', qdrantBrowse);
+document.getElementById('btn-qdrant-search').addEventListener('click', qdrantSearch);
+document.getElementById('qdrant-query').addEventListener('keydown', event => {
+  if (event.key === 'Enter') qdrantSearch();
+});
+
+const stored = sessionStorage.getItem('voxtera_admin_token');
+if (stored) {
+  tryAuth(stored);
+}
+</script>
+
+</body>
+</html>

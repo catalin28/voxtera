@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Voxtera — Concierge · Find hotels & places</title>
+<meta name="robots" content="noindex" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..700,0..100&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300..500&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --cream:#f4ede1; --cream-deep:#ebe1cf;
+  --ink:#1a1814; --ink-soft:#2c2822;
+  --gold:#b8884a; --gold-deep:#8a5f2a; --gold-light:#d4a563;
+  --rust:#a4391c; --rust-soft:#c95436;
+  --paper:#faf6ec;
+  --line:rgba(26,24,20,0.14); --line-strong:rgba(26,24,20,0.32);
+
+  /* Concierge accent — sea/teal, distinct from booking-demo rust but in family */
+  --accent:#1f6e6a;
+  --accent-deep:#154f4c;
+  --accent-soft:#2f8d88;
+  --accent-tint:rgba(31,110,106,0.10);
+}
+
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{
+  background:var(--cream);
+  color:var(--ink);
+  font-family:'Fraunces',serif;
+  font-weight:400;
+  font-size:16px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+  position:relative;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+}
+body::before{
+  content:"";
+  position:fixed;inset:0;
+  pointer-events:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.1 0 0 0 0 0.08 0 0 0 0.35 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  mix-blend-mode:multiply;
+  opacity:0.35;
+  z-index:0;
+}
+.mono{font-family:'JetBrains Mono',monospace;letter-spacing:0.02em;}
+.italic{font-family:'Instrument Serif',serif;font-style:italic;font-weight:400;}
+
+/* ---------- NAV ---------- */
+.site-nav{
+  position:relative;z-index:10;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:1.1rem 2.2rem;
+  background:rgba(244,237,225,0.85);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.site-nav .logo{
+  display:flex;align-items:center;gap:0.55rem;
+  font-family:'Fraunces',serif;font-weight:600;font-size:1.35rem;
+  color:var(--ink);text-decoration:none;letter-spacing:-0.01em;
+}
+.site-nav .logo-mark{display:inline-block;width:24px;height:24px;}
+.site-nav .logo-mark svg{width:100%;height:100%;}
+.site-nav .logo sup{font-size:0.55em;font-weight:400;margin-left:0.05em;color:var(--gold);}
+.site-nav .nav-links{display:flex;align-items:center;gap:1.8rem;}
+.site-nav .nav-links a{
+  font-family:'JetBrains Mono',monospace;font-size:0.74rem;font-weight:400;
+  color:var(--ink-soft);text-decoration:none;text-transform:uppercase;letter-spacing:0.12em;
+  transition:color 0.2s ease;
+}
+.site-nav .nav-links a:hover{color:var(--accent);}
+.site-nav .nav-links a.is-active{color:var(--accent);}
+.site-nav .nav-cta{
+  padding:0.55rem 1.2rem;
+  background:var(--ink);color:var(--cream);
+  border:1px solid var(--ink);border-radius:999px;
+  font-family:'JetBrains Mono',monospace;font-size:0.74rem;font-weight:400;
+  text-transform:uppercase;letter-spacing:0.12em;cursor:pointer;
+  transition:all 0.2s ease;
+}
+.site-nav .nav-cta:hover{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+/* ---------- TOPBAR (mode strip) ---------- */
+.topbar{
+  position:relative;z-index:5;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0.7rem 2.2rem;
+  background:var(--cream-deep);
+  border-bottom:1px solid var(--line);
+}
+.topbar .mode-strip{display:flex;align-items:center;gap:0.7rem;}
+.topbar .mode-tag{
+  font-family:'JetBrains Mono',monospace;font-size:0.7rem;
+  text-transform:uppercase;letter-spacing:0.14em;color:var(--accent-deep);
+  padding:0.2rem 0.55rem;border:1px solid var(--accent);border-radius:3px;
+  background:var(--accent-tint);
+}
+.topbar .mode-meta{font-family:'Fraunces',serif;font-style:italic;font-size:0.92rem;color:var(--ink-soft);}
+.topbar .topbar-right{display:flex;align-items:center;gap:1rem;}
+.topbar .region-pick{
+  font-family:'JetBrains Mono',monospace;font-size:0.74rem;
+  background:transparent;border:1px solid var(--line-strong);
+  padding:0.35rem 0.7rem;border-radius:4px;color:var(--ink);
+  text-transform:uppercase;letter-spacing:0.08em;
+}
+.topbar .region-pick:focus{outline:none;border-color:var(--accent);}
+
+/* ---------- MAIN ---------- */
+main{
+  position:relative;z-index:1;flex:1;
+  max-width:880px;width:100%;margin:0 auto;
+  padding:2.2rem 2rem 4rem 2rem;
+  display:flex;flex-direction:column;gap:1.8rem;
+}
+.stage-eyebrow{
+  font-family:'JetBrains Mono',monospace;font-size:0.72rem;
+  text-transform:uppercase;letter-spacing:0.18em;color:var(--accent-deep);
+}
+.stage-title{
+  font-family:'Fraunces',serif;font-weight:400;font-size:clamp(1.9rem,4vw,2.8rem);
+  line-height:1.15;letter-spacing:-0.015em;color:var(--ink);
+}
+.stage-title .italic{color:var(--accent-deep);}
+.stage-sub{
+  font-family:'Fraunces',serif;font-size:1.05rem;color:var(--ink-soft);
+  max-width:62ch;
+}
+
+/* ---------- THREAD ---------- */
+.thread{
+  display:flex;flex-direction:column;gap:1rem;
+  min-height:80px;
+}
+.bubble{
+  border:1px solid var(--line);border-radius:14px;
+  padding:1rem 1.15rem;background:var(--paper);
+  max-width:88%;
+}
+.bubble.user{
+  align-self:flex-end;
+  background:var(--ink);color:var(--cream);
+  border-color:var(--ink);
+}
+.bubble.user .label{color:var(--gold-light);}
+.bubble.assistant{
+  align-self:flex-start;
+  background:var(--paper);
+}
+.bubble .label{
+  font-family:'JetBrains Mono',monospace;font-size:0.65rem;
+  text-transform:uppercase;letter-spacing:0.16em;color:var(--accent-deep);
+  margin-bottom:0.35rem;display:block;
+}
+.bubble .body{font-family:'Fraunces',serif;font-size:1.02rem;line-height:1.55;white-space:pre-wrap;}
+.bubble.assistant .body{font-family:'Instrument Serif',serif;font-size:1.18rem;line-height:1.5;}
+.bubble.system{
+  align-self:center;max-width:100%;text-align:center;
+  background:transparent;border:none;padding:0.3rem 0;
+  font-family:'JetBrains Mono',monospace;font-size:0.72rem;
+  letter-spacing:0.1em;color:var(--ink-soft);opacity:0.7;
+}
+
+/* ---------- HOTEL RESULT CARDS ---------- */
+.hotels-wrap{display:flex;flex-direction:column;gap:0.7rem;margin-top:0.8rem;}
+.hotel-card{
+  border:1px solid var(--line);background:var(--cream-deep);
+  border-radius:10px;padding:0.85rem 1rem;
+}
+.hotel-head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;margin-bottom:0.4rem;}
+.hotel-name{font-family:'Fraunces',serif;font-weight:500;font-size:1.05rem;color:var(--ink);}
+.hotel-score{font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--accent-deep);letter-spacing:0.08em;}
+.evidence{display:flex;flex-direction:column;gap:0.35rem;margin-top:0.4rem;}
+.evidence-row{font-size:0.88rem;color:var(--ink-soft);}
+.evidence-req{font-family:'JetBrains Mono',monospace;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--accent);margin-right:0.4rem;}
+.no-hotels{
+  border:1px dashed var(--line-strong);border-radius:10px;
+  padding:0.85rem 1rem;background:transparent;
+  font-family:'Fraunces',serif;font-style:italic;color:var(--ink-soft);
+}
+
+/* ---------- DEBUG DRAWER ---------- */
+details.debug{
+  margin-top:0.6rem;border-top:1px dashed var(--line);padding-top:0.5rem;
+}
+details.debug summary{
+  cursor:pointer;
+  font-family:'JetBrains Mono',monospace;font-size:0.68rem;
+  text-transform:uppercase;letter-spacing:0.14em;color:var(--ink-soft);
+}
+details.debug summary:hover{color:var(--accent);}
+.debug-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;margin-top:0.6rem;}
+.debug-box{
+  background:rgba(26,24,20,0.04);border:1px solid var(--line);
+  border-radius:6px;padding:0.6rem 0.7rem;
+  font-family:'JetBrains Mono',monospace;font-size:0.72rem;
+  color:var(--ink-soft);white-space:pre-wrap;word-break:break-word;
+  max-height:240px;overflow:auto;
+}
+.debug-box .k{color:var(--accent-deep);}
+.timings{
+  display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;
+}
+.timing-chip{
+  font-family:'JetBrains Mono',monospace;font-size:0.66rem;
+  background:var(--accent-tint);border:1px solid var(--accent);
+  color:var(--accent-deep);padding:0.2rem 0.5rem;border-radius:3px;
+  letter-spacing:0.06em;
+}
+
+/* ---------- INPUT BAR ---------- */
+.input-bar-wrap{
+  position:sticky;bottom:0;
+  background:linear-gradient(to top, var(--cream) 70%, rgba(244,237,225,0));
+  padding:1.4rem 2rem 1.2rem 2rem;
+  z-index:4;
+}
+.input-bar{
+  max-width:880px;margin:0 auto;
+  border:1px solid var(--line-strong);background:var(--paper);
+  border-radius:14px;padding:0.7rem 0.85rem;
+  box-shadow:0 6px 24px rgba(26,24,20,0.06);
+  transition:border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.input-bar:focus-within{
+  border-color:var(--accent);
+  box-shadow:0 6px 24px rgba(31,110,106,0.18);
+}
+.input-row{display:flex;align-items:flex-end;gap:0.6rem;}
+.input-row textarea{
+  flex:1;border:none;background:transparent;resize:none;outline:none;
+  font-family:'Fraunces',serif;font-size:1.02rem;color:var(--ink);
+  line-height:1.5;padding:0.4rem 0.2rem;max-height:160px;
+}
+.input-row textarea::placeholder{color:var(--ink-soft);opacity:0.55;font-style:italic;}
+.send-btn{
+  padding:0.55rem 1.1rem;border-radius:999px;
+  background:var(--accent);color:#fff;border:1px solid var(--accent);
+  font-family:'JetBrains Mono',monospace;font-size:0.72rem;
+  text-transform:uppercase;letter-spacing:0.12em;cursor:pointer;
+  transition:all 0.2s ease;
+}
+.send-btn:hover:not(:disabled){background:var(--accent-deep);border-color:var(--accent-deep);}
+.send-btn:disabled{opacity:0.5;cursor:not-allowed;}
+.suggestions{
+  display:flex;flex-wrap:wrap;gap:0.45rem;
+  max-width:880px;margin:0 auto 0.7rem auto;
+}
+.chip{
+  font-family:'JetBrains Mono',monospace;font-size:0.7rem;
+  background:transparent;border:1px solid var(--line-strong);
+  padding:0.4rem 0.75rem;border-radius:999px;cursor:pointer;
+  color:var(--ink-soft);letter-spacing:0.04em;
+  transition:all 0.2s ease;
+}
+.chip:hover{border-color:var(--accent);color:var(--accent-deep);background:var(--accent-tint);}
+
+/* ---------- FOOTNOTE ---------- */
+.footnote{
+  max-width:880px;margin:0.4rem auto 0 auto;
+  font-family:'JetBrains Mono',monospace;font-size:0.66rem;
+  color:var(--ink-soft);opacity:0.7;letter-spacing:0.06em;text-align:center;
+}
+
+@media (max-width:720px){
+  .site-nav{padding:0.9rem 1.2rem;}
+  .site-nav .nav-links{gap:1rem;}
+  .site-nav .nav-links a:not(.nav-cta):not(.is-active){display:none;}
+  .topbar{padding:0.6rem 1.2rem;flex-wrap:wrap;gap:0.5rem;}
+  main{padding:1.5rem 1.2rem 4rem 1.2rem;}
+  .input-bar-wrap{padding:1rem 1.2rem 1rem 1.2rem;}
+  .debug-grid{grid-template-columns:1fr;}
+  .bubble{max-width:96%;}
+}
+</style>
+</head>
+<body>
+
+<!-- MARKETING NAV (matches voxtera.html / voxtera-demo.html) -->
+<nav class="site-nav">
+  <a href="voxtera.html" class="logo">
+    <span class="logo-mark">
+      <svg viewBox="0 0 32 32" fill="none">
+        <circle cx="16" cy="16" r="15" stroke="#1a1814" stroke-width="1.2" fill="none"/>
+        <path d="M8 16 L11 16 L13 10 L16 22 L19 8 L21 18 L24 16" stroke="#1f6e6a" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    Voxtera<sup>™</sup>
+  </a>
+  <div class="nav-links">
+    <a href="voxtera.html#solution">Solution</a>
+    <a href="voxtera-hotels.html">For hotels</a>
+    <a href="voxtera-demo.html">Try demo</a>
+    <a href="voxtera-concierge.html" class="is-active">Concierge</a>
+    <a href="voxtera.html#pricing">Pricing</a>
+    <button onclick="window.location.href='voxtera.html#contact'" class="nav-cta">Book a demo →</button>
+  </div>
+</nav>
+
+<!-- MODE STRIP -->
+<header class="topbar">
+  <div class="mode-strip">
+    <span class="mode-tag">Concierge</span>
+    <span class="mode-meta">Find hotels &amp; places — by what they offer.</span>
+  </div>
+  <div class="topbar-right">
+    <label class="mono" for="region-pick" style="font-size:0.66rem;text-transform:uppercase;letter-spacing:0.14em;color:var(--ink-soft);">Region</label>
+    <select class="region-pick" id="region-pick">
+      <option value="" selected>All regions</option>
+      <option value="paris">Paris</option>
+      <option value="istanbul">Istanbul</option>
+      <option value="bodrum">Bodrum</option>
+      <option value="antalya">Antalya</option>
+      <option value="rome">Rome</option>
+      <option value="barcelona">Barcelona</option>
+    </select>
+  </div>
+</header>
+
+<!-- MAIN STAGE -->
+<main>
+  <div class="stage-eyebrow">Voxtera Concierge</div>
+  <h1 class="stage-title">Find a hotel by <span class="italic">what it actually has.</span></h1>
+  <p class="stage-sub">
+    Describe what matters — “a quiet spa hotel with a kids' club and sea view” —
+    and the concierge will pick the hotels in your region that match every part of it,
+    with the exact passages from each hotel's own guide as evidence.
+  </p>
+
+  <div class="thread" id="thread">
+    <div class="bubble system" id="placeholder">Ask anything below to begin.</div>
+  </div>
+</main>
+
+<div class="input-bar-wrap">
+  <div class="suggestions" id="suggestions" aria-label="Suggested questions">
+    <button class="chip" data-prompt="Quiet spa hotel with a kids' club and sea view">Spa + kids' club + sea view</button>
+    <button class="chip" data-prompt="Family-friendly resort with all-inclusive and water park">All-inclusive + water park</button>
+    <button class="chip" data-prompt="Boutique hotel near the old town with rooftop bar">Boutique + rooftop bar</button>
+    <button class="chip" data-prompt="Adults-only hotel with a private beach and fine dining">Adults-only + private beach</button>
+    <button class="chip" data-prompt="Hotel with conference rooms and airport shuttle">Conference + shuttle</button>
+  </div>
+  <form class="input-bar" id="ask-form" autocomplete="off">
+    <div class="input-row">
+      <textarea
+        id="ask-input"
+        placeholder="What kind of stay are you looking for?"
+        rows="1"
+        spellcheck="true"
+      ></textarea>
+      <button type="submit" class="send-btn" id="send-btn">Ask →</button>
+    </div>
+  </form>
+  <div class="footnote">Powered by Voxtera concierge agent · evidence-cited · no hallucinated amenities.</div>
+</div>
+
+<script>
+const thread     = document.getElementById('thread');
+const placeholder= document.getElementById('placeholder');
+const form       = document.getElementById('ask-form');
+const input      = document.getElementById('ask-input');
+const sendBtn    = document.getElementById('send-btn');
+const regionPick = document.getElementById('region-pick');
+
+// Auto-grow textarea
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+});
+
+// Suggestion chips → fill input
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    input.value = chip.dataset.prompt;
+    input.dispatchEvent(new Event('input'));
+    input.focus();
+  });
+});
+
+// Enter to submit, Shift+Enter for newline
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    form.requestSubmit();
+  }
+});
+
+function addBubble(kind, label, body){
+  if (placeholder && placeholder.parentNode) placeholder.remove();
+  const el = document.createElement('div');
+  el.className = 'bubble ' + kind;
+  const lbl = document.createElement('span');
+  lbl.className = 'label'; lbl.textContent = label;
+  const bd  = document.createElement('div');
+  bd.className = 'body'; bd.textContent = body;
+  el.appendChild(lbl); el.appendChild(bd);
+  thread.appendChild(el);
+  el.scrollIntoView({behavior:'smooth', block:'end'});
+  return el;
+}
+
+function addSystem(text){
+  if (placeholder && placeholder.parentNode) placeholder.remove();
+  const el = document.createElement('div');
+  el.className = 'bubble system';
+  el.textContent = text;
+  thread.appendChild(el);
+  return el;
+}
+
+function renderHotels(retrieval, parent){
+  const hotels = (retrieval && retrieval.hotels) || [];
+  if (!hotels.length){
+    const el = document.createElement('div');
+    el.className = 'no-hotels';
+    el.textContent = 'No hotels matched every requirement. Try loosening the request.';
+    parent.appendChild(el);
+    return;
+  }
+  const wrap = document.createElement('div'); wrap.className = 'hotels-wrap';
+  hotels.slice(0, 5).forEach(h => {
+    const card = document.createElement('div'); card.className = 'hotel-card';
+    const head = document.createElement('div'); head.className = 'hotel-head';
+    const name = document.createElement('div'); name.className = 'hotel-name';
+    name.textContent = (h.payload && (h.payload.hotel_name || h.payload.name)) || h.hotel_id || '—';
+    const score = document.createElement('div'); score.className = 'hotel-score';
+    if (typeof h.score === 'number') score.textContent = 'score ' + h.score.toFixed(3);
+    head.appendChild(name); head.appendChild(score);
+    card.appendChild(head);
+    const ev = document.createElement('div'); ev.className = 'evidence';
+    Object.entries(h.evidence || {}).forEach(([req, chunk]) => {
+      const row = document.createElement('div'); row.className = 'evidence-row';
+      const tag = document.createElement('span'); tag.className = 'evidence-req'; tag.textContent = req;
+      row.appendChild(tag);
+      const text = (chunk && (chunk.text || chunk.payload?.text)) || '—';
+      row.appendChild(document.createTextNode(text));
+      ev.appendChild(row);
+    });
+    card.appendChild(ev);
+    wrap.appendChild(card);
+  });
+  parent.appendChild(wrap);
+}
+
+function renderDebug(result, parent){
+  const det = document.createElement('details'); det.className = 'debug';
+  const sum = document.createElement('summary'); sum.textContent = 'Debug · decomposition + timings';
+  det.appendChild(sum);
+
+  // Timings chips
+  if (result.timings){
+    const t = document.createElement('div'); t.className = 'timings';
+    Object.entries(result.timings).forEach(([k, v]) => {
+      const c = document.createElement('span'); c.className = 'timing-chip';
+      c.textContent = k.replace(/_ms$/,'') + ' ' + v + 'ms';
+      t.appendChild(c);
+    });
+    det.appendChild(t);
+  }
+
+  const grid = document.createElement('div'); grid.className = 'debug-grid';
+  const dec = document.createElement('div'); dec.className = 'debug-box';
+  dec.textContent = 'decomposition\n' + JSON.stringify(result.decomposition, null, 2);
+  const ret = document.createElement('div'); ret.className = 'debug-box';
+  ret.textContent = 'retrieval reason: ' + (result.reason || '—') +
+    '\nrequirements matched: ' + ((result.retrieval && result.retrieval.requirements_count) ?? '?') +
+    '\nhotels: ' + ((result.retrieval && result.retrieval.hotels && result.retrieval.hotels.length) || 0);
+  grid.appendChild(dec); grid.appendChild(ret);
+  det.appendChild(grid);
+  parent.appendChild(det);
+}
+
+async function ask(utterance){
+  const region = regionPick.value;
+  addBubble('user', 'You · ' + region, utterance);
+  const waiting = addSystem('Thinking…');
+  sendBtn.disabled = true;
+  const sessionId = sessionStorage.getItem('voxtera_concierge_sid') || null;
+  try {
+    const res = await fetch('/api/concierge', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({utterance, region, session_id: sessionId}),
+    });
+    waiting.remove();
+    const data = await res.json();
+    if (!res.ok){
+      addBubble('assistant', 'Concierge · error', data.error || ('HTTP ' + res.status));
+      return;
+    }
+    // Persist session id for multi-turn context (triage clarifications, etc.).
+    if (data.session_id){
+      sessionStorage.setItem('voxtera_concierge_sid', data.session_id);
+    }
+    // Escalation banner — handoff to human.
+    if (data.escalation && data.escalation.escalate){
+      const label = 'Concierge · escalating (' + data.escalation.escalation_type + ')';
+      const bub = addBubble('assistant', label, data.answer || '—');
+      renderDebug(data, bub);
+      return;
+    }
+    // Clarification — ask the user a follow-up question and wait for reply.
+    if (data.clarification && data.clarification.question){
+      const bub = addBubble('assistant', 'Concierge · needs more info', data.clarification.question);
+      renderDebug(data, bub);
+      return;
+    }
+    const bub = addBubble('assistant', 'Concierge', data.answer || '—');
+    renderHotels(data.retrieval, bub);
+    renderDebug(data, bub);
+  } catch (e){
+    waiting.remove();
+    addBubble('assistant', 'Concierge · error', String(e));
+  } finally {
+    sendBtn.disabled = false;
+    input.value = '';
+    input.style.height = 'auto';
+    input.focus();
+  }
+}
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = input.value.trim();
+  if (!v) return;
+  ask(v);
+});
+</script>
+</body>
+</html>

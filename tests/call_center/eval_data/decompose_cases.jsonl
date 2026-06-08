@@ -1,0 +1,36 @@
+{"id": "broad_spa_relax", "utterance": "I want to go to a nice hotel with spa to relax", "context": {"active_region": "antalya"}, "expect": {"query_type": "broad", "intent": ["amenities", "recommendation", "atmosphere"], "region": "antalya", "hotel_named": false, "requires": ["spa"]}}
+{"id": "broad_family_kids_beach", "utterance": "recommend a family hotel with a kids club near the beach", "context": {"active_region": "antalya"}, "expect": {"query_type": "broad", "region": "antalya", "hotel_named": false, "requires": ["kids club", "beach"]}}
+{"id": "broad_romantic_boutique", "utterance": "a romantic boutique hotel", "context": {"active_region": "antalya"}, "expect": {"query_type": "broad", "hotel_named": false, "requires": ["romantic"]}}
+{"id": "broad_romantic_resorts", "utterance": "give me some romantic resorts", "context": {"active_region": "antalya"}, "expect": {"query_type": "broad", "hotel_named": false, "requires": ["romantic"]}}
+{"id": "broad_rooftop_bar", "utterance": "a quiet hotel with a rooftop bar", "context": {"active_region": "antalya"}, "expect": {"query_type": "broad", "hotel_named": false, "requires": ["rooftop bar"]}}
+{"id": "broad_spa_kidsclub", "utterance": "hotel with spa and kids club", "context": {"active_region": "antalya"}, "expect": {"query_type": ["broad", "compound"], "region": "antalya", "hotel_named": false, "requires": ["spa", "kids club"]}}
+{"id": "broad_budget_bodrum", "utterance": "good hotel in Bodrum under 100 euro", "context": {}, "expect": {"query_type": "broad", "region": "bodrum", "hotel_named": false}}
+{"id": "broad_accessible_side", "utterance": "wheelchair accessible rooms in a hotel in Side", "context": {}, "expect": {"query_type": "broad", "region": "side", "hotel_named": false, "requires": ["wheelchair"]}}
+{"id": "scoped_named_crystal", "utterance": "tell me about Crystal Tat Beach Pearl Collection", "context": {"active_region": "antalya"}, "expect": {"query_type": "scoped", "hotel_named": true}}
+{"id": "scoped_named_rixos_hamam", "utterance": "does Rixos Belek have a hamam?", "context": {}, "expect": {"query_type": "scoped", "hotel_named": true, "requires": ["hamam"]}}
+{"id": "scoped_named_akra_restaurants", "utterance": "what restaurants does Akra Kemer have", "context": {}, "expect": {"query_type": "scoped", "hotel_named": true, "requires": ["restaurant"]}}
+{"id": "scoped_named_selectum_more", "utterance": "tell me more about Selectum Luxury Resort Belek", "context": {}, "expect": {"query_type": "scoped", "hotel_named": true}}
+{"id": "followup_bars", "utterance": "do they have bars?", "context": {"active_hotel_id": "crystal_tat_beach", "active_region": "antalya"}, "expect": {"query_type": "scoped", "hotel_named": false, "requires": ["bar"]}}
+{"id": "followup_restaurants_bars", "utterance": "do they have restaurants and bars?", "context": {"active_hotel_id": "crystal_tat_beach", "active_region": "antalya"}, "expect": {"query_type": "scoped", "hotel_named": false, "requires": ["restaurant", "bar"]}}
+{"id": "followup_on_beach", "utterance": "is the hotel on the beach?", "context": {"active_hotel_id": "crystal_tat_beach", "active_region": "antalya"}, "expect": {"query_type": "scoped", "hotel_named": false, "requires": ["beach"]}}
+{"id": "followup_food", "utterance": "what about food?", "context": {"active_hotel_id": "crystal_tat_beach", "active_region": "antalya"}, "expect": {"query_type": "scoped", "hotel_named": false}}
+{"id": "followup_pool", "utterance": "does it have a pool?", "context": {"active_hotel_id": "akra_kemer", "active_region": "antalya"}, "expect": {"query_type": "scoped", "hotel_named": false, "requires": ["pool"]}}
+{"id": "followup_standard_rooms", "utterance": "what are the standard rooms?", "context": {"active_hotel_id": "crystal_tat_beach", "active_region": "antalya"}, "expect": {"query_type": "scoped", "hotel_named": false, "requires": ["standard room"]}}
+{"id": "new_mention_overrides", "utterance": "how about Crystal Tat Beach Pearl Collection?", "context": {"active_hotel_id": "akra_kemer", "active_region": "antalya"}, "expect": {"query_type": ["scoped", "comparison"], "hotel_named": true}}
+{"id": "echo_resistance_broad", "utterance": "I want a spa hotel to relax", "context": {"active_hotel_id": "akra_kemer", "active_region": "antalya"}, "expect": {"query_type": "broad", "hotel_named": false, "requires": ["spa"]}}
+{"id": "generic_ref_on_beach", "utterance": "the hotel is on the beach?", "context": {"active_hotel_id": "crystal_tat_beach", "active_region": "antalya"}, "expect": {"query_type": "scoped", "hotel_named": false, "requires": ["beach"]}}
+{"id": "geo_missing_recommend", "utterance": "recommend a nice hotel", "context": {}, "expect": {"query_type": "broad", "region": null, "hotel_named": false}}
+{"id": "geo_missing_spa", "utterance": "a hotel with a spa", "context": {}, "expect": {"query_type": "broad", "region": null, "hotel_named": false, "requires": ["spa"]}}
+{"id": "tr_spa_kids", "utterance": "Antalya'da spa ve cocuk kulubu olan bir otel ariyorum", "context": {}, "expect": {"query_type": ["broad", "compound"], "region": "antalya", "language": "tr", "hotel_named": false, "requires": ["spa"]}}
+{"id": "tr_scoped_hamam", "utterance": "Rixos Belek'te hamam var mi?", "context": {}, "expect": {"query_type": "scoped", "language": "tr", "hotel_named": true, "requires": ["hamam"]}}
+{"id": "halal_food", "utterance": "is there a hotel with halal food", "context": {"active_region": "antalya"}, "expect": {"query_type": "broad", "hotel_named": false}}
+{"id": "destination_antalya_info", "utterance": "what is Antalya known for?", "context": {}, "expect": {"query_type": "destination", "hotel_named": false}}
+{"id": "destination_weather", "utterance": "what's the weather in Antalya in July?", "context": {}, "expect": {"query_type": ["destination", "web"], "hotel_named": false}}
+{"id": "web_festivals", "utterance": "are there festivals near Belek next weekend?", "context": {}, "expect": {"query_type": ["web", "hybrid"], "hotel_named": false}}
+{"id": "web_visa", "utterance": "what are the visa requirements for Turkey?", "context": {}, "expect": {"query_type": ["destination", "web"], "hotel_named": false}}
+{"id": "escalate_booking", "utterance": "I want to book a room for next weekend", "context": {}, "expect": {"query_type": "escalate"}}
+{"id": "escalate_cancel", "utterance": "I need to cancel my reservation", "context": {}, "expect": {"query_type": "escalate"}}
+{"id": "comparison_rixos_kaya", "utterance": "Rixos vs Kaya Palazzo for families", "context": {}, "expect": {"query_type": ["comparison", "scoped"], "hotel_named": true}}
+{"id": "compound_three_reqs", "utterance": "a hotel with a spa, a kids club and scuba diving", "context": {"active_region": "antalya"}, "expect": {"query_type": ["compound", "broad"], "hotel_named": false, "requires": ["spa", "kids club", "scuba"]}}
+{"id": "typo_followup_spa", "utterance": "do they hav a spaa", "context": {"active_hotel_id": "crystal_tat_beach", "active_region": "antalya"}, "expect": {"query_type": "scoped", "hotel_named": false, "requires": ["spa"]}}
+{"id": "broad_family_vague", "utterance": "nice place to stay with the family", "context": {"active_region": "antalya"}, "expect": {"query_type": "broad", "hotel_named": false}}
