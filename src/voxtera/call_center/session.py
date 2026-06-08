@@ -117,6 +117,9 @@ def _empty_session(session_id: str) -> dict[str, Any]:
         "turn_count": 0,
         "clarification_count": 0,
         "pending_slots": [],
+        # Last presented hotel list [{hotel_id, name}] — referent for
+        # follow-ups like "the first one" / "compare those two" (D9/D10).
+        "last_results": [],
         "history": [],
     }
 

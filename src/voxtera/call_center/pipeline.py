@@ -208,22 +208,38 @@ def _detected_name_in_utterance(hotel_name: str, utterance: str) -> bool:
     return any(t in words for t in distinctive)
 
 
-def _narrowing_question(decomposition: dict[str, Any]) -> tuple[str, str]:
+def _narrowing_question(decomposition: dict[str, Any], region: str = "") -> tuple[str, str]:
     """Pick the single most useful differentiating question + slot, localised.
 
-    Priority (Architecture §Phase 5): budget → children ages → location pref.
-    Only en/tr are localised (matching _no_match_answer / _placeholder_answer);
-    other languages fall back to English.
+    Priority (Architecture §Phase 5): budget → children ages → location pref —
+    EXCEPT when no geography is known at all (zero-context "I need a hotel"):
+    a travel agent asks WHERE before how much, so geography leads (defect D2,
+    2026-06-07). Only en/tr are localised (matching _no_match_answer /
+    _placeholder_answer); other languages fall back to English.
     """
     lang = (decomposition.get("language") or "en").lower()
 
     def _t(en: str, tr: str) -> str:
         return tr if lang == "tr" else en
 
+    has_geo = bool(
+        (region or "").strip()
+        or any(
+            isinstance(decomposition.get(k), str) and decomposition.get(k).strip()
+            for k in ("region", "city", "district")
+        )
+    )
+    if not has_geo:
+        return "geography", _t(
+            "Happy to help — which destination are you thinking of?",
+            "Yardımcı olmaktan memnuniyet duyarım — hangi destinasyonu düşünüyorsunuz?",
+        )
     if not decomposition.get("budget_tier") and not decomposition.get("budget_signal"):
+        # Honest phrasing: this fires BEFORE results are presented, so it must
+        # not claim options were already found (defect D3, 2026-06-07).
         return "budget", _t(
-            "I found several great options — to narrow it down, what's your budget range?",
-            "Birkaç harika seçenek buldum — daraltmak için bütçe aralığınız nedir?",
+            "To find the right fit — what's your budget range?",
+            "Size en uygun seçeneği bulabilmem için — bütçe aralığınız nedir?",
         )
     if decomposition.get("traveller_type") == "family" and not decomposition.get("children_ages"):
         return "children_ages", _t(
@@ -237,19 +253,203 @@ def _narrowing_question(decomposition: dict[str, Any]) -> tuple[str, str]:
     )
 
 
+# Adults-only hotels must never be recommended on a family / with-children
+# search ("Perge Hotels Adult Only +18" surfaced twice on child-friendly
+# queries — defect D4, 2026-06-07). v1 detects the policy from the hotel NAME
+# (the corpus reliably brands these "Adult Only" / "+18"); replace with a
+# payload attribute check when the ingest pipeline exposes one.
+_ADULTS_ONLY_NAME_RE = re.compile(r"adults?\s*[-–]?\s*only|\+\s*18\b|\b18\s*\+", re.IGNORECASE)
+_CHILD_CONTEXT_RE = re.compile(
+    r"\bkids?\b|child|toddler|baby|babies|family|families|çocuk|aile|bebek|niñ|enfant|kinder",
+    re.IGNORECASE,
+)
+
+
+def _wants_children(decomposition: dict[str, Any]) -> bool:
+    """True when the request implies children will be staying."""
+    if (decomposition.get("traveller_type") or "").lower() == "family":
+        return True
+    if decomposition.get("children_ages"):
+        return True
+    blob = " ".join(
+        [str(r) for r in (decomposition.get("requirements") or [])]
+        + [str(decomposition.get("intent") or "")]
+    )
+    return bool(_CHILD_CONTEXT_RE.search(blob))
+
+
+def _drop_adults_only(retrieval: dict[str, Any], decomposition: dict[str, Any]) -> None:
+    """In-place: remove adults-only hotels from a family/child retrieval."""
+    hotels = (retrieval or {}).get("hotels") or []
+    if not hotels or not _wants_children(decomposition):
+        return
+    kept = [
+        h
+        for h in hotels
+        if not _ADULTS_ONLY_NAME_RE.search(str((h.get("payload") or {}).get("hotel_name") or ""))
+    ]
+    if len(kept) != len(hotels):
+        logger.info(
+            "adults-only filter dropped {} hotel(s) from a family/child query",
+            len(hotels) - len(kept),
+        )
+        retrieval["hotels"] = kept
+        retrieval["count"] = len(kept)
+
+
+# ── Last-results referent resolution (defects D9/D10, dialog tests 2026-06-07) ──
+# After the bot presents a hotel LIST, guests refer back to it the way humans
+# do: "the first one", "is the pool heated?", "compare the top two". Those
+# turns carry no hotel name, so ES name-resolution can't help — the LIST is
+# the referent. The session keeps the last presented list (`last_results`)
+# and these helpers bind such turns to it before routing.
+
+_ORDINAL_REF_RE = re.compile(
+    r"\b(first|second|third|fourth|fifth|last|1st|2nd|3rd|4th|5th"
+    r"|ilk|birinci|ikinci|üçüncü|dördüncü|beşinci|sonuncu)\s+"
+    r"(one|hotel|option|property|choice|otel\w*|seçenek\w*)\b",
+    re.IGNORECASE,
+)
+_ORDINAL_TO_INDEX = {
+    "first": 0,
+    "1st": 0,
+    "ilk": 0,
+    "birinci": 0,
+    "second": 1,
+    "2nd": 1,
+    "ikinci": 1,
+    "third": 2,
+    "3rd": 2,
+    "üçüncü": 2,
+    "fourth": 3,
+    "4th": 3,
+    "dördüncü": 3,
+    "fifth": 4,
+    "5th": 4,
+    "beşinci": 4,
+    "last": -1,
+    "sonuncu": -1,
+}
+
+
+def _match_results_by_name(
+    text: str, mention: str, results: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Results whose distinctive name tokens appear in the utterance/mention."""
+    out: list[dict[str, Any]] = []
+    for r in results:
+        toks = [
+            t
+            for t in re.findall(r"\w+", (r.get("name") or "").lower())
+            if len(t) >= 3 and t not in _NAME_GENERIC_TOKENS
+        ]
+        if toks and any(t in text or t in mention for t in toks):
+            out.append(r)
+    return out
+
+
+def _bind_list_referent(
+    decomposition: dict[str, Any], session: dict[str, Any], pick: dict[str, Any]
+) -> None:
+    decomposition["hotel_id"] = pick["hotel_id"]
+    # Already bound to a known id — clear the mention so the router doesn't
+    # send the turn back through ES re-resolution.
+    decomposition["hotel_mention"] = None
+    session["active_hotel_id"] = pick["hotel_id"]
+    logger.info("list-referent bound to {!r} ({})", pick.get("name"), pick["hotel_id"])
+
+
+def _resolve_list_referent(
+    utterance: str, decomposition: dict[str, Any], session: dict[str, Any]
+) -> str | None:
+    """Bind this turn to the last presented hotel list when it refers to it.
+
+    Returns: "list_ordinal" / "list_name" / "list_single" when bound,
+    "list_ambiguous" when a bare scoped follow-up could mean several of the
+    presented hotels (caller should ask WHICH, enumerating the names), or
+    None when the turn doesn't reference the list.
+    """
+    results = session.get("last_results") or []
+    if not results or decomposition.get("hotel_id"):
+        return None
+    text = (utterance or "").lower()
+    mention = (decomposition.get("hotel_mention") or "").lower()
+
+    # 1. Positional reference: "the first one", "ikinci otel", "last option".
+    m = _ORDINAL_REF_RE.search(text)
+    if m:
+        idx = _ORDINAL_TO_INDEX.get(m.group(1).lower())
+        if idx is not None and -len(results) <= idx < len(results):
+            _bind_list_referent(decomposition, session, results[idx])
+            return "list_ordinal"
+
+    # 2. The guest named one of the presented hotels (even partially).
+    named = _match_results_by_name(text, mention, results)
+    if len(named) == 1:
+        _bind_list_referent(decomposition, session, named[0])
+        return "list_name"
+
+    # 3. Bare scoped follow-up right after a list ("is the pool heated?").
+    if (
+        decomposition.get("query_type") == "scoped"
+        and not mention
+        and not session.get("active_hotel_id")
+    ):
+        if len(results) == 1:
+            _bind_list_referent(decomposition, session, results[0])
+            return "list_single"
+        return "list_ambiguous"
+    return None
+
+
+def _list_clarification(results: list[dict[str, Any]], language: str) -> str:
+    """Warm, concierge-style 'which of these did you mean?' enumeration.
+
+    Spoken phrasing, not a database prompt. Turkish deliberately avoids the
+    mi/mı question particle after hotel names — vowel harmony can't be done
+    safely on arbitrary foreign names, and the 'hangisi' form reads naturally
+    without it.
+    """
+    names = [r.get("name") or "?" for r in results[:3]]
+    lang = (language or "en").lower()
+    seps = {
+        "tr": (", ", " veya "),
+        "es": (", ", " o "),
+        "fr": (", ", " ou "),
+        "de": (", ", " oder "),
+        "en": (", ", " or "),
+    }
+    mid, last = seps.get(lang, seps["en"])
+    opts = names[0] if len(names) == 1 else mid.join(names[:-1]) + last + names[-1]
+    templates = {
+        "tr": "Tabii, hemen bakayım — {} otellerinden hangisini soruyorsunuz?",
+        "es": "Con gusto le ayudo — ¿de cuál de estos se trata: {}?",
+        "fr": "Avec plaisir — de quel hôtel s'agit-il : {} ?",
+        "de": "Sehr gerne — welches dieser Hotels meinen Sie: {}?",
+        "en": "Happy to check that for you — which of these did you have in mind: {}?",
+    }
+    return templates.get(lang, templates["en"]).format(opts)
+
+
 def _no_match_answer(language: str, region: str) -> str:
-    """Deterministic fail-closed reply when retrieval returned 0 hotels."""
+    """Deterministic fail-closed reply when retrieval returned 0 hotels.
+
+    Palace voice: own the gap, invite ONE next step. Kept deterministic
+    (never invents hotels), but phrased like a person, not an error code.
+    """
+    region = (region or "").strip().title()  # "paris" → "Paris" in spoken text
     where = f" in {region}" if region else ""
     where_tr = f" {region} bölgesinde" if region else ""
     msgs = {
         "en": (
-            f"I couldn't find a hotel{where} that matches every part of that request. "
-            "Could you loosen one of the requirements, or tell me a bit more "
-            "about what matters most?"
+            f"I don't have a hotel{where} that does justice to everything "
+            "you've asked for. Tell me which part matters most — or let's ease "
+            "one of the criteria — and I'll take another look."
         ),
         "tr": (
-            f"İsteğinizin her parçasına uyan bir otel{where_tr} bulamadım. "
-            "Bir kriteri biraz esnetebilir misiniz veya en önemli olanı söyleyebilir misiniz?"
+            f"İsteğinizin her detayını karşılayan bir otel{where_tr} maalesef elimde yok. "
+            "Sizin için en önemli olan hangisi — ya da bir kriteri biraz esnetelim mi? "
+            "Hemen tekrar bakayım."
         ),
     }
     return msgs.get(language) or msgs["en"]
@@ -434,7 +634,13 @@ _WEB_OFFER_KEYWORDS = (
 
 def _is_affirmation(utterance: str) -> bool:
     u = (utterance or "").strip().lower().strip(".!?, ")
-    if not u or len(u.split()) > 4:
+    # Polite acceptances run longer than a bare "yes" — "Yes, please look into
+    # it" is five words and must still accept (live defect: the 4-word cap
+    # bounced it back into a KB no-match). Cap at 8; anything longer, or
+    # anything that pivots ("yes, but what about…"), is a NEW request.
+    if not u or len(u.split()) > 8:
+        return False
+    if "?" in (utterance or "") or " but " in f" {u} " or " ama " in f" {u} ":
         return False
     if any(neg in u.split() for neg in ("no", "nope", "nah")) or any(
         neg in u for neg in ("don't", "do not", "hayır", "gerek yok")
@@ -743,7 +949,24 @@ class ConciergePipeline:
         timings["concurrent_pre_ms"] = _ms(time.perf_counter() - t_concurrent)
 
         if verdict.get("escalate"):
-            answer = "Let me connect you to a colleague who can help with that right away."
+            # Localised — decomposition ran concurrently, so the detected
+            # language is available even on the escalation short-circuit.
+            esc_lang = (decomposition.get("language") or session.get("language") or "en").lower()
+            answer = {
+                "tr": (
+                    "Sizi hemen bu konuda yardımcı olabilecek bir çalışma arkadaşıma"
+                    " aktarıyorum."
+                ),
+                "es": "Le pongo enseguida con un compañero que puede ayudarle con eso.",
+                "fr": (
+                    "Je vous mets tout de suite en relation avec un collègue qui"
+                    " pourra vous aider."
+                ),
+                "de": "Ich verbinde Sie sofort mit einem Kollegen, der Ihnen dabei helfen kann.",
+            }.get(
+                esc_lang,
+                "Let me connect you to a colleague who can help with that right away.",
+            )
             return self._finish(
                 sid=sid,
                 utterance=utterance,
@@ -873,6 +1096,36 @@ class ConciergePipeline:
                 timings=timings,
             )
 
+        # 4b. List-referent resolution (D9/D10): "the first one" / a name from
+        # the last presented list / a bare scoped follow-up binds to that list
+        # BEFORE routing, so the turn becomes a normal scoped query instead of
+        # a fresh search or a dead-end. Ambiguous follow-ups get a clarification
+        # that ENUMERATES the candidates rather than a bare "which hotel?".
+        referent = _resolve_list_referent(utterance, decomposition, session)
+        if referent == "list_ambiguous":
+            lang = (decomposition.get("language") or session.get("language") or "en").lower()
+            question = _list_clarification(session.get("last_results") or [], lang)
+            await self._sessions.append_turn(
+                session,
+                utterance=utterance,
+                decomposition=decomposition,
+                reason="list_ambiguous",
+                answer=question,
+                is_clarification=True,
+            )
+            await self._sessions.save(session)
+            return self._finish(
+                sid=sid,
+                utterance=utterance,
+                path="clarify",
+                reason="list_ambiguous",
+                decomposition=decomposition,
+                clarification={"question": question, "slot": "hotel_choice", "language": lang},
+                answer=question,
+                t_start=t_start,
+                timings=timings,
+            )
+
         # 5. Route.
         t0 = time.perf_counter()
         decision = self._router.route(decomposition, session)
@@ -921,8 +1174,16 @@ class ConciergePipeline:
 
         if path in _KB_PATHS:
             t0 = time.perf_counter()
-            retrieval = await self._run_kb(decomposition, session, path)
+            # D9 — a comparison right after a list compares the hotels ON the
+            # list. Re-running discovery returned a different set than the one
+            # on screen, so prose and cards diverged.
+            if decomposition.get("query_type") == "comparison":
+                retrieval = await self._compare_last_results(utterance, decomposition, session)
+            if retrieval is None:
+                retrieval = await self._run_kb(decomposition, session, path)
             timings["retrieve_ms"] = _ms(time.perf_counter() - t0)
+            if path == PATH_BROAD:
+                _drop_adults_only(retrieval, decomposition)
 
             # Idea 1 — semantic fallback. If the structured path found nothing,
             # search the RAW utterance directly. Requirement extraction can drop
@@ -935,19 +1196,59 @@ class ConciergePipeline:
                 timings["fallback_ms"] = _ms(time.perf_counter() - t0)
                 if fb is not None:
                     retrieval = fb
+                    if path == PATH_BROAD:
+                        _drop_adults_only(retrieval, decomposition)
+
+            # D16a — web rescue. A broad recommendation the curated KB cannot
+            # satisfy (work-setup needs like "reliable wifi for video calls",
+            # vibe vocabulary like "design-forward") must not dead-end: a real
+            # concierge whose book comes up empty looks further afield. Fall
+            # through to a LIVE web search and answer from it, clearly sourced
+            # via the web card. Gated on web being wired, so unit tests and
+            # web-less deployments keep the deterministic fail-closed reply.
+            if (
+                path == PATH_BROAD
+                and self._web is not None
+                and not ((retrieval or {}).get("hotels"))
+            ):
+                t0 = time.perf_counter()
+                dq = await self._web_query_from_dialog(utterance, session)
+                web = await self._web.discover(utterance, decomposition, query=dq)
+                timings["web_rescue_ms"] = _ms(time.perf_counter() - t0)
+                if (web or {}).get("answer") or (web or {}).get("sources"):
+                    retrieval = {"hotels": [], "web": web, "reason": "kb_no_match_web_rescue"}
+                    lang = (
+                        decomposition.get("language") or session.get("language") or "en"
+                    ).lower()
+                    answer = _web_answer(
+                        web,
+                        lang,
+                        synth=await self._synth_web(utterance, web, lang, session=session),
+                    )
 
             # Progressive narrowing — only on broad searches with many strong
             # matches, only once per session, and only within the shared
             # clarification budget. Acts like an agent narrowing the field
-            # instead of dumping 5 hotels.
+            # instead of dumping 5 hotels. Skipped when the guest already gave
+            # 2+ concrete requirements: "quiet spa hotel with kids' club and
+            # sea view" IS the narrowing — interjecting "what's your budget?"
+            # before showing anything reads as ignoring the request (defect
+            # D2, 2026-06-07; the requirements themselves filter the field).
             clar_count = int(session.get("clarification_count") or 0)
             if (
                 path == PATH_BROAD
                 and len((retrieval or {}).get("hotels") or []) >= _NARROW_THRESHOLD
+                and len(decomposition.get("requirements") or []) < 2
                 and not session.get("narrowed")
                 and clar_count < _MAX_CLARIFICATIONS
             ):
-                slot, question = _narrowing_question(decomposition)
+                if getattr(self, "_user_region_override", None) is not None:
+                    narrow_region = self._user_region_override
+                else:
+                    narrow_region = (
+                        decomposition.get("region") or session.get("active_region") or ""
+                    )
+                slot, question = _narrowing_question(decomposition, narrow_region)
                 session["narrowed"] = True
                 session["pending_slots"] = [slot]
                 await self._sessions.append_turn(
@@ -977,9 +1278,10 @@ class ConciergePipeline:
                     timings=timings,
                 )
 
-            t0 = time.perf_counter()
-            answer = await self._render(utterance, decomposition, retrieval, session)
-            timings["render_ms"] = _ms(time.perf_counter() - t0)
+            if answer is None:  # web rescue above may have answered already
+                t0 = time.perf_counter()
+                answer = await self._render(utterance, decomposition, retrieval, session)
+                timings["render_ms"] = _ms(time.perf_counter() - t0)
 
         elif path in (PATH_WEB, PATH_DESTINATION) and self._web is not None:
             # Pure live-web question (events, weather, local operators, hours).
@@ -1058,6 +1360,29 @@ class ConciergePipeline:
         if self._web is not None and _answer_offers_web(answer):
             session["pending_web_offer"] = True
 
+        # Remember what was just PRESENTED so next turn's "the first one" /
+        # "compare those two" / bare follow-up can refer back to it (D9/D10).
+        # ~5 × {hotel_id, name} (~300 bytes) inside the existing Redis session
+        # record — negligible next to the history ring buffer.
+        presented = [
+            {
+                "hotel_id": h.get("hotel_id"),
+                "name": str((h.get("payload") or {}).get("hotel_name") or ""),
+            }
+            for h in ((retrieval or {}).get("hotels") or [])
+            if h.get("hotel_id")
+        ]
+        if presented:
+            # A scoped drill-down into ONE member of the current list ("does
+            # the first one have wifi?") must NOT clobber the list — the guest
+            # is still talking about the set ("compare the two of them").
+            prev_ids = {r.get("hotel_id") for r in (session.get("last_results") or [])}
+            is_drill_down = (
+                len(presented) == 1 and presented[0]["hotel_id"] in prev_ids and len(prev_ids) > 1
+            )
+            if not is_drill_down:
+                session["last_results"] = presented[:5]
+
         # 7. Persist turn.
         await self._sessions.append_turn(
             session,
@@ -1083,6 +1408,70 @@ class ConciergePipeline:
         )
 
     # ---------- internal helpers ----------
+
+    async def _compare_last_results(
+        self,
+        utterance: str,
+        decomposition: dict[str, Any],
+        session: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Build a comparison retrieval over the JUST-PRESENTED hotels (D9).
+
+        Picks the hotels the guest named (if ≥2 match the last list) or the
+        top two presented, fetches each one's own passages, and returns them
+        as the retrieval result so the render compares exactly what's on
+        screen. Returns None to fall back to normal discovery (no list in
+        session, retriever missing, or no chunks found).
+        """
+        results = session.get("last_results") or []
+        if (
+            len(results) < 2
+            or self._compound is None
+            or not hasattr(self._compound, "fetch_hotel_chunks")
+        ):
+            return None
+        named = _match_results_by_name(
+            (utterance or "").lower(),
+            (decomposition.get("hotel_mention") or "").lower(),
+            results,
+        )
+        pool = named if len(named) >= 2 else results[:2]
+        query = " ".join(decomposition.get("requirements") or []) or "overview amenities dining"
+        hotels: list[dict[str, Any]] = []
+        for r in pool[:3]:
+            self._trace_qdrant("compare", [query], hotel_id=r["hotel_id"], rerank=True)
+            chunks = await self._compound.fetch_hotel_chunks(
+                hotel_id=r["hotel_id"], query=query, region="", k=4
+            )
+            if not chunks:
+                continue
+            evidence: dict[str, Any] = {}
+            for i, c in enumerate(chunks):
+                label = c.get("category") or f"passage_{i + 1}"
+                if label in evidence:
+                    label = f"{label}_{i + 1}"
+                evidence[label] = c
+            hotels.append(
+                {
+                    "hotel_id": r["hotel_id"],
+                    "score": float(chunks[0].get("score", 0.0)),
+                    "payload": {"hotel_name": chunks[0].get("hotel_name") or r.get("name") or ""},
+                    "evidence": evidence,
+                }
+            )
+        if not hotels:
+            return None
+        reqs = list(decomposition.get("requirements") or [])
+        return {
+            "region": session.get("active_region") or "",
+            "requirements": reqs,
+            "normalized_requirements": reqs,
+            "top_score": hotels[0]["score"],
+            "count": len(hotels),
+            "hotels": hotels,
+            "missing_requirements": [],
+            "reason": "comparison_of_presented",
+        }
 
     async def _run_kb(
         self,

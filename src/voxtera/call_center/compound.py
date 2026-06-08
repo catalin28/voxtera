@@ -27,9 +27,10 @@ Decision contract:
     "no_match_above_threshold", "retriever_error".
 
 Graceful degradation: if the strict intersection is empty, we drop the
-weakest-supported requirement(s) until either at least one hotel
-survives ("partial_match_only" + `missing_requirements`) or every
-requirement is exhausted ("no_match_above_threshold").
+weakest-supported requirement(s) — at most HALF of them — until either at
+least one hotel survives ("partial_match_only" + `missing_requirements`)
+or the drop budget is exhausted ("no_match_above_threshold"). A partial
+that satisfies less than half the request is treated as no match.
 """
 
 from __future__ import annotations
@@ -170,10 +171,17 @@ class CompoundAndDiscovery:
             return self._payload(region, requirements, normalized, hotels, [], None)
 
         # Graceful degradation: drop the requirement with the smallest hotel set
-        # iteratively until an intersection survives or we run out.
+        # iteratively until an intersection survives — but never discard MORE
+        # THAN HALF of what the caller asked for. Unbounded dropping degraded
+        # "quiet + spa + kids club + sea view + antalya" all the way down to
+        # the lone place token ("antalya"), returning hotels that matched
+        # NOTHING the guest actually asked for (live defect D1/D5, 2026-06-07).
+        # A partial answer that ignores most of the request is worse than an
+        # honest no-match, which the pipeline renders fail-closed.
+        max_drops = len(normalized) // 2
         kept_idx = list(range(len(normalized)))
         dropped: list[int] = []
-        while len(kept_idx) > 1:
+        while len(kept_idx) > 1 and len(dropped) < max_drops:
             # Drop the requirement contributing the fewest hotels in the strict pool.
             kept_idx.sort(key=lambda i: len(maps[i]))
             dropped.append(kept_idx.pop(0))

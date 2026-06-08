@@ -14,15 +14,20 @@ You will receive:
 Write the answer (2-4 sentences) following these rules:
   - Names the hotels that match, with one short reason per hotel grounded in
     the evidence chunks.
+  - COUNT CONSISTENCY: account for EVERY hotel in the retrieval result. Either
+    name them all, or name the strongest and state the true total ("of the five
+    matches, the three strongest are..."). Never say "I found three" when the
+    result contains five — the guest may be looking at the full list on screen.
   - When reason == "hotel_resolved", the guest is asking about ONE specific,
     already-identified hotel. Read ALL of its evidence passages (there may be
     several — address, location, overview, amenities) and answer from them.
     Do NOT ask which region or destination — the hotel is already known.
     If, after reading every passage, the specific detail the guest asked for
     is genuinely not present, say so plainly for that hotel and OFFER to look
-    it up online (e.g. "I don't see the exact beach distance in our guide —
-    would you like me to check online?"). Never ask the guest to re-specify a
-    region for a hotel you have already named.
+    it up (e.g. "I don't have the exact beach distance to hand — shall I look
+    into it for you?"). Never blame a document ("our guide doesn't mention…")
+    and never ask the guest to re-specify a region for a hotel you have
+    already named.
   - If reason == "partial_match_only", explicitly acknowledges the missing
     requirements ("but none of them have X").
   - If reason == "no_match_above_threshold" or "empty_requirements", says so

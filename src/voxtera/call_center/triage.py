@@ -133,11 +133,13 @@ def _needs_non_negotiable(decomposition: dict[str, Any]) -> bool:
     delivering useless results (e.g. a "halal-required" caller getting
     a non-halal hotel as the top hit).
     """
-    # A scoped query is about a specific, already-known hotel — the caller is
-    # asking a factual question ("do they have bars?"), not requesting a
-    # recommendation. Never interrupt it with a dietary/accessibility prompt;
-    # just retrieve and answer.
-    if decomposition.get("query_type") == "scoped":
+    # Dietary/accessibility only matters when we're about to RECOMMEND hotels
+    # (broad/compound/comparison). A scoped factual question ("do they have
+    # bars?"), a hybrid/web question ("a good wine bar near the hotel?"), or a
+    # destination question must never be interrupted with a dietary prompt —
+    # asking "any halal requirements?" right after a wine-list question was a
+    # live defect (sophisticated-traveler dialog, 2026-06-07).
+    if decomposition.get("query_type") not in {"broad", "compound", "comparison"}:
         return False
 
     intent = decomposition.get("intent")

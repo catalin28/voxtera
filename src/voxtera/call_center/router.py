@@ -120,7 +120,19 @@ def _decide(
     #    beach?" is a static fact in that hotel's guide (qt=scoped,
     #    source_required=["hotel_kb"]) even though the model labelled the intent
     #    "practical_info". Genuinely live hotel questions come back as qt="hybrid".
-    if qt == "web" or (intent in _TIME_SENSITIVE_INTENTS and qt != "scoped"):
+    #    Weather/event intents stay hijacked regardless of qt (a weather
+    #    question is never a hotel recommendation), but practical_info must
+    #    not hijack RECOMMENDATION queries: "find me a hotel with reliable
+    #    wifi" is a broad hotel search (qt=broad) the decomposer tags
+    #    intent=practical_info — it must hit the hotel KB first; the
+    #    web-rescue fallback covers a KB miss. (Live defect 2026-06-07: the
+    #    wifi query skipped the vector store entirely.)
+    _hijack_exempt_qt = (
+        {"scoped"}
+        if intent in {"event", "weather"}
+        else {"scoped", "broad", "compound", "comparison"}
+    )
+    if qt == "web" or (intent in _TIME_SENSITIVE_INTENTS and qt not in _hijack_exempt_qt):
         if not has_geo:
             return {
                 "path": PATH_NEEDS_GEOGRAPHY,

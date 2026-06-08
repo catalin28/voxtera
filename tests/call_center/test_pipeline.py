@@ -536,4 +536,7 @@ async def test_render_fails_closed_when_retrieval_returns_no_hotels() -> None:
     assert out["path"] == PATH_BROAD
     assert called["n"] == 0
     assert "antalya" in out["answer"].lower()
-    assert "couldn't find" in out["answer"].lower()
+    # Fail-closed: the deterministic no-match reply admits the gap rather than
+    # inventing hotels. Assert intent, not exact copy (the wording is tuned
+    # for the concierge voice and may evolve).
+    assert "don't have" in out["answer"].lower() or "couldn't find" in out["answer"].lower()

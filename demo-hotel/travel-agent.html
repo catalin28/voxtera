@@ -184,6 +184,14 @@ main{
   padding:0.85rem 1rem;background:transparent;
   font-family:'Fraunces',serif;font-style:italic;color:var(--ink-soft);
 }
+.partial-banner{
+  margin-top:0.8rem;
+  border:1px dashed var(--rust-soft);border-radius:8px;
+  padding:0.55rem 0.8rem;
+  background:rgba(164,57,28,0.06);
+  font-family:'JetBrains Mono',monospace;font-size:0.7rem;
+  letter-spacing:0.05em;color:var(--rust);
+}
 
 /* ---------- DEBUG DRAWER ---------- */
 details.debug{
@@ -387,7 +395,14 @@ details.debug summary:hover{color:var(--accent);}
   </p>
 
   <div class="thread" id="thread">
-    <div class="bubble system" id="placeholder">Ask anything below to begin.</div>
+    <!-- Concierge opens the conversation, like a real desk would. Static
+         frontend greeting: zero latency, no LLM call. Not part of the
+         backend session transcript. -->
+    <div class="bubble assistant">
+      <span class="label">Concierge</span>
+      <div class="body">Good day, and welcome — I'm your Voxtera concierge. Tell me where you're headed and what truly matters for your stay, and I'll find the places that actually have it.</div>
+    </div>
+    <div class="bubble system" id="placeholder" style="display:none"></div>
   </div>
 </main>
 
@@ -509,6 +524,15 @@ function renderHotels(retrieval, parent){
     el.textContent = 'No hotels matched every requirement. Try loosening the request.';
     parent.appendChild(el);
     return;
+  }
+  // Partial match — the cards below did NOT satisfy every requirement.
+  // Without this banner the cards visually contradict an answer that says
+  // "I couldn't confirm X" (defect D5).
+  if (retrieval.reason === 'partial_match_only' && (retrieval.missing_requirements || []).length){
+    const warn = document.createElement('div'); warn.className = 'partial-banner';
+    warn.textContent = '⚠ partial matches — not confirmed: '
+      + retrieval.missing_requirements.join(', ');
+    parent.appendChild(warn);
   }
   const wrap = document.createElement('div'); wrap.className = 'hotels-wrap';
   hotels.slice(0, 5).forEach(h => {
@@ -725,8 +749,12 @@ async function ask(utterance){
       return;
     }
     const bub = addBubble('assistant', 'Concierge', data.answer || '—');
-    renderHotels(data.retrieval, bub);
-    renderWeb(data.retrieval, bub);
+    // Conversational turns carry no retrieval — rendering the "no hotels
+    // matched" card under a greeting/recall answer is nonsense (defect D8).
+    if (data.retrieval){
+      renderHotels(data.retrieval, bub);
+      renderWeb(data.retrieval, bub);
+    }
     renderDebug(data, bub);
     addFeedback(bub, utterance, data);
   } catch (e){
