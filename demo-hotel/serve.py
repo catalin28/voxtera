@@ -2031,6 +2031,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_rooms()
         if self.path == "/api/admin/prompts":
             return self._handle_admin_prompts_list()
+        if self.path == "/api/admin/greetings":
+            return self._handle_admin_greetings_get()
         if self.path == "/api/admin/voice-prompts":
             return self._handle_admin_voice_prompts_list()
         if self.path == "/api/admin/call-center/status":
@@ -2133,6 +2135,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_tune()
         if self.path == "/api/admin/prompts":
             return self._handle_admin_prompts_save()
+        if self.path == "/api/admin/greetings":
+            return self._handle_admin_greetings_post()
         if self.path == "/api/admin/voice-prompts":
             return self._handle_admin_voice_prompts_save()
         if self.path == "/api/admin/call-center/qdrant/search":
@@ -2160,6 +2164,9 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         return None
 
     def do_DELETE(self):  # noqa: N802
+        if self.path.startswith("/api/admin/greetings/"):
+            lang = self.path[len("/api/admin/greetings/") :].split("?", 1)[0]
+            return self._handle_admin_greetings_delete(lang)
         if self.path.startswith("/api/trace/sessions/"):
             sid = self.path[len("/api/trace/sessions/") :]
             return self._handle_delete_session(sid)
@@ -5271,6 +5278,139 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             pass  # backup is best-effort; never block a save on it
         path.write_bytes(content.encode("utf-8"))
         self._send_json(200, {"ok": True, "name": name, "mtime": path.stat().st_mtime})
+
+    # Legacy compatibility: keep the old Greetings Editor API working.
+    def _greetings_json_path(self) -> Path:
+        return (_voice_prompts_dir() / _VOICE_PROMPT_REGISTRY["greetings"]["file"]).resolve()
+
+    def _load_greetings_json(self) -> tuple[Path, dict] | tuple[Path, None]:
+        path = self._greetings_json_path()
+        if not path.is_file():
+            return path, None
+        data = json.loads(path.read_bytes().decode("utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("greetings.json top level must be an object")
+        if not isinstance(data.get("greetings"), dict):
+            data["greetings"] = {}
+        if not isinstance(data.get("timed_greetings"), dict):
+            data["timed_greetings"] = {}
+        if not isinstance(data.get("generic_hotel"), dict):
+            data["generic_hotel"] = {}
+        return path, data
+
+    def _write_greetings_json(self, path: Path, data: dict) -> None:
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+        err = _validate_greetings_json(content)
+        if err:
+            raise ValueError(err)
+        path.write_bytes((content + "\n").encode("utf-8"))
+
+    def _handle_admin_greetings_get(self) -> None:
+        """GET /api/admin/greetings — return full greetings JSON."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        try:
+            _, data = self._load_greetings_json()
+        except (ValueError, OSError) as exc:
+            self._send_json(500, {"error": "invalid_greetings_file", "detail": str(exc)})
+            return
+        if data is None:
+            self._send_json(404, {"error": "greetings.json not found"})
+            return
+        self._send_json(200, data)
+
+    def _handle_admin_greetings_post(self) -> None:
+        """POST /api/admin/greetings — update or add one language greeting."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        lang = (body.get("lang") or "").strip().lower()
+        greeting_raw = body.get("greeting")
+        greeting = greeting_raw.strip() if isinstance(greeting_raw, str) else ""
+        timed = body.get("timed")
+        if not lang or not greeting:
+            self._send_json(400, {"error": "lang and greeting are required"})
+            return
+        if timed is not None and not isinstance(timed, dict):
+            self._send_json(400, {"error": "timed must be an object when provided"})
+            return
+        try:
+            path, data = self._load_greetings_json()
+        except (ValueError, OSError) as exc:
+            self._send_json(500, {"error": "invalid_greetings_file", "detail": str(exc)})
+            return
+        if data is None:
+            data = {"greetings": {}, "timed_greetings": {}, "generic_hotel": {}}
+
+        data["greetings"][lang] = greeting
+        if isinstance(timed, dict):
+            morning = (timed.get("morning") or "").strip() or greeting
+            afternoon = (timed.get("afternoon") or "").strip() or greeting
+            evening = (timed.get("evening") or "").strip() or greeting
+            data["timed_greetings"][lang] = {
+                "morning": morning,
+                "afternoon": afternoon,
+                "evening": evening,
+            }
+
+        try:
+            self._write_greetings_json(path, data)
+        except ValueError as exc:
+            self._send_json(400, {"error": "invalid_greetings", "detail": str(exc)})
+            return
+        except OSError as exc:
+            self._send_json(500, {"error": "write_failed", "detail": str(exc)})
+            return
+        self._send_json(200, {"ok": True, "lang": lang})
+
+    def _handle_admin_greetings_delete(self, lang: str) -> None:
+        """DELETE /api/admin/greetings/<lang> — remove one language."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        lang = (lang or "").strip().lower()
+        if not lang:
+            self._send_json(400, {"error": "language code required"})
+            return
+        if lang == "en":
+            self._send_json(400, {"error": "cannot delete English (fallback language)"})
+            return
+
+        try:
+            path, data = self._load_greetings_json()
+        except (ValueError, OSError) as exc:
+            self._send_json(500, {"error": "invalid_greetings_file", "detail": str(exc)})
+            return
+        if data is None:
+            self._send_json(404, {"error": "greetings.json not found"})
+            return
+
+        removed = False
+        if lang in data["greetings"]:
+            del data["greetings"][lang]
+            removed = True
+        if lang in data["timed_greetings"]:
+            del data["timed_greetings"][lang]
+            removed = True
+        if lang in data["generic_hotel"]:
+            del data["generic_hotel"][lang]
+            removed = True
+
+        if not removed:
+            self._send_json(404, {"error": f"language '{lang}' not found"})
+            return
+
+        try:
+            self._write_greetings_json(path, data)
+        except ValueError as exc:
+            self._send_json(400, {"error": "invalid_greetings", "detail": str(exc)})
+            return
+        except OSError as exc:
+            self._send_json(500, {"error": "write_failed", "detail": str(exc)})
+            return
+        self._send_json(200, {"ok": True, "deleted": lang})
 
     def _handle_admin_voice_prompts_list(self) -> None:
         """GET /api/admin/voice-prompts — voice-concierge prompts + explanations."""
