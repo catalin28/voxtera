@@ -330,8 +330,13 @@ def _build_anthropic_web_query(model: str) -> Callable[[dict[str, Any]], Awaitab
     search query — independent of the ES resolver and the decomposition."""
 
     async def web_query(payload: dict[str, Any]) -> str:
+        # D19: when the pipeline knows the active hotel's true location, it is
+        # injected here so "near the hotel" anchors to that place — not to a
+        # city the conversation merely discussed.
+        anchor = (payload.get("anchor") or "").strip()
         user_msg = (
-            f"Conversation so far:\n{(payload.get('transcript') or '(none yet)')}\n\n"
+            (f"{anchor}\n\n" if anchor else "")
+            + f"Conversation so far:\n{(payload.get('transcript') or '(none yet)')}\n\n"
             f"Guest's current message: {payload.get('utterance')}"
         )
         client = _anthropic()

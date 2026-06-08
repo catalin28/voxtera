@@ -184,6 +184,13 @@ class BroadHotelDiscovery:
                     "text_en": payload.get("text_en", ""),
                     "score": float(h.get("score", 0.0)),
                     "hotel_name": payload.get("hotel_name", ""),
+                    # Carry the hotel's true geography so downstream answers
+                    # (web queries for "dinner near the hotel", recommendations)
+                    # anchor to where the hotel actually IS — not to whatever
+                    # region the conversation happened to discuss (defect D19:
+                    # a Göynük hotel got Istanbul restaurant suggestions).
+                    "district": payload.get("district", ""),
+                    "region": payload.get("region", ""),
                 }
             )
             if len(out) >= k:

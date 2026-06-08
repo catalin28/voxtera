@@ -356,6 +356,8 @@ def _bind_list_referent(
     # send the turn back through ES re-resolution.
     decomposition["hotel_mention"] = None
     session["active_hotel_id"] = pick["hotel_id"]
+    if pick.get("location"):
+        session["active_hotel_location"] = pick["location"]  # D19 anchor
     logger.info("list-referent bound to {!r} ({})", pick.get("name"), pick["hotel_id"])
 
 
@@ -1137,6 +1139,7 @@ class ConciergePipeline:
         # later scoped follow-up (and so the next turn isn't poisoned by it).
         if path == PATH_BROAD:
             session.pop("active_hotel_id", None)
+            session.pop("active_hotel_location", None)
 
         # 6. Execute path.
         retrieval: dict[str, Any] | None = None
@@ -1199,32 +1202,15 @@ class ConciergePipeline:
                     if path == PATH_BROAD:
                         _drop_adults_only(retrieval, decomposition)
 
-            # D16a — web rescue. A broad recommendation the curated KB cannot
-            # satisfy (work-setup needs like "reliable wifi for video calls",
-            # vibe vocabulary like "design-forward") must not dead-end: a real
-            # concierge whose book comes up empty looks further afield. Fall
-            # through to a LIVE web search and answer from it, clearly sourced
-            # via the web card. Gated on web being wired, so unit tests and
-            # web-less deployments keep the deterministic fail-closed reply.
-            if (
-                path == PATH_BROAD
-                and self._web is not None
-                and not ((retrieval or {}).get("hotels"))
-            ):
-                t0 = time.perf_counter()
-                dq = await self._web_query_from_dialog(utterance, session)
-                web = await self._web.discover(utterance, decomposition, query=dq)
-                timings["web_rescue_ms"] = _ms(time.perf_counter() - t0)
-                if (web or {}).get("answer") or (web or {}).get("sources"):
-                    retrieval = {"hotels": [], "web": web, "reason": "kb_no_match_web_rescue"}
-                    lang = (
-                        decomposition.get("language") or session.get("language") or "en"
-                    ).lower()
-                    answer = _web_answer(
-                        web,
-                        lang,
-                        synth=await self._synth_web(utterance, web, lang, session=session),
-                    )
+            # PORTFOLIO BOUNDARY — hotel recommendations come ONLY from the
+            # knowledge base: these are the hotels the agency actually sells.
+            # A KB miss on a hotel search must fail closed (the no-match reply
+            # invites the guest to ease a criterion) and must NEVER be rescued
+            # with internet hotels the agency cannot book. (An earlier web
+            # rescue here recommended off-portfolio properties — removed
+            # 2026-06-07 by business rule. The web remains in play for
+            # restaurants, activities, weather and transport via the
+            # web/hybrid paths.)
 
             # Progressive narrowing — only on broad searches with many strong
             # matches, only once per session, and only within the shared
@@ -1368,10 +1354,24 @@ class ConciergePipeline:
             {
                 "hotel_id": h.get("hotel_id"),
                 "name": str((h.get("payload") or {}).get("hotel_name") or ""),
+                "location": str(
+                    (h.get("payload") or {}).get("district")
+                    or (h.get("payload") or {}).get("region")
+                    or ""
+                ),
             }
             for h in ((retrieval or {}).get("hotels") or [])
             if h.get("hotel_id")
         ]
+        # Region coherence (D19): once the guest is talking about a specific
+        # hotel, every later recommendation ("dinner near the hotel") must
+        # anchor to where THAT HOTEL is — not to a region mentioned earlier in
+        # conversation. Keep the active hotel's true location in the session.
+        active_id = session.get("active_hotel_id")
+        for h in presented:
+            if active_id and h["hotel_id"] == active_id and h["location"]:
+                session["active_hotel_location"] = h["location"]
+                break
         if presented:
             # A scoped drill-down into ONE member of the current list ("does
             # the first one have wifi?") must NOT clobber the list — the guest
@@ -1455,7 +1455,11 @@ class ConciergePipeline:
                 {
                     "hotel_id": r["hotel_id"],
                     "score": float(chunks[0].get("score", 0.0)),
-                    "payload": {"hotel_name": chunks[0].get("hotel_name") or r.get("name") or ""},
+                    "payload": {
+                        "hotel_name": chunks[0].get("hotel_name") or r.get("name") or "",
+                        "district": chunks[0].get("district", ""),
+                        "region": chunks[0].get("region", ""),
+                    },
                     "evidence": evidence,
                 }
             )
@@ -1571,7 +1575,11 @@ class ConciergePipeline:
                 hotel = {
                     "hotel_id": hotel_id,
                     "score": float(chunks[0].get("score", 0.0)),
-                    "payload": {"hotel_name": chunks[0].get("hotel_name", "")},
+                    "payload": {
+                        "hotel_name": chunks[0].get("hotel_name", ""),
+                        "district": chunks[0].get("district", ""),
+                        "region": chunks[0].get("region", ""),
+                    },
                     "evidence": evidence,
                 }
                 return {
@@ -1713,11 +1721,24 @@ class ConciergePipeline:
         if self._web_query_fn is None:
             return None
         try:
+            # D19 — region coherence: the rewrite must anchor "near the hotel"
+            # questions to the ACTIVE hotel's real location, not to whichever
+            # city dominates the transcript (a Göynük hotel was getting
+            # Istanbul restaurant suggestions because the chat began there).
+            anchor = ""
+            if session.get("active_hotel_id") and session.get("active_hotel_location"):
+                anchor = (
+                    f"ACTIVE HOTEL LOCATION: the guest's current hotel is in "
+                    f"{session['active_hotel_location']} — anchor any 'near the "
+                    f"hotel / nearby' search THERE, even if other cities were "
+                    f"discussed earlier."
+                )
             result = self._web_query_fn(
                 {
                     "utterance": utterance,
                     "transcript": build_transcript(session.get("history")),
                     "language": (session.get("language") or "en"),
+                    "anchor": anchor,
                 }
             )
             q = (await result) if hasattr(result, "__await__") else result
@@ -1789,6 +1810,9 @@ class ConciergePipeline:
         name = name or decomposition.get("hotel_mention")
         location = (
             location
+            # D19: the active hotel's REAL location beats conversation
+            # geography — "restaurants near the hotel" must follow the hotel.
+            or session.get("active_hotel_location")
             or decomposition.get("city")
             or decomposition.get("region")
             or session.get("active_region")

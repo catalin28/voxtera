@@ -112,6 +112,10 @@ def _empty_session(session_id: str) -> dict[str, Any]:
         "created_at": now,
         "updated_at": now,
         "active_hotel_id": None,
+        # The active hotel's REAL location (district/region from its payload).
+        # Anchors "near the hotel" recommendations to where the hotel actually
+        # is, not to a region the conversation merely discussed (D19).
+        "active_hotel_location": None,
         "active_region": None,
         "language": None,
         "turn_count": 0,
