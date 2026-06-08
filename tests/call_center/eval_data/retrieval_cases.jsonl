@@ -1,0 +1,20 @@
+{"id": "broad_spa_relax", "utterance": "I want a nice hotel with a spa to relax", "region": "Antalya", "note": "report-only: eyeball that returned hotels actually have spas"}
+{"id": "broad_spa_kidsclub", "utterance": "a hotel with a spa and a kids club", "region": "Antalya", "note": "compound AND — both must be present in each returned hotel"}
+{"id": "broad_romantic", "utterance": "recommend some romantic resorts", "region": "Antalya", "note": "report-only"}
+{"id": "broad_golf", "utterance": "a hotel with a golf course", "region": "Antalya", "note": "expect Regnum Carya / Gloria-type golf resorts", "expect_hotels": ["regnum_carya"]}
+{"id": "broad_beach_family", "utterance": "a family hotel right on the beach with a water park", "region": "Antalya", "note": "report-only — check water park grounding"}
+{"id": "scoped_crystal", "utterance": "tell me about Crystal Tat Beach Pearl Collection", "region": "Antalya", "expect_top": "crystal_tat_beach", "expect_hotels": ["crystal_tat_beach"]}
+{"id": "scoped_akra", "utterance": "what can you tell me about Akra Kemer", "region": "Antalya", "expect_top": "akra_kemer", "expect_hotels": ["akra_kemer"]}
+{"id": "scoped_crystal_bars", "utterance": "tell me about Crystal Tat Beach Pearl Collection", "region": "Antalya", "session_id": "t3-followup", "expect_hotels": ["crystal_tat_beach"]}
+{"id": "followup_bars", "utterance": "do they have bars and restaurants?", "region": "Antalya", "session_id": "t3-followup", "note": "follow-up — must stay scoped to Crystal Tat from prior turn", "expect_hotels": ["crystal_tat_beach"]}
+{"id": "followup_pool", "utterance": "is it on the beach?", "region": "Antalya", "session_id": "t3-followup", "note": "follow-up — stays scoped, answer about Crystal Tat", "expect_hotels": ["crystal_tat_beach"]}
+{"id": "scoped_standard_rooms", "utterance": "what are the standard rooms at Selectum Luxury Resort Belek", "region": "Antalya", "expect_top": "selectum_belek"}
+{"id": "no_match_paris", "utterance": "a hotel with a spa in Paris", "region": "Paris", "note": "no Paris hotels in KB — should fail-closed", "expect_no_match": true}
+{"id": "no_match_nonsense", "utterance": "a hotel with a helipad and a private submarine dock", "region": "Antalya", "note": "exotic requirements — check it doesn't hallucinate a match"}
+{"id": "tr_spa_kids", "utterance": "Antalya'da spa ve cocuk kulubu olan bir otel", "region": "Antalya", "note": "Turkish broad — answer should be Turkish, hotels should have spa+kids"}
+{"id": "tr_scoped_hamam", "utterance": "Rixos Belek'te hamam var mi", "region": "Antalya", "note": "Turkish scoped — resolve Rixos Belek, answer in Turkish about hamam"}
+{"id": "broad_quiet_adults", "utterance": "a quiet adults-only hotel for a calm getaway", "region": "Antalya", "note": "report-only — check 'adults-only' grounding, no kids-club hotels"}
+{"id": "broad_allinclusive", "utterance": "an all-inclusive resort with good food", "region": "Antalya", "note": "report-only"}
+{"id": "compound_three", "utterance": "a hotel with a spa, a kids club and a golf course", "region": "Antalya", "note": "3-way compound AND — likely partial_match_only; check missing_requirements is sensible"}
+{"id": "all_regions_named_hotel", "utterance": "How far is Casa Dell Arte from the beach?", "region": "", "note": "all-regions (region='') + a named hotel outside Antalya. Must resolve the hotel across ALL regions, not pin to a stale region. Fill expect_top once you confirm Casa Dell Arte's id in the KB; if it's not in the KB, the right behaviour is an honest 'I couldn't find it', NOT a different hotel."}
+{"id": "all_regions_broad", "utterance": "a quiet boutique hotel with a rooftop bar", "region": "", "note": "all-regions broad — must search across regions and NOT ask 'which region?'"}

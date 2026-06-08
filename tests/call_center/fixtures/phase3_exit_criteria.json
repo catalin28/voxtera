@@ -1,0 +1,400 @@
+[
+  {
+    "id": 1,
+    "utterance": "Rixos Belek'te hamam var mı?",
+    "language": "tr",
+    "session_seed": {"active_hotel_id": "rixos_belek", "active_region": "antalya"},
+    "expected": {
+      "query_type": "scoped",
+      "source_required": ["hotel_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Scoped to a single resolved hotel — direct hotel_kb lookup, no triage."
+  },
+  {
+    "id": 2,
+    "utterance": "Maxx Royal Belek odalarında klima var mı?",
+    "language": "tr",
+    "session_seed": {"active_hotel_id": "maxx_royal_belek", "active_region": "antalya"},
+    "expected": {
+      "query_type": "scoped",
+      "source_required": ["hotel_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Scoped + amenity."
+  },
+  {
+    "id": 3,
+    "utterance": "What time does breakfast end at Calista Luxury?",
+    "language": "en",
+    "session_seed": {"active_hotel_id": "calista_luxury", "active_region": "antalya"},
+    "expected": {
+      "query_type": "scoped",
+      "source_required": ["hotel_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Scoped policy lookup, English."
+  },
+  {
+    "id": 4,
+    "utterance": "Antalya'da spa ve dalış olan otel önerir misin?",
+    "language": "tr",
+    "session_seed": {"active_region": "antalya"},
+    "expected": {
+      "query_type": "broad",
+      "source_required": ["hotel_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Broad recommendation — region present, no triage needed."
+  },
+  {
+    "id": 5,
+    "utterance": "Recommend a family-friendly resort with a kids club in Belek.",
+    "language": "en",
+    "session_seed": {"active_region": "antalya"},
+    "expected": {
+      "query_type": "broad",
+      "source_required": ["hotel_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Broad with city-level geography."
+  },
+  {
+    "id": 6,
+    "utterance": "I want a hotel with a spa.",
+    "language": "en",
+    "session_seed": {},
+    "expected": {
+      "query_type": "broad",
+      "source_required": ["hotel_kb"],
+      "triage_ask": true,
+      "triage_slot": "geography",
+      "escalation": false
+    },
+    "notes": "Missing geography — triage MUST ask."
+  },
+  {
+    "id": 7,
+    "utterance": "Bir otel önerir misin?",
+    "language": "tr",
+    "session_seed": {},
+    "expected": {
+      "query_type": "broad",
+      "source_required": ["hotel_kb"],
+      "triage_ask": true,
+      "triage_slot": "geography",
+      "escalation": false
+    },
+    "notes": "Generic Turkish recommendation — needs geography clarification."
+  },
+  {
+    "id": 8,
+    "utterance": "Çocuk kulübü ve havuz olan bir tatil köyü arıyorum, hem Antalya hem Bodrum'a bakıyorum.",
+    "language": "tr",
+    "session_seed": {"active_region": "antalya"},
+    "expected": {
+      "query_type": "compound",
+      "source_required": ["hotel_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Two requirements + two regions — compound."
+  },
+  {
+    "id": 9,
+    "utterance": "Find me a resort with both a beach and a golf course.",
+    "language": "en",
+    "session_seed": {"active_region": "antalya"},
+    "expected": {
+      "query_type": "compound",
+      "source_required": ["hotel_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Two distinct amenities = compound AND."
+  },
+  {
+    "id": 10,
+    "utterance": "Rixos Belek mi yoksa Maxx Royal Belek mi daha iyi çocuklu aileler için?",
+    "language": "tr",
+    "session_seed": {"active_region": "antalya"},
+    "expected": {
+      "query_type": "comparison",
+      "source_required": ["hotel_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Explicit A vs B comparison."
+  },
+  {
+    "id": 11,
+    "utterance": "How does Calista Luxury compare to Maxx Royal for couples?",
+    "language": "en",
+    "session_seed": {"active_region": "antalya"},
+    "expected": {
+      "query_type": "comparison",
+      "source_required": ["hotel_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "English A vs B."
+  },
+  {
+    "id": 12,
+    "utterance": "Antalya'da görülmesi gereken yerler neler?",
+    "language": "tr",
+    "session_seed": {"active_region": "antalya"},
+    "expected": {
+      "query_type": "destination",
+      "source_required": ["destination_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Destination info — what to see."
+  },
+  {
+    "id": 13,
+    "utterance": "What are the top things to do in Cappadocia?",
+    "language": "en",
+    "session_seed": {"active_region": "cappadocia"},
+    "expected": {
+      "query_type": "destination",
+      "source_required": ["destination_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Destination, English."
+  },
+  {
+    "id": 14,
+    "utterance": "Türkiye'de bahşiş kültürü nasıl?",
+    "language": "tr",
+    "session_seed": {},
+    "expected": {
+      "query_type": "destination",
+      "source_required": ["destination_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Etiquette/customs — destination KB."
+  },
+  {
+    "id": 15,
+    "utterance": "Aralık ayında Bodrum'da festival var mı?",
+    "language": "tr",
+    "session_seed": {"active_region": "bodrum"},
+    "expected": {
+      "query_type": "web",
+      "source_required": ["web_search"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Time-sensitive event — needs live web."
+  },
+  {
+    "id": 16,
+    "utterance": "What's the weather forecast for Antalya next week?",
+    "language": "en",
+    "session_seed": {"active_region": "antalya"},
+    "expected": {
+      "query_type": "web",
+      "source_required": ["web_search"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Weather = live web."
+  },
+  {
+    "id": 17,
+    "utterance": "Topkapı Sarayı pazartesi günleri açık mı?",
+    "language": "tr",
+    "session_seed": {},
+    "expected": {
+      "query_type": "web",
+      "source_required": ["web_search"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Practical info — opening hours."
+  },
+  {
+    "id": 18,
+    "utterance": "Belek yakınında PADI dalış okulu var mı?",
+    "language": "tr",
+    "session_seed": {"active_region": "antalya"},
+    "expected": {
+      "query_type": "hybrid",
+      "source_required": ["hotel_kb", "web_search"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Local operator near a known region — hybrid (hotel KB activity_tags first, then web)."
+  },
+  {
+    "id": 19,
+    "utterance": "Are there any good golf instructors near my hotel?",
+    "language": "en",
+    "session_seed": {"active_hotel_id": "rixos_belek", "active_region": "antalya"},
+    "expected": {
+      "query_type": "hybrid",
+      "source_required": ["hotel_kb", "web_search"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Local operator scoped by hotel context."
+  },
+  {
+    "id": 20,
+    "utterance": "Otel bana yardım edebilir mi vize konusunda?",
+    "language": "tr",
+    "session_seed": {"active_hotel_id": "rixos_belek", "active_region": "antalya"},
+    "expected": {
+      "query_type": "destination",
+      "source_required": ["destination_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Visa = destination/practical info."
+  },
+  {
+    "id": 21,
+    "utterance": "Acil! Odamda su sızıntısı var, yardım edin!",
+    "language": "tr",
+    "session_seed": {"active_hotel_id": "rixos_belek", "active_region": "antalya"},
+    "expected": {
+      "query_type": "escalate",
+      "source_required": [],
+      "triage_ask": false,
+      "escalation": true,
+      "escalation_type": "live_complaint"
+    },
+    "notes": "Live complaint — MUST escalate, no triage."
+  },
+  {
+    "id": 22,
+    "utterance": "There's a fire alarm going off in my room!",
+    "language": "en",
+    "session_seed": {"active_hotel_id": "rixos_belek", "active_region": "antalya"},
+    "expected": {
+      "query_type": "escalate",
+      "source_required": [],
+      "triage_ask": false,
+      "escalation": true,
+      "escalation_type": "urgency"
+    },
+    "notes": "Urgency — safety. MUST escalate."
+  },
+  {
+    "id": 23,
+    "utterance": "Çocuğumun ateşi çok yüksek, doktora ihtiyacımız var.",
+    "language": "tr",
+    "session_seed": {"active_hotel_id": "calista_luxury", "active_region": "antalya"},
+    "expected": {
+      "query_type": "escalate",
+      "source_required": [],
+      "triage_ask": false,
+      "escalation": true,
+      "escalation_type": "medical"
+    },
+    "notes": "Medical — escalate immediately."
+  },
+  {
+    "id": 24,
+    "utterance": "Rezervasyonumu iptal etmek istiyorum, ücret iadesi alabilir miyim?",
+    "language": "tr",
+    "session_seed": {},
+    "expected": {
+      "query_type": "escalate",
+      "source_required": [],
+      "triage_ask": false,
+      "escalation": true,
+      "escalation_type": "booking"
+    },
+    "notes": "Booking/refund — escalate to human agent."
+  },
+  {
+    "id": 25,
+    "utterance": "I checked out yesterday but was double-charged on my card.",
+    "language": "en",
+    "session_seed": {},
+    "expected": {
+      "query_type": "escalate",
+      "source_required": [],
+      "triage_ask": false,
+      "escalation": true,
+      "escalation_type": "post_booking"
+    },
+    "notes": "Post-booking billing dispute — escalate."
+  },
+  {
+    "id": 26,
+    "utterance": "Çocuklarla gidilecek bir tatil köyü önerir misin?",
+    "language": "tr",
+    "session_seed": {"active_region": "antalya"},
+    "expected": {
+      "query_type": "broad",
+      "source_required": ["hotel_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Broad family-oriented recommendation, region present."
+  },
+  {
+    "id": 27,
+    "utterance": "Bütçeme uygun, denize yakın bir otel arıyorum.",
+    "language": "tr",
+    "session_seed": {},
+    "expected": {
+      "query_type": "broad",
+      "source_required": ["hotel_kb"],
+      "triage_ask": true,
+      "triage_slot": "geography",
+      "escalation": false
+    },
+    "notes": "Broad with constraints but no geography — triage asks."
+  },
+  {
+    "id": 28,
+    "utterance": "Maxx Royal'da olduğum zaman, çocuk kulübü kaçta açılıyor?",
+    "language": "tr",
+    "session_seed": {"active_hotel_id": "maxx_royal_belek", "active_region": "antalya"},
+    "expected": {
+      "query_type": "scoped",
+      "source_required": ["hotel_kb"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Scoped — resolved hotel + amenity policy."
+  },
+  {
+    "id": 29,
+    "utterance": "Antalya yakınında günübirlik tekne turu yapan firma var mı?",
+    "language": "tr",
+    "session_seed": {"active_region": "antalya"},
+    "expected": {
+      "query_type": "hybrid",
+      "source_required": ["hotel_kb", "web_search"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Local operator with known region — hybrid path."
+  },
+  {
+    "id": 30,
+    "utterance": "Kapadokya'da balon turu kaç para?",
+    "language": "tr",
+    "session_seed": {"active_region": "cappadocia"},
+    "expected": {
+      "query_type": "web",
+      "source_required": ["web_search"],
+      "triage_ask": false,
+      "escalation": false
+    },
+    "notes": "Live pricing — web search."
+  }
+]

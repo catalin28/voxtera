@@ -1,10 +1,14 @@
 """Multilingual startup greetings for Voxtera — the hotel voice concierge.
 
-Hardcoded so the bot can speak before any LLM round-trip: faster, deterministic,
-no token cost. Once the guest speaks, Whisper detects their language and Claude
-replies in kind — see ``src/voxtera/prompts/system_prompt.py``.
+The greeting TEXT lives in ``greetings.json`` next to this module and is
+loaded ONCE at import time — so runtime behaviour is identical to the old
+hardcoded dicts (no LLM round-trip, no token cost, deterministic), but the
+text is editable from the admin page (Voice Concierge Prompts) without
+touching Python. Edits apply from the NEXT call: the bot subprocess imports
+this module at startup. Once the guest speaks, the STT detects their language
+and Claude replies in kind — see ``src/voxtera/prompts/system_prompt.py``.
 
-Two catalogs (loaded from ``config/greetings.json``):
+Two catalogs (top-level keys in ``greetings.json``):
 
 * ``GREETINGS`` — one time-neutral concierge greeting per language. This is the
   safe default: used at bot boot (before the browser connects) and whenever the
@@ -24,9 +28,14 @@ Resolution order in :func:`resolve_greeting`:
     2. System locale (``locale.getlocale()``)
     3. English fallback
 
-Edit greetings: modify ``config/greetings.json`` — no code changes needed.
-Add a language: add a ``"xx": "..."`` entry to the ``greetings`` key and a
-matching ``"xx": {...}`` entry to the ``timed_greetings`` key.
+Add a language: add a ``"xx": "..."`` entry to ``greetings`` and a matching
+``"xx": {...}`` entry to ``timed_greetings`` in ``greetings.json``. A language
+present in ``greetings`` but missing from ``timed_greetings`` simply never gets
+a time-of-day greeting — it falls back to the neutral one, which is always safe.
+
+Where a language does not lexically distinguish a daypart (French has no
+separate "good afternoon"; Korean and Hindi barely daypart greetings at all),
+the variants intentionally repeat — that is correct usage, not an oversight.
 """
 
 from __future__ import annotations
@@ -42,30 +51,59 @@ DEFAULT_LANGUAGE = "en"
 # Daypart bucket keys used throughout (TIMED_GREETINGS, GreetingController).
 DAYPARTS = ("morning", "afternoon", "evening")
 
-# --- Load greetings from config/greetings.json ---
-_GREETINGS_JSON = Path(__file__).resolve().parents[3] / "config" / "greetings.json"
+# ── Greeting text: loaded once at import from greetings.json ────────────────
+# Read as bytes + explicit decode (same convention as system_prompt.py) so we
+# get exactly what's on disk. json.loads validates; a malformed file fails
+# LOUDLY at import (bot refuses to start) rather than greeting guests wrongly.
+_DATA_PATH = Path(__file__).parent / "greetings.json"
+_data = json.loads(_DATA_PATH.read_bytes().decode("utf-8"))
+
+# Time-neutral concierge greeting per language. Always safe to fall back to.
+GREETINGS: dict[str, str] = _data["greetings"]
+
+# Morning / afternoon / evening variants. Same body as the neutral greeting,
+# only the opening time-of-day phrase changes. Languages that do not lexically
+# daypart (French afternoon, Korean, Hindi) intentionally repeat the neutral
+# phrasing — correct usage, not an oversight.
+TIMED_GREETINGS: dict[str, dict[str, str]] = _data["timed_greetings"]
+
+if DEFAULT_LANGUAGE not in GREETINGS:  # the English fallback must always exist
+    raise ValueError(f"greetings.json: missing required '{DEFAULT_LANGUAGE}' entry")
+
+# Per-language generic used when a greeting contains "{hotel_name}" but the bot
+# runs without a hotel config (e.g. plain demo) — "our hotel" and friends.
+GENERIC_HOTEL: dict[str, str] = _data.get("generic_hotel", {})
 
 
-def _load_greetings() -> tuple[dict[str, str], dict[str, dict[str, str]]]:
-    """Load greetings from the JSON config file, falling back to empty dicts."""
-    if _GREETINGS_JSON.is_file():
-        with open(_GREETINGS_JSON, encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get("greetings", {}), data.get("timed_greetings", {})
-    return {}, {}
+def fill_hotel_name(text: str, hotel_name: str | None = None, lang: str = DEFAULT_LANGUAGE) -> str:
+    """Resolve the optional ``{hotel_name}`` placeholder in a greeting.
+
+    Uses the actual hotel name when known, otherwise the per-language generic
+    from ``generic_hotel`` ("our hotel"). Plain ``str.replace`` — not
+    ``str.format`` — so any other braces in the text are harmless.
+    """
+    if "{hotel_name}" not in text:
+        return text
+    name = (hotel_name or "").strip()
+    if not name:
+        name = GENERIC_HOTEL.get(lang) or GENERIC_HOTEL.get(DEFAULT_LANGUAGE) or "our hotel"
+    return text.replace("{hotel_name}", name)
 
 
-GREETINGS: dict[str, str]
-TIMED_GREETINGS: dict[str, dict[str, str]]
-GREETINGS, TIMED_GREETINGS = _load_greetings()
+def apply_hotel_name(
+    hotel_name: str | None,
+) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+    """Return copies of (GREETINGS, TIMED_GREETINGS) with ``{hotel_name}`` resolved.
 
-# Fallback: if JSON was empty/missing, ensure English always exists.
-if "en" not in GREETINGS:
-    GREETINGS["en"] = (
-        "Hello, and a very warm welcome. "
-        "It's a pleasure to have you with us — I'm your concierge. "
-        "How may I help you?"
-    )
+    Called once at bot startup (pipeline.py) with the hotel's display name from
+    ``HotelConfig`` — the controllers then work with plain, ready-to-speak text.
+    """
+    g = {lang: fill_hotel_name(t, hotel_name, lang) for lang, t in GREETINGS.items()}
+    tg = {
+        lang: {part: fill_hotel_name(t, hotel_name, lang) for part, t in variants.items()}
+        for lang, variants in TIMED_GREETINGS.items()
+    }
+    return g, tg
 
 
 def daypart_for_hour(hour: int) -> str:
@@ -117,7 +155,12 @@ def _detect_system_language() -> str | None:
     return loc.split("_", 1)[0].lower()
 
 
-def resolve_greeting(preference: str = "auto", *, daypart: str | None = None) -> tuple[str, str]:
+def resolve_greeting(
+    preference: str = "auto",
+    *,
+    daypart: str | None = None,
+    hotel_name: str | None = None,
+) -> tuple[str, str]:
     """Pick a greeting and return ``(language_code, text)``.
 
     Args:
@@ -128,6 +171,9 @@ def resolve_greeting(preference: str = "auto", *, daypart: str | None = None) ->
             time-of-day variant is returned; otherwise the time-neutral one is.
             Boot-time callers leave this ``None`` (the browser hasn't reported
             the guest's timezone yet) — see ``GreetingController``.
+        hotel_name: the hotel's display name, used to resolve the optional
+            ``{hotel_name}`` placeholder; ``None`` falls back to the
+            per-language generic ("our hotel").
 
     Returns:
         A ``(code, text)`` tuple — ``code`` is the language chosen (useful for
@@ -147,6 +193,6 @@ def resolve_greeting(preference: str = "auto", *, daypart: str | None = None) ->
     if daypart:
         timed = TIMED_GREETINGS.get(code)
         if timed and daypart in timed:
-            return code, timed[daypart]
+            return code, fill_hotel_name(timed[daypart], hotel_name, code)
 
-    return code, GREETINGS[code]
+    return code, fill_hotel_name(GREETINGS[code], hotel_name, code)

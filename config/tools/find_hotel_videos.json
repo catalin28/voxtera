@@ -1,0 +1,34 @@
+{
+  "type": "function",
+  "function": {
+    "name": "find_hotel_videos",
+    "description": "Find YouTube videos of a specific hotel (room tours, walkthroughs, reviews, or news). Use ONLY when the guest explicitly asks to see, watch, or be shown video content — never as a substitute for textual answers the knowledge base can give. Pick the intent that best matches the request.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "hotel_name": {
+          "type": "string",
+          "description": "The hotel's name as the guest said it (or the property in scope for this call)."
+        },
+        "intent": {
+          "type": "string",
+          "enum": ["tour", "rooms", "review", "news"],
+          "description": "What kind of video the guest is asking for: 'tour' = general walkthrough; 'rooms' = room-tour focus; 'review' = traveler/professional review; 'news' = recent / dated content. Default to 'tour' if unclear."
+        },
+        "region": {
+          "type": "string",
+          "description": "Optional city or region to disambiguate a common hotel name (e.g. 'Istanbul'). Omit if the hotel name is already unique."
+        },
+        "language": {
+          "type": "string",
+          "description": "Optional ISO-639-1 code (e.g. 'en', 'tr', 'es') to bias results to videos with that audio/title language."
+        },
+        "max_results": {
+          "type": "integer",
+          "description": "Number of videos to return, 1..10. Default 5. Pick a smaller number when the guest only wants a quick look."
+        }
+      },
+      "required": ["hotel_name"]
+    }
+  }
+}

@@ -19,8 +19,10 @@ dependencies = [
     "pytesseract>=0.3.10",
     "Pillow>=10.0",
     "sentence-transformers>=3.0",
+    "torch>=2.0",
     "pyrnnoise>=0.4.3",
     "psutil>=5.9",
+    "redis>=5.0",
 ]
 
 [project.urls]
@@ -66,4 +68,7 @@ packages = ["voxtera"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-v"
+addopts = "-v -m 'not live_eval'"
+markers = [
+    "live_eval: end-to-end evaluation against live LLMs (opt-in via -m live_eval)",
+]
