@@ -486,6 +486,10 @@ _DAILY_DYNAMIC_ROOMS: bool = os.environ.get("DAILY_DYNAMIC_ROOMS", "true").lower
 _DAILY_ROOM_MAX_PARTICIPANTS: int = int(os.environ.get("DAILY_ROOM_MAX_PARTICIPANTS", "2"))
 _MAX_CONCURRENT_SESSIONS: int = int(os.environ.get("DAILY_MAX_CONCURRENT_SESSIONS", "50"))
 _SESSION_TIMEOUT_SECS: int = int(os.environ.get("VOXTERA_SESSION_TIMEOUT_SECS", "180"))
+_VOICE_CONFIGS_PATH: Path = Path(__file__).resolve().parent / "admin" / "voice_configs.json"
+
+# Shared preview text used by the voice configuration panel.
+_VOICE_PREVIEW_DEFAULT_TEXT = "Good evening. How can I help you today?"
 
 # ---------------------------------------------------------------------------
 # PSTN Telephony config
@@ -1575,7 +1579,7 @@ def _tts_openai(text: str, voice: str) -> bytes:
     return response.content
 
 
-def _tts_cartesia(text: str, voice: str, language: str = "en") -> bytes:
+def _tts_cartesia(text: str, voice: str, language: str = "en", *, params: dict | None = None) -> bytes:
     """Generate speech via Cartesia Sonic-3 HTTP API and return raw MP3 bytes.
 
     This is the synchronous /tts/bytes endpoint used by the demo's
@@ -1594,19 +1598,25 @@ def _tts_cartesia(text: str, voice: str, language: str = "en") -> bytes:
     # suffix (e.g. "en-US" → "en") so callers can pass either form.
     lang_code = language.split("-")[0] if "-" in language else language
 
-    payload = json.dumps(
-        {
-            "model_id": model,
-            "voice": {"mode": "id", "id": voice},
-            "language": lang_code,
-            "transcript": text,
-            "output_format": {
-                "container": "mp3",
-                "encoding": "mp3",
-                "sample_rate": 22050,
-            },
-        }
-    ).encode()
+    p = params or {}
+    body_dict: dict = {
+        "model_id": model,
+        "voice": {"mode": "id", "id": voice},
+        "language": lang_code,
+        "transcript": text,
+        "output_format": {
+            "container": "mp3",
+            "encoding": "mp3",
+            "sample_rate": 22050,
+        },
+    }
+    # Apply speed / emotion / volume if provided
+    if "speed" in p or "emotion" in p:
+        body_dict["_experimental_voice_controls"] = {k: v for k, v in p.items() if k in ("speed", "emotion", "volume")}
+    if "pronunciation_dict_id" in p and p["pronunciation_dict_id"]:
+        body_dict["pronunciation_dictionary_locators"] = [{"pronunciation_dictionary_id": p["pronunciation_dict_id"]}]
+
+    payload = json.dumps(body_dict).encode()
 
     req = urllib.request.Request(
         "https://api.cartesia.ai/tts/bytes",
@@ -1628,7 +1638,7 @@ def _tts_cartesia(text: str, voice: str, language: str = "en") -> bytes:
         raise RuntimeError(f"Cartesia TTS error {exc.code}: {body}") from exc
 
 
-def _tts_elevenlabs(text: str, voice: str, language: str = "en") -> bytes:
+def _tts_elevenlabs(text: str, voice: str, language: str = "en", *, params: dict | None = None) -> bytes:
     """Generate speech via the ElevenLabs HTTP TTS API and return raw MP3 bytes.
 
     This is the synchronous one-shot endpoint used by the demo's "Test
@@ -1656,6 +1666,22 @@ def _tts_elevenlabs(text: str, voice: str, language: str = "en") -> bytes:
     body_obj: dict = {"text": text, "model_id": model}
     if model.endswith("_v2_5"):
         body_obj["language_code"] = lang_code
+
+    # Apply voice settings params (stability, similarity_boost, style, etc.)
+    p = params or {}
+    voice_settings: dict = {}
+    if "stability" in p:
+        voice_settings["stability"] = float(p["stability"])
+    if "similarity_boost" in p:
+        voice_settings["similarity_boost"] = float(p["similarity_boost"])
+    if "style" in p:
+        voice_settings["style"] = float(p["style"])
+    if "use_speaker_boost" in p:
+        voice_settings["use_speaker_boost"] = bool(p["use_speaker_boost"])
+    if voice_settings:
+        body_obj["voice_settings"] = voice_settings
+    if "speed" in p:
+        body_obj["speed"] = float(p["speed"])
 
     payload = json.dumps(body_obj).encode()
     # output_format=mp3_22050_32 works on the free tier and matches the
@@ -2072,6 +2098,12 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_rag_chunks()
         if self.path.startswith("/api/admin/concierge-logs"):
             return self._handle_concierge_logs()
+        if self.path == "/api/admin/voice-catalog":
+            return self._handle_admin_voice_catalog()
+        if self.path == "/api/voice/config" or self.path.startswith("/api/voice/config?"):
+            return self._handle_voice_config_get()
+        if self.path.startswith("/api/admin/properties/") and self.path.endswith("/voice-config"):
+            return self._handle_admin_property_voice_get()
         if self.path.startswith("/api/trace/sessions/") and self.path.endswith("/events"):
             sid = self.path[len("/api/trace/sessions/") : -len("/events")]
             return self._handle_session_events(sid)
@@ -2079,6 +2111,19 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # which aggressively disk-caches) never serve a stale version. JS/CSS
         # assets are unversioned so they get the same treatment.
         stripped = self.path.split("?")[0]
+        if stripped.startswith("/admin/properties/") and stripped.endswith("/voice"):
+            parts = [p for p in stripped.split("/") if p]
+            if len(parts) == 4 and parts[0] == "admin" and parts[1] == "properties":
+                property_id = urllib.parse.quote(parts[2], safe="")
+                self.send_response(302)
+                self.send_header("Location", f"/admin/voice-config.html?property_id={property_id}")
+                self.end_headers()
+                return None
+        if stripped == "/admin/voice/" or stripped == "/admin/voice":
+            self.send_response(302)
+            self.send_header("Location", "/admin/voice-config.html?property_id=demo")
+            self.end_headers()
+            return None
         # Root URL → redirect to voxtera.html (landing page).
         if stripped in ("/", "/index.html"):
             self.send_response(302)
@@ -2135,6 +2180,12 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_prompts_save()
         if self.path == "/api/admin/voice-prompts":
             return self._handle_admin_voice_prompts_save()
+        if self.path == "/api/admin/voice-preview":
+            return self._handle_admin_voice_preview()
+        if self.path == "/api/voice/config":
+            return self._handle_voice_config_save()
+        if self.path.startswith("/api/admin/properties/") and self.path.endswith("/voice-config"):
+            return self._handle_admin_property_voice_save()
         if self.path == "/api/admin/call-center/qdrant/search":
             return self._handle_admin_call_center_qdrant_search()
         # Phase 3 — on-demand bot launcher
@@ -2300,6 +2351,164 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # (around line 377). When BOT_NAME changes, both sites must update.
         return user_name == _BOT_NAME
 
+    def _load_voice_configs(self) -> dict:
+        if not _VOICE_CONFIGS_PATH.exists():
+            return {}
+        try:
+            data = json.loads(_VOICE_CONFIGS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _save_voice_configs(self, data: dict) -> None:
+        _VOICE_CONFIGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _VOICE_CONFIGS_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(_VOICE_CONFIGS_PATH)
+
+    def _provider_preview_ready(self, provider: str) -> tuple[bool, str | None]:
+        if provider == "google":
+            creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+            if not creds:
+                return False, "GOOGLE_APPLICATION_CREDENTIALS is not set"
+            creds_path = Path(creds)
+            if not creds_path.is_absolute():
+                creds_path = Path(__file__).resolve().parent.parent / creds_path
+            if not creds_path.exists():
+                return False, f"Google credentials file not found: {creds_path}"
+            return True, None
+        if provider == "cartesia":
+            if not os.environ.get("CARTESIA_API_KEY", "").strip():
+                return False, "CARTESIA_API_KEY is not set"
+            return True, None
+        if provider == "elevenlabs":
+            if not os.environ.get("ELEVENLABS_API_KEY", "").strip():
+                return False, "ELEVENLABS_API_KEY is not set"
+            return True, None
+        return False, "unsupported provider"
+
+    @staticmethod
+    def _voice_gender_from_label(label: str) -> str:
+        text = label.lower()
+        if "female" in text:
+            return "female"
+        if "male" in text:
+            return "male"
+        return "neutral"
+
+    @staticmethod
+    def _voice_tones_from_label(label: str) -> list[str]:
+        tokens = []
+        text = label.lower()
+        for raw, normalized in (
+            ("warm", "Warm"),
+            ("gentle", "Gentle"),
+            ("cheerful", "Cheerful"),
+            ("formal", "Formal"),
+            ("energetic", "Energetic"),
+            ("calm", "Calm"),
+            ("deep", "Deep"),
+            ("stable", "Stable"),
+            ("professional", "Professional"),
+        ):
+            if raw in text:
+                tokens.append(normalized)
+        if not tokens:
+            tokens.append("Professional")
+        return tokens[:3]
+
+    def _build_voice_catalog(self) -> list[dict]:
+        languages = LANG_CONFIG.get("languages", {})
+        google_coverage = sum(
+            1
+            for entry in languages.values()
+            if isinstance(entry, dict)
+            and bool(entry.get("tts", {}).get("google", {}).get("supported", False))
+        )
+
+        voices: list[dict] = []
+
+        for char in LANG_CONFIG.get("voices", {}).get("google_chirp3_characters", []):
+            if not isinstance(char, dict):
+                continue
+            voice_id = str(char.get("id", "")).strip()
+            if not voice_id:
+                continue
+            label = str(char.get("name", voice_id))
+            voices.append(
+                {
+                    "voice_key": f"google:{voice_id}",
+                    "voice_id": voice_id,
+                    "display_name": voice_id,
+                    "provider": "google",
+                    "provider_label": "Google",
+                    "model": "chirp3-hd",
+                    "gender": self._voice_gender_from_label(label),
+                    "tone_tags": self._voice_tones_from_label(label),
+                    "language_coverage": google_coverage,
+                    "preview_enabled": self._provider_preview_ready("google")[0],
+                    "preview_error": self._provider_preview_ready("google")[1],
+                }
+            )
+
+        for voice in LANG_CONFIG.get("voices", {}).get("cartesia", []):
+            if not isinstance(voice, dict):
+                continue
+            voice_id = str(voice.get("id", "")).strip()
+            if not voice_id:
+                continue
+            name = str(voice.get("name", voice_id))
+            voices.append(
+                {
+                    "voice_key": f"cartesia:{voice_id}",
+                    "voice_id": voice_id,
+                    "display_name": name.split("(", 1)[0].strip() or name,
+                    "provider": "cartesia",
+                    "provider_label": "Cartesia",
+                    "model": os.environ.get("CARTESIA_MODEL", "sonic-3"),
+                    "gender": self._voice_gender_from_label(name),
+                    "tone_tags": self._voice_tones_from_label(name),
+                    "language_coverage": 42,
+                    "preview_enabled": self._provider_preview_ready("cartesia")[0],
+                    "preview_error": self._provider_preview_ready("cartesia")[1],
+                }
+            )
+
+        for voice in LANG_CONFIG.get("voices", {}).get("elevenlabs", []):
+            if not isinstance(voice, dict):
+                continue
+            voice_id = str(voice.get("id", "")).strip()
+            if not voice_id:
+                continue
+            name = str(voice.get("name", voice_id))
+            voices.append(
+                {
+                    "voice_key": f"elevenlabs:{voice_id}",
+                    "voice_id": voice_id,
+                    "display_name": name.split("(", 1)[0].strip() or name,
+                    "provider": "elevenlabs",
+                    "provider_label": "ElevenLabs",
+                    "model": os.environ.get("ELEVENLABS_MODEL", "eleven_flash_v2_5"),
+                    "gender": self._voice_gender_from_label(name),
+                    "tone_tags": self._voice_tones_from_label(name),
+                    "language_coverage": 32,
+                    "preview_enabled": self._provider_preview_ready("elevenlabs")[0],
+                    "preview_error": self._provider_preview_ready("elevenlabs")[1],
+                }
+            )
+
+        return voices
+
+    def _parse_property_id_from_path(self) -> str | None:
+        path = urllib.parse.urlparse(self.path).path
+        parts = [p for p in path.split("/") if p]
+        # /api/admin/properties/{property_id}/voice-config
+        if len(parts) != 5:
+            return None
+        if parts[:3] != ["api", "admin", "properties"] or parts[4] != "voice-config":
+            return None
+        return urllib.parse.unquote(parts[3]).strip() or None
+
     # ------------------------------------------------------------------
     # /api/admin/health — does NOT require the token. Lets the page
     # decide whether to even render the token gate.
@@ -2339,6 +2548,189 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(401, {"error": "unauthorized"})
             return
         self._send_json(200, {"ok": True})
+
+    def _handle_admin_voice_catalog(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        self._send_json(
+            200,
+            {
+                "voices": self._build_voice_catalog(),
+                "default_preview_text": _VOICE_PREVIEW_DEFAULT_TEXT,
+            },
+        )
+
+    def _handle_admin_property_voice_get(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        property_id = self._parse_property_id_from_path()
+        if not property_id:
+            self._send_json(400, {"error": "invalid_property_path"})
+            return
+        configs = self._load_voice_configs()
+        entry = configs.get(property_id, {}) if isinstance(configs.get(property_id), dict) else {}
+        self._send_json(
+            200,
+            {
+                "property_id": property_id,
+                "current": entry.get("current"),
+                "previous": entry.get("previous"),
+            },
+        )
+
+    def _handle_admin_property_voice_save(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        property_id = self._parse_property_id_from_path()
+        if not property_id:
+            self._send_json(400, {"error": "invalid_property_path"})
+            return
+
+        body = self._read_json_body()
+        voice_key = str(body.get("voice_key", "")).strip()
+        if not voice_key:
+            self._send_json(422, {"error": "voice_key is required"})
+            return
+
+        catalog = {v["voice_key"]: v for v in self._build_voice_catalog()}
+        selected = catalog.get(voice_key)
+        if not selected:
+            self._send_json(422, {"error": "unknown voice_key"})
+            return
+
+        now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        updated_by = self.headers.get("X-Admin-Actor") or "admin"
+
+        record = {
+            "property_id": property_id,
+            "voice_key": selected["voice_key"],
+            "display_name": f"{selected['display_name']} ({selected['provider_label']})",
+            "provider": selected["provider"],
+            "model": selected["model"],
+            "updated_at": now,
+            "updated_by": updated_by,
+        }
+
+        configs = self._load_voice_configs()
+        prior = configs.get(property_id, {}) if isinstance(configs.get(property_id), dict) else {}
+        prev_current = prior.get("current") if isinstance(prior, dict) else None
+        configs[property_id] = {"current": record, "previous": prev_current}
+        self._save_voice_configs(configs)
+
+        self._send_json(
+            200,
+            {
+                "property_id": property_id,
+                "voice_key": record["voice_key"],
+                "updated_at": record["updated_at"],
+            },
+        )
+
+    def _handle_admin_voice_preview(self) -> None:
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+
+        try:
+            body = self._read_json_body()
+            voice_key = str(body.get("voice_key", "")).strip()
+            text = str(body.get("text", _VOICE_PREVIEW_DEFAULT_TEXT)).strip() or _VOICE_PREVIEW_DEFAULT_TEXT
+            language = str(body.get("language", "en")).strip() or "en"
+            params = body.get("params") if isinstance(body.get("params"), dict) else {}
+            if len(text) > 200:
+                self._send_json(422, {"error": "preview text exceeds 200 characters"})
+                return
+            if ":" not in voice_key:
+                self._send_json(422, {"error": "voice_key must be '<provider>:<voice_id>'"})
+                return
+            provider, voice_id = voice_key.split(":", 1)
+        except Exception:  # noqa: BLE001
+            self._send_json(422, {"error": "invalid request body"})
+            return
+
+        try:
+            if provider == "google":
+                full_voice_id = voice_id if "Chirp3-HD-" in voice_id else f"en-US-Chirp3-HD-{voice_id}"
+                audio = _tts_google(text, full_voice_id, language)
+            elif provider == "cartesia":
+                audio = _tts_cartesia(text, voice_id, language, params=params)
+            elif provider == "elevenlabs":
+                audio = _tts_elevenlabs(text, voice_id, language, params=params)
+            else:
+                self._send_json(422, {"error": "unsupported provider"})
+                return
+
+            self.send_response(200)
+            self._cors_headers()
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Content-Length", str(len(audio)))
+            self.end_headers()
+            self.wfile.write(audio)
+        except Exception as exc:  # noqa: BLE001
+            self._send_json(500, {"error": f"preview_failed: {exc}"})
+
+    def _handle_voice_config_get(self) -> None:
+        """GET /api/voice/config?property_id=<id> — return current saved voice config."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        from urllib.parse import parse_qs, urlparse as _urlparse2
+        qs = parse_qs(_urlparse2(self.path).query)
+        property_id = (qs.get("property_id", [""])[0] or "").strip() or "demo"
+        configs = self._load_voice_configs()
+        entry = configs.get(property_id, {})
+        self._send_json(200, {
+            "property_id": property_id,
+            "current": entry.get("current") if isinstance(entry, dict) else None,
+            "previous": entry.get("previous") if isinstance(entry, dict) else None,
+        })
+
+    def _handle_voice_config_save(self) -> None:
+        """POST /api/voice/config — save voice + params for a property."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        property_id = str(body.get("property_id", "")).strip() or "demo"
+        voice_key = str(body.get("voice_key", "")).strip()
+        params = body.get("params") if isinstance(body.get("params"), dict) else {}
+        display_name = str(body.get("display_name", "")).strip()
+
+        if not voice_key:
+            self._send_json(422, {"error": "voice_key is required"})
+            return
+
+        catalog = {v["voice_key"]: v for v in self._build_voice_catalog()}
+        selected = catalog.get(voice_key)
+        if not selected:
+            self._send_json(422, {"error": "unknown voice_key"})
+            return
+
+        now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        record = {
+            "property_id": property_id,
+            "voice_key": selected["voice_key"],
+            "display_name": display_name or f"{selected['display_name']} ({selected['provider_label']})",
+            "provider": selected["provider"],
+            "model": selected["model"],
+            "params": params,
+            "updated_at": now,
+            "updated_by": self.headers.get("X-Admin-Actor") or "admin",
+        }
+
+        configs = self._load_voice_configs()
+        prior = configs.get(property_id, {}) if isinstance(configs.get(property_id), dict) else {}
+        configs[property_id] = {"current": record, "previous": prior.get("current")}
+        self._save_voice_configs(configs)
+
+        self._send_json(200, {
+            "property_id": property_id,
+            "voice_key": record["voice_key"],
+            "updated_at": record["updated_at"],
+        })
 
     # ------------------------------------------------------------------
     # /api/admin/visitors — parsed Caddy access log with enrichment
