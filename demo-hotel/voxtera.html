@@ -1240,12 +1240,22 @@
     max-width:1400px;margin:0 auto;
     padding-top:2rem;
     display:flex;justify-content:space-between;align-items:center;
+    gap:1rem;
+    padding-right:min(21rem, 28vw);
     font-family:'JetBrains Mono',monospace;
     font-size:0.72rem;
     letter-spacing:0.1em;
     text-transform:uppercase;
     color:rgba(244,237,225,0.4);
   }
+  .footer-bottom a{
+    color:var(--cream);
+    text-decoration:underline;
+    text-decoration-thickness:1px;
+    text-underline-offset:0.22em;
+    transition:color .25s ease;
+  }
+  .footer-bottom a:hover{color:var(--gold);}
 
   /* ============ RESPONSIVE ============ */
   @media (max-width:1024px){
@@ -1325,7 +1335,7 @@
     .dialogue{padding:1.8rem;}
     .dialogue-row{grid-template-columns:1fr;gap:0.6rem;padding:1rem 0;}
     .footer-grid{grid-template-columns:1fr;gap:2rem;}
-    .footer-bottom{flex-direction:column;gap:1rem;text-align:center;}
+    .footer-bottom{flex-direction:column;gap:1rem;text-align:center;padding-right:0;}
   }
 
   /* fade-in on scroll */
