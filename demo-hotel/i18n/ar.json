@@ -310,7 +310,7 @@
     "link_press": "حزمة صحفية",
     "link_careers": "وظائف",
     "copyright": "© 2026 فوكستيرا — صُنع في كندا",
-    "legal": "الخصوصية · الشروط · GDPR · DPA",
+    "legal": "<a href=\"/privacy.html\" style=\"color:inherit;\">الخصوصية</a> · الشروط · GDPR · DPA",
     "col2_title": "المنتج",
     "how_it_works": "كيف يعمل",
     "languages": "اللغات",
