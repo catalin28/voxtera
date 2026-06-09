@@ -1707,6 +1707,95 @@ def _tts_elevenlabs(text: str, voice: str, language: str = "en", *, params: dict
         raise RuntimeError(f"ElevenLabs TTS error {exc.code}: {body}") from exc
 
 
+_ELEVENLABS_VOICES_CACHE: list[dict] = []
+_ELEVENLABS_VOICES_CACHE_TS = 0.0
+_ELEVENLABS_VOICES_CACHE_TTL_SECS = 300
+
+_CARTESIA_VOICES_CACHE: list[dict] = []
+_CARTESIA_VOICES_CACHE_TS = 0.0
+_CARTESIA_VOICES_CACHE_TTL_SECS = 300
+
+
+def _list_cartesia_voices() -> list[dict]:
+    """Return Cartesia voices from API, with a short in-memory cache.
+
+    Falls back to the last cached API response (if any) when the request fails.
+    """
+    global _CARTESIA_VOICES_CACHE, _CARTESIA_VOICES_CACHE_TS
+
+    api_key = os.environ.get("CARTESIA_API_KEY", "").strip()
+    if not api_key:
+        return []
+
+    now = time.time()
+    if _CARTESIA_VOICES_CACHE and (now - _CARTESIA_VOICES_CACHE_TS) < _CARTESIA_VOICES_CACHE_TTL_SECS:
+        return list(_CARTESIA_VOICES_CACHE)
+
+    req = urllib.request.Request(
+        "https://api.cartesia.ai/voices",
+        headers={
+            "X-API-Key": api_key,
+            "Cartesia-Version": "2025-04-16",
+            "Accept": "application/json",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        if isinstance(payload, list):
+            raw_voices = payload
+        elif isinstance(payload, dict):
+            raw_voices = payload.get("data") or payload.get("voices") or []
+        else:
+            raw_voices = []
+        voices = [v for v in raw_voices if isinstance(v, dict) and str(v.get("id", "")).strip()]
+        voices.sort(key=lambda v: str(v.get("name", "")).lower())
+        _CARTESIA_VOICES_CACHE = voices
+        _CARTESIA_VOICES_CACHE_TS = now
+        return list(voices)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[voice-catalog] Cartesia API unavailable ({exc}); using fallback list")
+        return list(_CARTESIA_VOICES_CACHE)
+
+
+def _list_elevenlabs_voices() -> list[dict]:
+    """Return ElevenLabs voices from API, with a short in-memory cache.
+
+    Falls back to the last cached API response (if any) when the request fails.
+    """
+    global _ELEVENLABS_VOICES_CACHE, _ELEVENLABS_VOICES_CACHE_TS
+
+    api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    if not api_key:
+        return []
+
+    now = time.time()
+    if _ELEVENLABS_VOICES_CACHE and (now - _ELEVENLABS_VOICES_CACHE_TS) < _ELEVENLABS_VOICES_CACHE_TTL_SECS:
+        return list(_ELEVENLABS_VOICES_CACHE)
+
+    req = urllib.request.Request(
+        "https://api.elevenlabs.io/v1/voices",
+        headers={
+            "xi-api-key": api_key,
+            "Accept": "application/json",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        raw_voices = payload.get("voices", [])
+        voices = [v for v in raw_voices if isinstance(v, dict) and str(v.get("voice_id", "")).strip()]
+        voices.sort(key=lambda v: str(v.get("name", "")).lower())
+        _ELEVENLABS_VOICES_CACHE = voices
+        _ELEVENLABS_VOICES_CACHE_TS = now
+        return list(voices)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[voice-catalog] ElevenLabs API unavailable ({exc}); using fallback list")
+        return list(_ELEVENLABS_VOICES_CACHE)
+
+
 def _tts_google(text: str, voice: str, language: str) -> bytes:
     """Generate speech via Google Chirp 3 HD and return raw MP3 bytes.
 
@@ -2451,51 +2540,140 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 }
             )
 
-        for voice in LANG_CONFIG.get("voices", {}).get("cartesia", []):
-            if not isinstance(voice, dict):
-                continue
-            voice_id = str(voice.get("id", "")).strip()
-            if not voice_id:
-                continue
-            name = str(voice.get("name", voice_id))
-            voices.append(
-                {
-                    "voice_key": f"cartesia:{voice_id}",
-                    "voice_id": voice_id,
-                    "display_name": name.split("(", 1)[0].strip() or name,
-                    "provider": "cartesia",
-                    "provider_label": "Cartesia",
-                    "model": os.environ.get("CARTESIA_MODEL", "sonic-3"),
-                    "gender": self._voice_gender_from_label(name),
-                    "tone_tags": self._voice_tones_from_label(name),
-                    "language_coverage": 42,
-                    "preview_enabled": self._provider_preview_ready("cartesia")[0],
-                    "preview_error": self._provider_preview_ready("cartesia")[1],
-                }
-            )
+        cartesia_api_voices = _list_cartesia_voices()
+        if cartesia_api_voices:
+            for voice in cartesia_api_voices:
+                voice_id = str(voice.get("id", "")).strip()
+                if not voice_id:
+                    continue
+                name = str(voice.get("name", voice_id)).strip() or voice_id
 
-        for voice in LANG_CONFIG.get("voices", {}).get("elevenlabs", []):
-            if not isinstance(voice, dict):
-                continue
-            voice_id = str(voice.get("id", "")).strip()
-            if not voice_id:
-                continue
-            name = str(voice.get("name", voice_id))
-            voices.append(
-                {
-                    "voice_key": f"elevenlabs:{voice_id}",
-                    "voice_id": voice_id,
-                    "display_name": name.split("(", 1)[0].strip() or name,
-                    "provider": "elevenlabs",
-                    "provider_label": "ElevenLabs",
-                    "model": os.environ.get("ELEVENLABS_MODEL", "eleven_flash_v2_5"),
-                    "gender": self._voice_gender_from_label(name),
-                    "tone_tags": self._voice_tones_from_label(name),
-                    "language_coverage": 32,
-                    "preview_enabled": self._provider_preview_ready("elevenlabs")[0],
-                    "preview_error": self._provider_preview_ready("elevenlabs")[1],
-                }
-            )
+                description = str(voice.get("description", "")).strip()
+                labels = voice.get("labels") if isinstance(voice.get("labels"), dict) else {}
+                gender = str(labels.get("gender", "")).strip().lower()
+                if gender not in ("female", "male", "neutral"):
+                    gender = self._voice_gender_from_label(f"{name} {description}")
+
+                language = voice.get("language") if isinstance(voice.get("language"), str) else ""
+                language_coverage = 1 if language else 42
+
+                tone_tags: list[str] = []
+                for candidate in (
+                    str(labels.get("style", "")).strip(),
+                    str(labels.get("accent", "")).strip(),
+                    str(labels.get("age", "")).strip(),
+                ):
+                    if candidate:
+                        tag = candidate.split(",", 1)[0].strip().title()
+                        if tag and tag not in tone_tags:
+                            tone_tags.append(tag)
+                if not tone_tags and description:
+                    tone_tags = self._voice_tones_from_label(description)
+                if not tone_tags:
+                    tone_tags = self._voice_tones_from_label(name)
+
+                voices.append(
+                    {
+                        "voice_key": f"cartesia:{voice_id}",
+                        "voice_id": voice_id,
+                        "display_name": name.split("(", 1)[0].strip() or name,
+                        "provider": "cartesia",
+                        "provider_label": "Cartesia",
+                        "model": os.environ.get("CARTESIA_MODEL", "sonic-3"),
+                        "gender": gender,
+                        "tone_tags": tone_tags[:3],
+                        "language_coverage": language_coverage,
+                        "preview_enabled": self._provider_preview_ready("cartesia")[0],
+                        "preview_error": self._provider_preview_ready("cartesia")[1],
+                    }
+                )
+        else:
+            for voice in LANG_CONFIG.get("voices", {}).get("cartesia", []):
+                if not isinstance(voice, dict):
+                    continue
+                voice_id = str(voice.get("id", "")).strip()
+                if not voice_id:
+                    continue
+                name = str(voice.get("name", voice_id))
+                voices.append(
+                    {
+                        "voice_key": f"cartesia:{voice_id}",
+                        "voice_id": voice_id,
+                        "display_name": name.split("(", 1)[0].strip() or name,
+                        "provider": "cartesia",
+                        "provider_label": "Cartesia",
+                        "model": os.environ.get("CARTESIA_MODEL", "sonic-3"),
+                        "gender": self._voice_gender_from_label(name),
+                        "tone_tags": self._voice_tones_from_label(name),
+                        "language_coverage": 42,
+                        "preview_enabled": self._provider_preview_ready("cartesia")[0],
+                        "preview_error": self._provider_preview_ready("cartesia")[1],
+                    }
+                )
+
+        elevenlabs_api_voices = _list_elevenlabs_voices()
+        if elevenlabs_api_voices:
+            for voice in elevenlabs_api_voices:
+                voice_id = str(voice.get("voice_id", "")).strip()
+                if not voice_id:
+                    continue
+                name = str(voice.get("name", voice_id)).strip() or voice_id
+                labels = voice.get("labels") if isinstance(voice.get("labels"), dict) else {}
+                gender = str(labels.get("gender", "")).strip().lower()
+                if gender not in ("female", "male", "neutral"):
+                    gender = self._voice_gender_from_label(name)
+
+                tone_tags: list[str] = []
+                for k in ("description", "accent", "age", "use case"):
+                    val = str(labels.get(k, "")).strip()
+                    if val:
+                        tag = val.split(",", 1)[0].strip().title()
+                        if tag and tag not in tone_tags:
+                            tone_tags.append(tag)
+                category = str(voice.get("category", "")).strip()
+                if category and category.title() not in tone_tags:
+                    tone_tags.append(category.title())
+                if not tone_tags:
+                    tone_tags = self._voice_tones_from_label(name)
+
+                voices.append(
+                    {
+                        "voice_key": f"elevenlabs:{voice_id}",
+                        "voice_id": voice_id,
+                        "display_name": name.split("(", 1)[0].strip() or name,
+                        "provider": "elevenlabs",
+                        "provider_label": "ElevenLabs",
+                        "model": os.environ.get("ELEVENLABS_MODEL", "eleven_flash_v2_5"),
+                        "gender": gender,
+                        "tone_tags": tone_tags[:3],
+                        "language_coverage": 32,
+                        "preview_enabled": self._provider_preview_ready("elevenlabs")[0],
+                        "preview_error": self._provider_preview_ready("elevenlabs")[1],
+                    }
+                )
+        else:
+            for voice in LANG_CONFIG.get("voices", {}).get("elevenlabs", []):
+                if not isinstance(voice, dict):
+                    continue
+                voice_id = str(voice.get("id", "")).strip()
+                if not voice_id:
+                    continue
+                name = str(voice.get("name", voice_id))
+                voices.append(
+                    {
+                        "voice_key": f"elevenlabs:{voice_id}",
+                        "voice_id": voice_id,
+                        "display_name": name.split("(", 1)[0].strip() or name,
+                        "provider": "elevenlabs",
+                        "provider_label": "ElevenLabs",
+                        "model": os.environ.get("ELEVENLABS_MODEL", "eleven_flash_v2_5"),
+                        "gender": self._voice_gender_from_label(name),
+                        "tone_tags": self._voice_tones_from_label(name),
+                        "language_coverage": 32,
+                        "preview_enabled": self._provider_preview_ready("elevenlabs")[0],
+                        "preview_error": self._provider_preview_ready("elevenlabs")[1],
+                    }
+                )
 
         return voices
 
