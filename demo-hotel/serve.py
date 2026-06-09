@@ -38,7 +38,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from collections import deque
+from collections import OrderedDict, deque
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -336,6 +336,88 @@ async def _concierge_deps() -> dict:
             "web_query_fn": _build_anthropic_web_query(model),
         }
     return _concierge_rt["deps"]
+
+
+# ── WhatsApp inbound webhook runtime ─────────────────────────────────────────
+# The /whatsapp/webhook routes (GET verify + POST receive) live in THIS server
+# so deploying the UI service also serves the webhook — no separate process and
+# no ngrok. Incoming WhatsApp text runs through the SAME warm ConciergePipeline
+# as /api/concierge, keyed by the sender's wa_id for per-contact memory.
+_wa_settings_cache = None
+_wa_seen_ids: "OrderedDict[str, None]" = OrderedDict()
+_WA_SEEN_LIMIT = 2000
+
+
+def _wa_settings():
+    """Lazy-load + cache WhatsApp settings from env (raises if misconfigured)."""
+    global _wa_settings_cache
+    if _wa_settings_cache is None:
+        from voxtera.whatsapp.config import load_whatsapp_settings
+
+        _wa_settings_cache = load_whatsapp_settings()
+    return _wa_settings_cache
+
+
+def _wa_already_seen(message_id: str) -> bool:
+    """True if this inbound message id was processed before (de-dupe retries)."""
+    if message_id in _wa_seen_ids:
+        return True
+    _wa_seen_ids[message_id] = None
+    while len(_wa_seen_ids) > _WA_SEEN_LIMIT:
+        _wa_seen_ids.popitem(last=False)
+    return False
+
+
+async def _wa_process_message(msg: dict, settings) -> None:
+    """Run the concierge for one inbound WhatsApp text and reply. Best-effort.
+
+    Mirrors the /api/concierge wiring so voice, chat, and WhatsApp share one
+    pipeline. session_id is namespaced ``wa:<wa_id>`` so WhatsApp conversations
+    keep their own multi-turn memory, distinct from web sessions.
+    """
+    from voxtera.call_center.compound import CompoundAndDiscovery
+    from voxtera.call_center.pipeline import ConciergePipeline
+    from voxtera.call_center.resolver import HotelResolver
+    from voxtera.call_center.router import SourceRouter
+    from voxtera.call_center.triage import Triage
+    from voxtera.call_center.web_retriever import WebRetriever
+    from voxtera.whatsapp.client import WhatsAppClient
+
+    wa_id = msg["from"]
+    deps = await _concierge_deps()
+    try:
+        pipeline = ConciergePipeline(
+            session_store=deps["store"],
+            classifier=deps["classifier"],
+            decomposer=deps["decomposer"],
+            triage=Triage(),
+            router=SourceRouter(),
+            compound=CompoundAndDiscovery(session=deps["http"]),
+            resolver=HotelResolver(session=deps["http"]),
+            web_retriever=WebRetriever(),
+            render_fn=deps["render_fn"],
+            web_synth_fn=deps["web_synth_fn"],
+            converse_fn=deps["converse_fn"],
+            web_query_fn=deps["web_query_fn"],
+        )
+        result = await pipeline.run(
+            utterance=msg["text"],
+            session_id=f"wa:{wa_id}",
+            region=settings.default_region,
+        )
+        answer = (result.get("answer") or "").strip() or (
+            "Sorry, I couldn't put together a reply just now."
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[whatsapp] concierge error for {wa_id}: {exc}")
+        answer = "Sorry — something went wrong on our side. Please try again."
+
+    client = WhatsAppClient(settings=settings, session=deps["http"])
+    try:
+        await client.send_text(to=wa_id, body=answer)
+        print(f"[whatsapp] replied to {wa_id} ({len(answer)} chars)")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[whatsapp] send failed for {wa_id}: {exc}")
 
 
 from voxtera.actions import (  # noqa: E402
@@ -1118,6 +1200,9 @@ def _spawn_bot(
     stt_provider: str | None = None,
     dialin_call_id: str | None = None,
     dialin_call_domain: str | None = None,
+    bot_brain: str | None = None,
+    region: str | None = None,
+    channel: str | None = None,
 ) -> subprocess.Popen:
     """Spawn ``python -m voxtera.bot`` as a subprocess for this session.
 
@@ -1136,6 +1221,17 @@ def _spawn_bot(
         env["DAILY_ROOM_NAME"] = room_name
     if stt_provider:
         env["STT_PROVIDER"] = stt_provider
+    if bot_brain:
+        # Selects the answering brain in the bot (hotel | travel_agent | none).
+        env["BOT_BRAIN"] = bot_brain
+    if region is not None:
+        # The travel-agent page's region filter → ConciergePipeline scope.
+        # Empty string = "all regions" (passed through intentionally).
+        env["CONCIERGE_REGION"] = region
+    if channel:
+        # Tags trace events + call records so travel-agent sessions filter
+        # apart from hotel sessions in the admin pages.
+        env["VOXTERA_CHANNEL"] = channel
     if dialin_call_id:
         env["DIALIN_CALL_ID"] = dialin_call_id
     if dialin_call_domain:
@@ -2015,6 +2111,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         # Admin endpoints first; everything else falls through to the static
         # file handler in SimpleHTTPRequestHandler.
+        if self.path.startswith("/whatsapp/webhook"):
+            return self._handle_whatsapp_verify()
         if self.path == "/api/languages":
             return self._handle_languages()
         if self.path == "/api/stt-providers":
@@ -2113,12 +2211,16 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         return None
 
     def do_POST(self):  # noqa: N802
+        if self.path.startswith("/whatsapp/webhook"):
+            return self._handle_whatsapp_webhook()
         if self.path == "/api/tts-test":
             return self._handle_tts_test()
         if self.path == "/api/chat":
             return self._handle_chat()
         if self.path == "/api/concierge":
             return self._handle_concierge()
+        if self.path == "/api/concierge/stream":
+            return self._handle_concierge_stream()
         if self.path == "/api/concierge/replay":
             return self._handle_concierge_replay()
         if self.path == "/api/concierge/feedback":
@@ -3052,16 +3154,22 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         except Exception:
             start_body = {}
 
-        demo_token = (start_body.get("demo_token") or "").strip()
-        if not _validate_demo_token(demo_token) and demo_token not in _load_demo_codes():
-            self._send_json(
-                403,
-                {
-                    "error": "demo_token_required",
-                    "detail": "Voice calls require an access code. Request one for free.",
-                },
-            )
-            return
+        # The travel-agent page is an internal/B2B tool (not the public demo),
+        # so its voice calls are exempt from the public access-code gate. All
+        # other brains (the public hotel demo) still require a valid token/code.
+        # To re-gate travel_agent, remove this branch.
+        _brain_for_gate = (start_body.get("brain") or "").strip().lower()
+        if _brain_for_gate != "travel_agent":
+            demo_token = (start_body.get("demo_token") or "").strip()
+            if not _validate_demo_token(demo_token) and demo_token not in _load_demo_codes():
+                self._send_json(
+                    403,
+                    {
+                        "error": "demo_token_required",
+                        "detail": "Voice calls require an access code. Request one for free.",
+                    },
+                )
+                return
 
         # ------------------------------------------------------------------
         # Busy gate
@@ -3183,10 +3291,24 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         body: dict = start_body
         llm_model = body.get("llm") or None
         stt_provider = body.get("stt") or None
+        # Answering brain: "travel_agent" routes the bot to ConciergePipeline;
+        # anything else (or absent) keeps the default hotel brain. Only the two
+        # known values are honoured so a stray body field can't misconfigure it.
+        brain_raw = (body.get("brain") or "").strip().lower()
+        bot_brain = brain_raw if brain_raw in ("hotel", "travel_agent", "none") else None
+        # Region only matters for the travel_agent brain. Preserve an explicit
+        # empty string ("all regions"); None when the key is absent.
+        region = body.get("region")
+        if not isinstance(region, str):
+            region = None
+        channel = "tra" if bot_brain == "travel_agent" else None
 
         # --- Dynamic room creation ---
         if _DAILY_DYNAMIC_ROOMS and _DAILY_API_KEY:
-            room_name = f"vox-{session_id[:12]}"
+            # Travel-agent sessions get a "tra-" prefix so they're recognisable
+            # in the Daily dashboard / logs; the hotel demo keeps "vox-".
+            _room_prefix = "tra" if bot_brain == "travel_agent" else "vox"
+            room_name = f"{_room_prefix}-{session_id[:12]}"
             try:
                 create_room(
                     api_key=_DAILY_API_KEY,
@@ -3228,6 +3350,9 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 llm_model=llm_model,
                 room_name=room_name,
                 stt_provider=stt_provider,
+                bot_brain=bot_brain,
+                region=region,
+                channel=channel,
             )
         except Exception as exc:
             print(f"[launcher] spawn failed: {exc}")
@@ -5528,6 +5653,7 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 utterance=utterance,
                 session_id=session_id,
                 region=region,
+                brief=bool(body.get("brief")),
             )
 
         try:
@@ -5537,6 +5663,192 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(500, {"error": str(exc)})
             return
         self._send_json(200, result)
+
+    def _handle_whatsapp_verify(self) -> None:
+        """GET /whatsapp/webhook — Meta verification handshake (echo challenge)."""
+        from urllib.parse import parse_qs, urlparse
+
+        try:
+            settings = _wa_settings()
+        except Exception as exc:  # noqa: BLE001
+            self._send_json(500, {"error": f"whatsapp_misconfigured: {exc}"})
+            return
+        q = parse_qs(urlparse(self.path).query)
+        mode = (q.get("hub.mode") or [None])[0]
+        token = (q.get("hub.verify_token") or [None])[0]
+        challenge = (q.get("hub.challenge") or [""])[0]
+        if mode == "subscribe" and token == settings.verify_token:
+            body = challenge.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(403)
+            self.end_headers()
+
+    def _handle_whatsapp_webhook(self) -> None:
+        """POST /whatsapp/webhook — verify signature, ACK fast, process async.
+
+        Meta retries unless answered with 200 quickly, so we ACK immediately and
+        run the concierge + reply on the warm loop in the background. Inbound
+        message ids are de-duplicated so retries don't double-answer.
+        """
+        from voxtera.whatsapp.webhook import extract_text_messages, verify_signature
+
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length) if length > 0 else b""
+        try:
+            settings = _wa_settings()
+        except Exception as exc:  # noqa: BLE001
+            self._send_json(500, {"error": f"whatsapp_misconfigured: {exc}"})
+            return
+        if not verify_signature(
+            app_secret=settings.app_secret,
+            payload=raw,
+            header=self.headers.get("X-Hub-Signature-256"),
+        ):
+            self.send_response(401)
+            self.end_headers()
+            return
+        try:
+            data = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            self.send_response(400)
+            self.end_headers()
+            return
+        for msg in extract_text_messages(data):
+            if _wa_already_seen(msg["id"]):
+                continue
+            asyncio.run_coroutine_threadsafe(_wa_process_message(msg, settings), _concierge_loop())
+        body = b"EVENT_RECEIVED"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_concierge_stream(self) -> None:
+        """POST /api/concierge/stream — SAME ConciergePipeline as /api/concierge,
+        but streams the render token-by-token so the voice bot can start speaking
+        the first sentence mid-render instead of waiting for the full answer.
+
+        Request:  {"utterance", "region", "session_id", "brief"}  (same shape)
+        Response: NDJSON (chunked), in order:
+          {"type": "text",  "chunk": "<delta>"}     # render deltas as generated
+          {"type": "done",  "result": {<full run() dict>}}  # for debug + session
+          {"type": "error", "error": "..."}
+
+        Only the render is streamed (the one LLM step that writes the answer);
+        the upstream stages run identically to /api/concierge, so chat and voice
+        stay the same pipeline. A teeing render_fn pushes deltas onto a
+        thread-safe queue that this HTTP thread drains and writes out.
+        """
+        import queue as _queue_mod
+
+        from voxtera.call_center.compound import CompoundAndDiscovery
+        from voxtera.call_center.concierge import _build_anthropic_render_stream
+        from voxtera.call_center.pipeline import ConciergePipeline
+        from voxtera.call_center.resolver import HotelResolver
+        from voxtera.call_center.router import SourceRouter
+        from voxtera.call_center.triage import Triage
+        from voxtera.call_center.web_retriever import WebRetriever
+
+        body = self._read_json_body()
+        utterance = (body.get("utterance") or "").strip()
+        raw_region = body.get("region")
+        region = raw_region.strip() if isinstance(raw_region, str) else None
+        session_id = (body.get("session_id") or "").strip() or None
+        brief = bool(body.get("brief"))
+
+        self.send_response(200)
+        self._cors_headers()
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+        def push(obj: dict) -> None:
+            line = (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+            self.wfile.write(f"{len(line):x}\r\n".encode() + line + b"\r\n")
+            self.wfile.flush()
+
+        def finish() -> None:
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+
+        if not utterance:
+            push({"type": "error", "error": "utterance_required"})
+            finish()
+            return
+
+        # Thread-safe bridge: the async pipeline (on the concierge loop) puts
+        # ("text"|"done"|"error", value) tuples here; this HTTP thread drains them.
+        bridge: _queue_mod.Queue = _queue_mod.Queue()
+        _sentinel = object()
+        model = os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001")
+
+        async def _run() -> None:
+            try:
+                deps = await _concierge_deps()
+                render_stream = _build_anthropic_render_stream(model)
+
+                async def _teeing_render(payload: dict) -> str:
+                    # Stream deltas to the bridge AND return the joined string so
+                    # ConciergePipeline.run still gets its answer for the result.
+                    parts: list[str] = []
+                    async for delta in render_stream(payload):
+                        parts.append(delta)
+                        bridge.put(("text", delta))
+                    return "".join(parts).strip()
+
+                pipeline = ConciergePipeline(
+                    session_store=deps["store"],
+                    classifier=deps["classifier"],
+                    decomposer=deps["decomposer"],
+                    triage=Triage(),
+                    router=SourceRouter(),
+                    compound=CompoundAndDiscovery(session=deps["http"]),
+                    resolver=HotelResolver(session=deps["http"]),
+                    web_retriever=WebRetriever(),
+                    render_fn=_teeing_render,
+                    web_synth_fn=deps["web_synth_fn"],
+                    converse_fn=deps["converse_fn"],
+                    web_query_fn=deps["web_query_fn"],
+                )
+                result = await pipeline.run(
+                    utterance=utterance,
+                    session_id=session_id,
+                    region=region,
+                    brief=brief,
+                )
+                bridge.put(("done", result))
+            except Exception as exc:  # noqa: BLE001 — surface to the client
+                bridge.put(("error", str(exc)))
+            finally:
+                bridge.put((_sentinel, None))
+
+        asyncio.run_coroutine_threadsafe(_run(), _concierge_loop())
+
+        try:
+            while True:
+                try:
+                    kind, val = bridge.get(timeout=130)
+                except _queue_mod.Empty:
+                    push({"type": "error", "error": "timeout"})
+                    break
+                if kind is _sentinel:
+                    break
+                if kind == "text":
+                    push({"type": "text", "chunk": val})
+                elif kind == "done":
+                    push({"type": "done", "result": val})
+                elif kind == "error":
+                    push({"type": "error", "error": val})
+        except (BrokenPipeError, ConnectionResetError):
+            return  # client hung up mid-stream
+        finish()
 
     def _handle_concierge_feedback(self) -> None:
         """POST /api/concierge/feedback — store a thumbs up/down rating + comment.

@@ -116,20 +116,28 @@ Rules:
   "escalate" (24) only when the caller clearly wants to MAKE/CHANGE a booking
   or transaction now ("book it", "reserve for next weekend"), not when they
   want information or suggestions about tours/trips.
-- "broad" means the guest is looking for a HOTEL/property. When the guest asks
-  WHERE to go or WHICH PLACES are good for an activity — "where can I dive
-  submerged cities?", "which regions have the best Roman ruins?", "where should
-  I go for windsurfing?" — that is query_type "destination" (11): they are
-  asking about PLACES, not properties. The answer can offer hotels afterwards.
-  Use "broad" only when they actually want a hotel ("a hotel with a dive
-  center", "a resort near ancient ruins").
-- The discriminator is WHAT is being recommended, even without the word
-  "where": if the subject is an EXTERNAL attraction or site that no hotel
-  contains — submerged cities, ruins, dive sites, lakes, festivals, hiking
-  trails — it is "destination", even if phrased as "what do you recommend?".
-  "I want to do scuba diving in some submerged cities, what do you recommend?"
-  → destination (they want dive SITES). Only hotel AMENITIES (spa, pool, kids
-  club, all-inclusive) make a recommendation request "broad".
+- "broad" means the guest is looking for a HOTEL/property — and that is the
+  DEFAULT whenever the guest wants somewhere to stay, INCLUDING when they frame
+  it around an activity or interest. Treat the activity/interest as a hotel
+  requirement and search the inventory. "I want to do scuba diving, what do you
+  recommend?" → broad, requirements ["scuba diving", "near dive sites", "water
+  sports"]; "somewhere with Roman ruins nearby" → broad, requirements ["near
+  ancient ruins", "historical sites nearby"]; "where should I go windsurfing?" →
+  broad, requirements ["windsurfing", "water sports"]. We lean on our own hotel
+  inventory first — surface matching properties rather than sending the guest to
+  the open web.
+- Use "hybrid" (hotel_kb + web) when the request hinges on an EXTERNAL site or
+  operator the hotel guide will not contain, but the guest still wants a place to
+  stay — e.g. "a hotel near the best wreck-dive sites", "somewhere close to the
+  Kekova ruins". Hybrid surfaces our hotels AND fills the external gap; prefer it
+  over pure "destination" whenever a stay is implied.
+- Use "destination" (web) ONLY for pure information questions with NO intent to
+  find a place to stay — "what is Cappadocia known for?", "which months are
+  warmest in Antalya?", "what are the main sights in Istanbul?". The moment the
+  guest wants to GO, STAY, or get a recommendation for their trip, it is NOT
+  "destination" — route it to "broad" (or "hybrid" if external-site info is
+  genuinely required). When in doubt between "broad" and "destination", choose
+  "broad".
 - AVAILABILITY questions about a PLACE — "do you have any hotels in Kaş?",
   "what hotels are in that region?", "anything in Torba?" — are query_type
   "broad" with the place in city/district (NEVER "scoped": there is no single

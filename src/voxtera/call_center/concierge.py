@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 import aiohttp
@@ -44,6 +44,9 @@ REASON_RENDER_ERROR = "render_error"
 
 DecomposeFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 RenderFn = Callable[[dict[str, Any]], Awaitable[str]]
+# Streaming render: same payload, but yields answer text deltas as they are
+# generated (for the voice pipeline → sentence-level TTS).
+RenderStreamFn = Callable[[dict[str, Any]], AsyncIterator[str]]
 
 
 # Prompts live in src/voxtera/call_center/prompts/*.md so they can be edited
@@ -236,75 +239,103 @@ def _build_anthropic_decompose(model: str) -> DecomposeFn:
     return decompose
 
 
-def _build_anthropic_render(model: str) -> RenderFn:
-    """Build a render_fn that calls Anthropic with the retrieval payload."""
+def _build_render_user_msg(payload: dict[str, Any]) -> str:
+    """Build the render user message from a retrieval payload.
 
-    async def render(payload: dict[str, Any]) -> str:
-        # Trim retrieval to the fields the model actually needs to stay grounded.
-        retrieval = payload.get("retrieval") or {}
-        hotels_out = []
-        for h in retrieval.get("hotels", []):
-            ev = {
-                req: (chunk.get("text_en") or chunk.get("text") or "")[:280]
-                for req, chunk in (h.get("evidence") or {}).items()
-            }
-            # A passage returned for MORE THAN ONE requirement is a generic blob
-            # (e.g. a single "activities" list backing both "yoga" and "historical
-            # sites") — it does not specifically confirm any of them.
-            from collections import Counter as _Counter
-
-            text_counts = _Counter(t for t in ev.values() if t)
-            generic_reqs = sorted({req for req, t in ev.items() if t and text_counts[t] > 1})
-            hotels_out.append(
-                {
-                    "hotel_id": h["hotel_id"],
-                    "name": (h.get("payload") or {}).get("hotel_name"),
-                    # The hotel's ACTUAL location — so the model states where it really
-                    # is and never invents a city or nearby landmarks.
-                    "location": {
-                        "district": (h.get("payload") or {}).get("district"),
-                        "region": (h.get("payload") or {}).get("region"),
-                        "country": (h.get("payload") or {}).get("country"),
-                    },
-                    "score": round(float(h.get("score", 0.0)), 3),
-                    "evidence": ev,
-                    # Requirements whose only evidence is a reused generic passage —
-                    # do NOT claim the hotel offers these.
-                    "unconfirmed_generic": generic_reqs,
-                }
-            )
-        trimmed = {
-            "reason": retrieval.get("reason"),
-            "missing_requirements": retrieval.get("missing_requirements", []),
-            "hotels": hotels_out,
+    Shared by the streaming and non-streaming render paths so the prompt the
+    model sees is byte-identical regardless of how the answer is consumed.
+    """
+    # Trim retrieval to the fields the model actually needs to stay grounded.
+    retrieval = payload.get("retrieval") or {}
+    hotels_out = []
+    for h in retrieval.get("hotels", []):
+        ev = {
+            req: (chunk.get("text_en") or chunk.get("text") or "")[:280]
+            for req, chunk in (h.get("evidence") or {}).items()
         }
-        language = (payload.get("decomposition") or {}).get("language") or "en"
-        transcript = (payload.get("transcript") or "").strip()
-        convo = f"Conversation so far:\n{transcript}\n\n" if transcript else ""
-        user_msg = (
-            f"Detected language: {language}\n"
-            # This is the region the guest ASKED about — NOT necessarily where a
-            # returned hotel is. Use each hotel's own 'location' for facts.
-            f"Guest's requested region (may differ from a hotel's real "
-            f"location): {payload.get('region')}\n"
-            f"{convo}"
-            f"Guest utterance: {payload.get('utterance')}\n\n"
-            f"Retrieval result (JSON):\n{json.dumps(trimmed, ensure_ascii=False)}"
+        # A passage returned for MORE THAN ONE requirement is a generic blob
+        # (e.g. a single "activities" list backing both "yoga" and "historical
+        # sites") — it does not specifically confirm any of them.
+        from collections import Counter as _Counter
+
+        text_counts = _Counter(t for t in ev.values() if t)
+        generic_reqs = sorted({req for req, t in ev.items() if t and text_counts[t] > 1})
+        hotels_out.append(
+            {
+                "hotel_id": h["hotel_id"],
+                "name": (h.get("payload") or {}).get("hotel_name"),
+                # The hotel's ACTUAL location — so the model states where it really
+                # is and never invents a city or nearby landmarks.
+                "location": {
+                    "district": (h.get("payload") or {}).get("district"),
+                    "region": (h.get("payload") or {}).get("region"),
+                    "country": (h.get("payload") or {}).get("country"),
+                },
+                "score": round(float(h.get("score", 0.0)), 3),
+                "evidence": ev,
+                # Requirements whose only evidence is a reused generic passage —
+                # do NOT claim the hotel offers these.
+                "unconfirmed_generic": generic_reqs,
+            }
         )
+    trimmed = {
+        "reason": retrieval.get("reason"),
+        "missing_requirements": retrieval.get("missing_requirements", []),
+        "hotels": hotels_out,
+    }
+    language = (payload.get("decomposition") or {}).get("language") or "en"
+    transcript = (payload.get("transcript") or "").strip()
+    convo = f"Conversation so far:\n{transcript}\n\n" if transcript else ""
+    return (
+        f"Detected language: {language}\n"
+        # This is the region the guest ASKED about — NOT necessarily where a
+        # returned hotel is. Use each hotel's own 'location' for facts.
+        f"Guest's requested region (may differ from a hotel's real "
+        f"location): {payload.get('region')}\n"
+        f"{convo}"
+        f"Guest utterance: {payload.get('utterance')}\n\n"
+        f"Retrieval result (JSON):\n{json.dumps(trimmed, ensure_ascii=False)}"
+    )
+
+
+def _build_anthropic_render_stream(model: str) -> RenderStreamFn:
+    """Build a streaming render_fn that yields answer text deltas as Anthropic
+    generates them.
+
+    Used by the voice pipeline so TTS can start speaking the first sentence
+    while the rest of the answer is still being written, instead of waiting for
+    the full (≤512-token) reply. The non-streaming :func:`_build_anthropic_render`
+    consumes this same generator, so both paths share one code path and one
+    prompt.
+    """
+
+    async def render_stream(payload: dict[str, Any]):
+        user_msg = _build_render_user_msg(payload)
+        # Voice channel sends "brief": true → a shorter, spoken-style answer from
+        # the external travel_agent_voice_render_brief.md prompt (editable, like
+        # the rest). Chat omits it and gets the full concierge_render.md.
+        # max_tokens is higher than a one-liner on purpose — "selling a dream,
+        # not a fridge".
+        brief = bool(payload.get("brief"))
+        prompt_name = "travel_agent_voice_render_brief" if brief else "concierge_render"
+        max_tokens = 320 if brief else 512
         client = _anthropic()  # shared, connection pool kept warm
-        msg = await client.messages.create(
+        async with client.messages.stream(
             model=model,
-            max_tokens=512,
+            max_tokens=max_tokens,
             system=[
                 {
                     "type": "text",
-                    "text": _with_persona("concierge_render"),
+                    "text": _with_persona(prompt_name),
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
             messages=[{"role": "user", "content": user_msg}],
-        )
-        usage = _extract_usage(msg)
+        ) as stream:
+            async for delta in stream.text_stream:
+                yield delta
+            final = await stream.get_final_message()
+        usage = _extract_usage(final)
         # render latency tracks output_tokens; stop_reason == "max_tokens" means
         # the answer is being truncated at the 512 cap. cache_read confirms the
         # render system prompt cache is hitting.
@@ -313,9 +344,26 @@ def _build_anthropic_render(model: str) -> RenderFn:
             usage.get("input_tokens"),
             usage.get("output_tokens"),
             usage.get("cache_read_input_tokens"),
-            getattr(msg, "stop_reason", None),
+            getattr(final, "stop_reason", None),
         )
-        return _first_text_block(msg).strip()
+
+    return render_stream
+
+
+def _build_anthropic_render(model: str) -> RenderFn:
+    """Build a render_fn that calls Anthropic with the retrieval payload and
+    returns the full answer string.
+
+    Used by the synchronous ``/api/concierge`` JSON endpoint. Internally it
+    drains the streaming render so the two paths never diverge.
+    """
+    render_stream = _build_anthropic_render_stream(model)
+
+    async def render(payload: dict[str, Any]) -> str:
+        parts: list[str] = []
+        async for delta in render_stream(payload):
+            parts.append(delta)
+        return "".join(parts).strip()
 
     return render
 

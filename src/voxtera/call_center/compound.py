@@ -96,6 +96,21 @@ class CompoundAndDiscovery:
             return self._empty(region, requirements, normalized, REASON_ERROR)
 
         result = self._intersect(region, requirements, normalized, per_req)
+        # Confirmation pass: the strict intersection above only looks at the
+        # top-K hotels PER requirement, so a hotel can be dropped from a
+        # requirement it actually satisfies (e.g. Moyo has a spa but isn't in the
+        # top-K for "spa", which competes against every hotel). For each dropped
+        # requirement, scope-check the SURVIVING hotels against their own chunks
+        # — the same scoped query that answers "does Moyo have a spa?" — and
+        # confirm where the evidence is genuinely there. This makes broad and
+        # scoped agree instead of contradicting each other. Only runs on a
+        # partial match, so the common (full-match / no-match) paths pay nothing.
+        if (
+            result.get("reason") == REASON_PARTIAL_MATCH
+            and result.get("missing_requirements")
+            and result.get("hotels")
+        ):
+            await self._confirm_missing(result, region, rerank=rerank)
         # Aggregate per-requirement timings: embed/qdrant run in parallel so
         # the wall-time is dominated by the slowest leg.
         embed = [t.get("timings", {}).get("embed_ms", 0.0) for t in per_req]
@@ -148,6 +163,58 @@ class CompoundAndDiscovery:
             for req in requirements
         ]
         return await asyncio.gather(*tasks)
+
+    async def _confirm_missing(self, result: dict[str, Any], region: str, *, rerank: bool) -> None:
+        """Back-fill dropped requirements by scope-checking the surviving hotels.
+
+        Mutates ``result`` in place: for each requirement in
+        ``missing_requirements``, runs a scoped ``discover`` (hotel_id-filtered)
+        against each surviving hotel — the same path used to answer a question
+        about a specific hotel — and, where the hotel genuinely matches, attaches
+        the evidence chunk to that hotel and removes the requirement from the
+        global ``missing_requirements``. A requirement stays missing only if NO
+        survivor confirms it. If everything is confirmed, the reason is cleared
+        (the result is now a full match).
+        """
+        survivors: list[dict[str, Any]] = result.get("hotels") or []
+        missing: list[str] = list(result.get("missing_requirements") or [])
+        if not survivors or not missing:
+            return
+
+        still_missing: list[str] = []
+        for req in missing:
+            # Scoped check per survivor, in parallel. discover(hotel_id=…) applies
+            # the same min_score / rerank gates as the broad search, so a
+            # confirmation here means the same thing a scoped query would.
+            tasks = [
+                self._discovery.discover(
+                    region=region, query=req, hotel_id=h["hotel_id"], rerank=rerank
+                )
+                for h in survivors
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            confirmed_any = False
+            for hotel, res in zip(survivors, results, strict=False):
+                if isinstance(res, BaseException) or not isinstance(res, dict):
+                    continue
+                hit = next(
+                    (
+                        hh
+                        for hh in (res.get("hotels") or [])
+                        if hh.get("hotel_id") == hotel["hotel_id"]
+                    ),
+                    None,
+                )
+                if hit is not None:
+                    hotel.setdefault("evidence", {})[req] = hit.get("evidence_chunk")
+                    confirmed_any = True
+            if not confirmed_any:
+                still_missing.append(req)
+
+        result["missing_requirements"] = still_missing
+        if not still_missing:
+            # Every requirement is now backed by evidence on at least one hotel.
+            result["reason"] = None
 
     def _intersect(
         self,

@@ -375,6 +375,59 @@ details.debug summary:hover{color:var(--accent);}
   .debug-grid{grid-template-columns:1fr;}
   .bubble{max-width:96%;}
 }
+
+/* ============ VOICE ORB (tap to talk to the concierge) ============ */
+.voice-row{
+  display:flex; align-items:center; gap:0.85rem;
+  margin:0 0 0.85rem 0;
+}
+.ta-orb{
+  position:relative; flex:0 0 auto;
+  width:64px; height:64px; border-radius:50%;
+  border:none; padding:0; cursor:pointer; background:transparent;
+  display:inline-flex; align-items:center; justify-content:center;
+  -webkit-tap-highlight-color:transparent;
+}
+.ta-orb-core{
+  position:absolute; inset:0; border-radius:50%;
+  background:
+    radial-gradient(circle at 30% 30%, var(--cream) 0%, var(--paper) 22%, transparent 52%),
+    conic-gradient(from 180deg at 50% 50%,
+      var(--gold-light) 0deg, var(--gold) 60deg, var(--gold-deep) 120deg,
+      var(--rust-soft) 180deg, var(--rust) 220deg, var(--gold-deep) 280deg,
+      var(--gold) 320deg, var(--gold-light) 360deg);
+  box-shadow:
+    inset 0 0 24px rgba(255,245,220,0.45),
+    inset 0 -8px 20px rgba(164,57,28,0.25),
+    0 8px 22px -8px rgba(184,136,74,0.55);
+  animation:ta-orb-spin 22s linear infinite;
+}
+@keyframes ta-orb-spin{ from{transform:rotate(0)} to{transform:rotate(360deg)} }
+.ta-orb-icon{ position:relative; width:22px; height:22px; color:var(--ink);
+  transition:transform 0.3s ease; }
+.ta-orb.in-call .ta-orb-icon{ transform:rotate(135deg); }
+/* dynamic states (set by JS) */
+.ta-orb.listening .ta-orb-core{
+  box-shadow:
+    inset 0 0 24px rgba(255,245,220,0.45),
+    0 0 0 4px rgba(31,110,106,0.20),
+    0 8px 22px -8px rgba(31,110,106,0.6);
+  animation:ta-orb-spin 22s linear infinite, ta-orb-pulse 1.4s ease-in-out infinite;
+}
+.ta-orb.speaking .ta-orb-core{
+  box-shadow:
+    inset 0 0 28px rgba(255,245,220,0.55),
+    0 0 0 5px rgba(164,57,28,0.18),
+    0 8px 22px -8px rgba(164,57,28,0.6);
+  animation:ta-orb-spin 14s linear infinite, ta-orb-pulse 0.55s ease-in-out infinite;
+}
+@keyframes ta-orb-pulse{ 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
+.ta-orb:disabled{ opacity:0.55; cursor:default; }
+.voice-status{
+  font-size:0.78rem; color:var(--ink-soft); letter-spacing:0.01em;
+}
+.voice-status strong{ color:var(--accent-deep); font-weight:600; }
+@media (max-width:560px){ .ta-orb{width:56px;height:56px;} }
 </style>
 </head>
 <body>
@@ -449,6 +502,17 @@ details.debug summary:hover{color:var(--accent);}
 </main>
 
 <div class="input-bar-wrap">
+  <!-- Voice: tap the orb to talk to the concierge (Daily WebRTC + ConciergePipeline). -->
+  <audio id="remote-audio" autoplay playsinline style="display:none"></audio>
+  <div class="voice-row">
+    <button class="ta-orb" id="orb-call" type="button" aria-label="Start voice call" title="Talk to the concierge">
+      <span class="ta-orb-core" aria-hidden="true"></span>
+      <svg class="ta-orb-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.18z"/>
+      </svg>
+    </button>
+    <span class="voice-status" id="voice-status">Tap the orb to talk — or type below.</span>
+  </div>
   <div class="suggestions" id="suggestions" aria-label="Suggested questions">
     <button class="chip" data-prompt="Quiet spa hotel with a kids' club and sea view">Spa + kids' club + sea view</button>
     <button class="chip" data-prompt="Family-friendly resort with all-inclusive and water park">All-inclusive + water park</button>
@@ -470,6 +534,7 @@ details.debug summary:hover{color:var(--accent);}
   <div class="footnote">Powered by Voxtera concierge agent · evidence-cited · no hallucinated amenities.</div>
 </div>
 
+<script src="https://unpkg.com/@daily-co/daily-js"></script>
 <script>
 const thread     = document.getElementById('thread');
 const placeholder= document.getElementById('placeholder');
@@ -828,6 +893,199 @@ form.addEventListener('submit', (e) => {
   input.value = '';
   input.style.height = 'auto';
   ask(v);
+});
+
+/* =====================================================================
+ * VOICE — tap the orb to talk to the concierge over Daily WebRTC.
+ * Mirrors voxtera-demo.html's orb flow, trimmed: server-side STT/LLM/TTS
+ * run in the bot (BOT_BRAIN=travel_agent → ConciergePipeline). The browser
+ * only streams mic up and renders the bot's app-messages into the thread.
+ * ===================================================================== */
+const orbCall    = document.getElementById('orb-call');
+const remoteAudio= document.getElementById('remote-audio');
+const voiceStatus= document.getElementById('voice-status');
+let _dailyCallObj = null;
+let _dailySessionId = null;
+let _inCall = false;
+// Holds the concierge result the bot ships over the data channel just before
+// its bot-reply, so we can attach debug + evidence cards to the spoken bubble.
+let _pendingConcierge = null;
+
+function _regionLabel(){
+  return regionPick.options[regionPick.selectedIndex]?.text || 'All regions';
+}
+function setOrbState(state){
+  orbCall.classList.remove('listening', 'speaking');
+  if (state) orbCall.classList.add(state);
+}
+function setVoiceStatus(html){ voiceStatus.innerHTML = html; }
+
+orbCall.addEventListener('click', () => {
+  if (_inCall) _endVoiceCall(true);
+  else _startVoiceCall();
+});
+
+async function _startVoiceCall(){
+  if (!window.DailyIframe){
+    setVoiceStatus('<strong>Voice unavailable.</strong> Please refresh.');
+    return;
+  }
+  orbCall.disabled = true;
+  setOrbState('listening');
+  setVoiceStatus('<strong>Starting voice session…</strong>');
+
+  // Resume AudioContext inside the user gesture so Safari allows playback.
+  try {
+    const _ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (_ac.state === 'suspended') _ac.resume();
+  } catch (_) {}
+
+  let roomUrl, sessionId;
+  try {
+    const resp = await fetch('/api/start-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        brain: 'travel_agent',
+        region: regionPick.value,            // "" = all regions
+        language: 'multi',                   // concierge auto-detects 99 languages
+        llm: 'claude-haiku-4-5',
+        session_id: sessionStorage.getItem('voxtera_concierge_sid') || undefined
+      })
+    });
+    if (resp.status === 409){
+      setVoiceStatus('<strong>Line busy.</strong> Another call is active — try again shortly.');
+      orbCall.disabled = false; setOrbState(''); return;
+    }
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    roomUrl   = data.room_url;
+    sessionId = data.session_id;
+  } catch (e){
+    setVoiceStatus('<strong>Could not start:</strong> ' + e.message);
+    orbCall.disabled = false; setOrbState(''); return;
+  }
+  _dailySessionId = sessionId;
+
+  _dailyCallObj = window.DailyIframe.createCallObject({ audioSource: true, videoSource: false });
+  let _readySent = false;
+  function _sendReady(){
+    if (!_readySent && _dailyCallObj){
+      _readySent = true;
+      _dailyCallObj.sendAppMessage({ type: 'voxtera-ready' }, '*');
+    }
+  }
+
+  _dailyCallObj.on('participant-joined', (evt) => {
+    if (!evt.participant.local){
+      // Tell the bot which language/model to use before it greets.
+      _dailyCallObj.sendAppMessage({ type: 'voxtera-language', language: 'multi' }, '*');
+      _dailyCallObj.sendAppMessage({ type: 'voxtera-timezone', tz: (Intl.DateTimeFormat().resolvedOptions().timeZone || '') }, '*');
+      _dailyCallObj.sendAppMessage({ type: 'voxtera-model',    model: 'claude-haiku-4-5' }, '*');
+      setTimeout(_sendReady, 4000); // fallback greeting trigger
+    }
+  });
+
+  _dailyCallObj.on('app-message', (evt) => {
+    const msg = evt.data;
+    if (!msg || msg.type !== 'voxtera-event') return;
+    // The bot ships the full concierge result just before its bot-reply. Stash
+    // it; the bot-reply below renders it onto the bubble (same cards as chat).
+    if (msg.event === 'concierge-result'){
+      _pendingConcierge = msg.data || null;
+      return;
+    }
+    const text = (msg.data && msg.data.text) ? msg.data.text : '';
+    if (msg.event === 'user-transcript' && text){
+      addBubble('user', 'You · ' + _regionLabel(), text);
+    } else if (msg.event === 'bot-reply' && text){
+      const bub = addBubble('assistant', 'Concierge', text);
+      // Attach debug drawer + evidence cards from the result the bot just sent —
+      // exactly what the chat path renders, no second pipeline call.
+      if (_pendingConcierge){
+        const d = _pendingConcierge; _pendingConcierge = null;
+        try {
+          if (d.retrieval){ renderHotels(d.retrieval, bub); renderWeb(d.retrieval, bub); }
+          renderDebug(d, bub);
+        } catch (e){ /* debug render is best-effort — never break the bubble */ }
+      }
+    } else if (msg.event === 'bot-speaking'){
+      setOrbState('speaking'); setVoiceStatus('<strong>Concierge is speaking…</strong>');
+    } else if (msg.event === 'bot-done-speaking'){
+      setOrbState('listening'); setVoiceStatus('<strong>Listening…</strong> Speak naturally. Tap the orb to end.');
+    }
+  });
+
+  _dailyCallObj.on('track-started', (evt) => {
+    if (!evt.participant.local && evt.track && evt.track.kind === 'audio'){
+      try {
+        remoteAudio.srcObject = new MediaStream([evt.track]);
+        remoteAudio.play().then(_sendReady).catch(_sendReady);
+      } catch (_) { _sendReady(); }
+      setOrbState('listening');
+      setVoiceStatus('<strong>Listening…</strong> Speak naturally. Tap the orb to end.');
+    }
+  });
+
+  _dailyCallObj.on('participant-left', (evt) => { if (!evt.participant.local) _endVoiceCall(false); });
+  _dailyCallObj.on('left-meeting', () => _cleanupCall());
+  _dailyCallObj.on('error', (e) => {
+    setVoiceStatus('<strong>Call error:</strong> ' + (e.errorMsg || 'unknown'));
+    _endVoiceCall(true);
+  });
+
+  try {
+    await _dailyCallObj.join({ url: roomUrl, startAudioOff: false, userName: 'Traveller' });
+  } catch (e){
+    setVoiceStatus('<strong>Failed to join:</strong> ' + e.message);
+    _endVoiceCall(true); return;
+  }
+
+  _inCall = true;
+  orbCall.disabled = false;
+  orbCall.classList.add('in-call');
+  orbCall.setAttribute('aria-label', 'End voice call');
+  setOrbState('listening');
+  setVoiceStatus('<strong>Listening…</strong> Speak naturally. Tap the orb to end.');
+}
+
+async function _endVoiceCall(alsoHitServer = true){
+  _inCall = false;
+  orbCall.classList.remove('in-call');
+  orbCall.setAttribute('aria-label', 'Start voice call');
+  orbCall.disabled = false;
+  remoteAudio.pause(); remoteAudio.srcObject = null;
+  if (_dailyCallObj){
+    try { await _dailyCallObj.leave(); } catch (_) {}
+    try { _dailyCallObj.destroy(); } catch (_) {}
+    _dailyCallObj = null;
+  }
+  if (alsoHitServer && _dailySessionId){
+    try {
+      await fetch('/api/end-session', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: _dailySessionId })
+      });
+    } catch (_) {}
+  }
+  _dailySessionId = null;
+  setOrbState('');
+  setVoiceStatus('Voice session ended. Tap the orb to talk again.');
+}
+
+function _cleanupCall(){
+  _inCall = false;
+  orbCall.classList.remove('in-call');
+  orbCall.disabled = false;
+  setOrbState('');
+}
+
+// End the call cleanly if the tab is closed mid-session (stops Daily billing).
+window.addEventListener('pagehide', () => {
+  if (_dailySessionId){
+    const payload = JSON.stringify({ session_id: _dailySessionId });
+    navigator.sendBeacon('/api/end-session', new Blob([payload], { type: 'application/json' }));
+  }
 });
 </script>
 </body>

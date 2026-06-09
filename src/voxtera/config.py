@@ -90,7 +90,20 @@ class Settings:
     # Pipeline idle timeout in seconds. `None` disables idle cancellation.
     # Demo sessions often include long pauses while users reload browser UI.
     pipeline_idle_timeout_secs: float | None = None
+    # Which "brain" answers each turn. Supersedes ``rag_enabled``:
+    #   "hotel"        — RAGContextInjector + streaming LLM over the hotel KB
+    #                    (current default; honours RAG_ENABLED).
+    #   "travel_agent" — ConciergePipeline (the travel-agent multi-stage agent
+    #                    over ES/Qdrant; backs /api/concierge). Hotel RAG
+    #                    injector is off. Named for the channel it serves
+    #                    (travel-agent.html), distinct from the hotel bot which
+    #                    also self-describes as a "concierge".
+    #   "none"         — bare LLM, no RAG (isolates brain vs. transport issues).
+    # Set via BOT_BRAIN env. See docs/voice-on-travel-agent-plan.md §3.
+    bot_brain: str = "hotel"
     # RAG: inject hotel knowledge into LLM context before each turn.
+    # Derived from bot_brain in from_env(): true only when bot_brain == "hotel"
+    # AND RAG_ENABLED is set. Do not set directly — set BOT_BRAIN instead.
     rag_enabled: bool = False
     hotel_id: str = "demo"
     # Number of chunks RAG injects into the LLM context. Each chunk costs
@@ -304,6 +317,12 @@ def load_settings() -> Settings:
         "GLADIA_CODE_SWITCH_LANGUAGES", ""
     )
 
+    _bot_brain = os.environ.get("BOT_BRAIN", "hotel").strip().lower()
+    if _bot_brain not in {"hotel", "travel_agent", "none"}:
+        raise ValueError(
+            f"BOT_BRAIN must be one of 'hotel', 'travel_agent', 'none' — got {_bot_brain!r}"
+        )
+
     return Settings(
         anthropic_api_key=_require("ANTHROPIC_API_KEY"),
         openai_api_key=_require("OPENAI_API_KEY"),
@@ -336,7 +355,14 @@ def load_settings() -> Settings:
             os.environ.get("INTERRUPTION_RESUME_WINDOW_SECS", "5.0")
         ),
         pipeline_idle_timeout_secs=idle_timeout_secs,
-        rag_enabled=os.environ.get("RAG_ENABLED", "false").lower() in ("1", "true", "yes"),
+        bot_brain=_bot_brain,
+        # rag_enabled is derived: the hotel RAG injector only runs for the
+        # "hotel" brain. concierge/none brains turn it off so the injector and
+        # ConciergePipeline never both fire on one turn.
+        rag_enabled=(
+            _bot_brain == "hotel"
+            and os.environ.get("RAG_ENABLED", "false").lower() in ("1", "true", "yes")
+        ),
         hotel_id=os.environ.get("HOTEL_ID", "demo"),
         rag_top_k=int(os.environ.get("RAG_TOP_K", "3")),
         rag_min_score=float(os.environ.get("RAG_MIN_SCORE", "0.25")),

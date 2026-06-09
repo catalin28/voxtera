@@ -1377,15 +1377,33 @@ def build_pipeline(
     # message — never the cached system prompt — so Anthropic prompt caching
     # still hits. Added in every transport mode; with no browser timezone it
     # falls back to the server's own clock.
-    from voxtera.time_context import TimeContextInjector
+    #
+    # Skipped for the travel_agent brain: its TravelAgentBrain reads the raw
+    # utterance out of the LLMContext and feeds it to ConciergePipeline, which
+    # does its own decomposition — an appended "[current time …]" note would
+    # pollute that utterance. The concierge has its own time handling where it
+    # matters.
+    if settings.bot_brain != "travel_agent":
+        from voxtera.time_context import TimeContextInjector
 
-    processors.append(TimeContextInjector())
+        processors.append(TimeContextInjector())
 
-    processors.extend(
-        [
-            llm,
-        ]
-    )
+    # Answering brain: the hotel LLM, or the ConciergePipeline-backed
+    # TravelAgentBrain when BOT_BRAIN=travel_agent. The brain emits the same
+    # LLMFullResponseStart/LLMText/LLMFullResponseEnd frames the LLM does, so
+    # everything downstream (TTS, DemoEventBroadcaster, assistant aggregator)
+    # is unchanged. ``llm`` is still built above but simply not appended here.
+    if settings.bot_brain == "travel_agent":
+        from voxtera.travel_agent_brain import TravelAgentBrain
+
+        processors.append(TravelAgentBrain())
+        logger.info("[brain] BOT_BRAIN=travel_agent → ConciergePipeline answers each turn")
+    else:
+        processors.extend(
+            [
+                llm,
+            ]
+        )
     if _probing:
         processors.append(PipelineProbe("after_llm"))
     processors.append(

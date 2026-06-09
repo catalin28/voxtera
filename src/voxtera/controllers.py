@@ -891,23 +891,46 @@ class InstantAckFiller(FrameProcessor):
 
         if isinstance(frame, TranscriptionFrame) and direction == FrameDirection.DOWNSTREAM:
             text = (getattr(frame, "text", "") or "").strip()
-            # Skip trivially short turns — see the class docstring.
-            if len(text.split()) >= self._min_words:
-                lang_code = self._lang_code(getattr(frame, "language", None)) or self._last_lang
-                if lang_code:
+            raw_lang = getattr(frame, "language", None)
+            words = len(text.split())
+            # Every transcript is a potential trigger — log the decision so the
+            # filler's behaviour is visible in the chain. One of: FIRED, or
+            # SKIP(reason). Reasons: too_short | no_language | no_pool:<lang>.
+            if words < self._min_words:
+                logger.info(
+                    "[filler] SKIP too_short ({} word(s) < {}) text={!r}",
+                    words,
+                    self._min_words,
+                    text,
+                )
+            else:
+                lang_code = self._lang_code(raw_lang) or self._last_lang
+                if not lang_code:
+                    logger.info(
+                        "[filler] SKIP no_language (frame.language={!r}, no prior) text={!r}",
+                        raw_lang,
+                        text,
+                    )
+                else:
                     phrase = self._pick(lang_code)
-                    if phrase:
+                    if not phrase:
+                        logger.info(
+                            "[filler] SKIP no_pool for lang={!r} (frame.language={!r})",
+                            lang_code,
+                            raw_lang,
+                        )
+                    else:
                         self._last_lang = lang_code
-                        logger.info("[filler] lang={!r} → {!r}", lang_code, phrase)
+                        logger.info(
+                            "[filler] FIRED lang={!r} → {!r} (trigger={!r})",
+                            lang_code,
+                            phrase,
+                            text,
+                        )
                         # Push the filler downstream FIRST so it races ahead
                         # toward the TTS while the transcript below still has
                         # to traverse the context aggregator + LLM.
                         await self.push_frame(TTSSpeakFrame(text=phrase), FrameDirection.DOWNSTREAM)
-                    else:
-                        logger.debug(
-                            "[filler] no curated pool for language {!r} — staying silent",
-                            lang_code,
-                        )
 
         await self.push_frame(frame, direction)
 

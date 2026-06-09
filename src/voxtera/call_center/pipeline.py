@@ -864,12 +864,16 @@ class ConciergePipeline:
         utterance: str,
         session_id: str | None = None,
         region: str | None = None,
+        brief: bool = False,
     ) -> dict[str, Any]:
         utterance = (utterance or "").strip()
         # When the user explicitly selects "All regions" the caller sends
         # region="" (empty string).  We distinguish that from region=None
         # (not provided) so we can suppress the decomposer's inferred region.
         self._user_region_override = region
+        # Voice channel sets brief=True → the render step uses the short,
+        # spoken-style prompt (travel_agent_voice_render_brief.md). Read in _render.
+        self._brief = brief
         sid = session_id or new_session_id()
         t_start = time.perf_counter()
         timings: dict[str, float] = {}
@@ -2032,6 +2036,7 @@ class ConciergePipeline:
                     "decomposition": decomposition,
                     "retrieval": retrieval or {},
                     "transcript": build_transcript(session.get("history")),
+                    "brief": getattr(self, "_brief", False),
                 }
             )
         except Exception as e:  # noqa: BLE001
