@@ -12,6 +12,12 @@ HOTEL_ID="${HOTEL_ID:-demo}"
 CONTENT_DIR="${CONTENT_DIR:-/opt/voxtera/app/demo-hotel}"
 PSTN_WEBHOOK_URL="${PSTN_WEBHOOK_URL:-https://voxtera.io/pstn/webhook}"
 CONFIGURE_PINLESS_DIALIN="${CONFIGURE_PINLESS_DIALIN:-true}"
+# WhatsApp channel (text + voice calls) — one async service on WHATSAPP_PORT,
+# fronted by the reverse proxy at voxtera.io/whatsapp/*.
+WHATSAPP_SERVICE_NAME="${WHATSAPP_SERVICE_NAME:-voxtera-whatsapp}"
+WHATSAPP_PORT="${WHATSAPP_PORT:-8200}"
+CADDYFILE="${CADDYFILE:-/etc/caddy/Caddyfile}"
+CONFIGURE_CADDY="${CONFIGURE_CADDY:-true}"
 
 INGEST_RAG="true"
 SKIP_SYNC="false"
@@ -31,6 +37,10 @@ Options:
   --env-file <remote-path>    Remote env file path (default: /etc/voxtera/voxtera.env)
   --hotel-id <id>             Hotel id for ingest (default: demo)
   --content-dir <remote-path> Content folder for ingest (default: /opt/voxtera/app/demo-hotel)
+  --whatsapp-service <name>   WhatsApp systemd service name (default: voxtera-whatsapp)
+  --whatsapp-port <port>      WhatsApp service port (default: 8200)
+  --caddyfile <remote-path>   Caddyfile to route /whatsapp/* (default: /etc/caddy/Caddyfile)
+  --skip-caddy                Do not touch the Caddyfile (print the route snippet instead)
   --skip-ingest               Do not run RAG ingest
   --skip-sync                 Do not rsync files (restart/install only)
   -h, --help                  Show this help
@@ -75,6 +85,22 @@ while [[ $# -gt 0 ]]; do
     --content-dir)
       CONTENT_DIR="$2"
       shift 2
+      ;;
+    --whatsapp-service)
+      WHATSAPP_SERVICE_NAME="$2"
+      shift 2
+      ;;
+    --whatsapp-port)
+      WHATSAPP_PORT="$2"
+      shift 2
+      ;;
+    --caddyfile)
+      CADDYFILE="$2"
+      shift 2
+      ;;
+    --skip-caddy)
+      CONFIGURE_CADDY="false"
+      shift
       ;;
     --skip-ingest)
       INGEST_RAG="false"
@@ -210,6 +236,97 @@ echo "==> Health checks"
 ssh "${HOST}" "systemctl --no-pager --full status '${UI_SERVICE_NAME}' | head -n 25"
 ssh "${HOST}" "journalctl -u '${UI_SERVICE_NAME}' -n 20 --no-pager | egrep 'error|FATAL|Fatal' || true"
 
+# --------------------------------------------------------------------------
+# WhatsApp channel service (text concierge + voice calls), on WHATSAPP_PORT.
+# Generated inline so the unit always matches the deploy variables.
+# --------------------------------------------------------------------------
+echo "==> Installing/updating ${WHATSAPP_SERVICE_NAME} systemd service (port ${WHATSAPP_PORT})"
+ssh "${HOST}" "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_USER='${REMOTE_USER}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' WHATSAPP_SERVICE_NAME='${WHATSAPP_SERVICE_NAME}' WHATSAPP_PORT='${WHATSAPP_PORT}' bash -s" <<'REMOTE_WA'
+set -e
+UNIT="/etc/systemd/system/${WHATSAPP_SERVICE_NAME}.service"
+cat > "$UNIT" <<UNITEOF
+[Unit]
+Description=Voxtera WhatsApp channel (text + voice calls)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${REMOTE_USER}
+WorkingDirectory=${REMOTE_APP_DIR}
+EnvironmentFile=${REMOTE_ENV_FILE}
+Environment=WHATSAPP_PORT=${WHATSAPP_PORT}
+ExecStart=/home/${REMOTE_USER}/.local/bin/uv run python -m voxtera.whatsapp
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+systemctl daemon-reload
+systemctl enable "${WHATSAPP_SERVICE_NAME}"
+# Free the port in case a stale instance is bound, then (re)start.
+fuser -k "${WHATSAPP_PORT}/tcp" 2>/dev/null || true
+systemctl restart "${WHATSAPP_SERVICE_NAME}"
+REMOTE_WA
+
+echo "==> ${WHATSAPP_SERVICE_NAME} health check"
+ssh "${HOST}" "systemctl --no-pager --full status '${WHATSAPP_SERVICE_NAME}' | head -n 15"
+ssh "${HOST}" "journalctl -u '${WHATSAPP_SERVICE_NAME}' -n 20 --no-pager | egrep -i 'error|FATAL|Traceback' || true"
+
+# --------------------------------------------------------------------------
+# Reverse proxy: route voxtera.io/whatsapp/* to the WhatsApp service.
+# Safe + idempotent: backs up the Caddyfile, inserts the route inside the
+# voxtera.io site block, validates, reloads, and rolls back on failure.
+# --------------------------------------------------------------------------
+if [[ "$CONFIGURE_CADDY" == "true" ]]; then
+  echo "==> Ensuring Caddy routes /whatsapp/* → localhost:${WHATSAPP_PORT}"
+  ssh "${HOST}" "CADDYFILE='${CADDYFILE}' WHATSAPP_PORT='${WHATSAPP_PORT}' bash -s" <<'REMOTE_CADDY'
+set -e
+ROUTE="reverse_proxy /whatsapp/* localhost:${WHATSAPP_PORT}"
+if [[ ! -f "$CADDYFILE" ]]; then
+  echo "    WARNING: $CADDYFILE not found. Add this inside your voxtera.io site block manually:"
+  echo "        $ROUTE"
+  exit 0
+fi
+if grep -qF "$ROUTE" "$CADDYFILE"; then
+  echo "    Route already present — nothing to do."
+  exit 0
+fi
+BACKUP="${CADDYFILE}.bak.$(date +%s)"
+cp "$CADDYFILE" "$BACKUP"
+# Insert the route on the line right after the 'voxtera.io ... {' block opener.
+awk -v route="    ${ROUTE}" '
+  !ins && $0 ~ /voxtera\.io[^{]*\{[[:space:]]*$/ { print; print route; ins=1; next }
+  { print }
+  END { if (!ins) exit 3 }
+' "$CADDYFILE" > "${CADDYFILE}.new" || {
+  echo "    WARNING: no 'voxtera.io {' opener found. Add this inside that block manually:"
+  echo "        $ROUTE"
+  rm -f "${CADDYFILE}.new"
+  exit 0
+}
+if command -v caddy >/dev/null 2>&1; then
+  if ! caddy validate --adapter caddyfile --config "${CADDYFILE}.new" >/dev/null 2>&1; then
+    echo "    ERROR: caddy validate failed — keeping the original Caddyfile."
+    rm -f "${CADDYFILE}.new"
+    exit 1
+  fi
+fi
+mv "${CADDYFILE}.new" "$CADDYFILE"
+if ! { systemctl reload caddy 2>/dev/null || caddy reload --adapter caddyfile --config "$CADDYFILE" 2>/dev/null; }; then
+  echo "    ERROR: Caddy reload failed — restoring backup."
+  cp "$BACKUP" "$CADDYFILE"
+  systemctl reload caddy 2>/dev/null || true
+  exit 1
+fi
+echo "    Route added and Caddy reloaded (backup: $BACKUP)."
+REMOTE_CADDY
+else
+  echo "==> Skipping Caddy config (add manually inside voxtera.io block):"
+  echo "        reverse_proxy /whatsapp/* localhost:${WHATSAPP_PORT}"
+fi
+
 echo "==> Conflict guard — verifying standalone bot is NOT running"
 BOT_ACTIVE=$(ssh "${HOST}" "systemctl is-active '${SERVICE_NAME}' 2>/dev/null || true")
 if [[ "$BOT_ACTIVE" == "active" ]]; then
@@ -218,6 +335,31 @@ if [[ "$BOT_ACTIVE" == "active" ]]; then
   exit 1
 fi
 echo "    OK — ${SERVICE_NAME} is not running (status: ${BOT_ACTIVE})"
+
+# --------------------------------------------------------------------------
+# Post-deploy smoke test: hit the public WhatsApp webhook handshake exactly
+# as Meta does. A correct echo proves the Caddy route + the WhatsApp service
+# + the verify token are all live end-to-end.
+# --------------------------------------------------------------------------
+echo "==> Verifying WhatsApp webhook at https://voxtera.io/whatsapp/webhook"
+WA_VERIFY_TOKEN=""
+if [[ -f .env ]]; then
+  WA_VERIFY_TOKEN=$(grep -E '^WHATSAPP_WEBHOOK_VERIFY_TOKEN=' .env | head -1 | cut -d= -f2- | tr -d '\r"' | tr -d "'" | xargs || true)
+fi
+if [[ -n "${WA_VERIFY_TOKEN}" ]]; then
+  WA_NONCE="vxq$(date +%s)"
+  WA_RESP=$(curl -fsS --max-time 15 \
+    "https://voxtera.io/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=${WA_VERIFY_TOKEN}&hub.challenge=${WA_NONCE}" \
+    2>/dev/null || true)
+  if [[ "${WA_RESP}" == "${WA_NONCE}" ]]; then
+    echo "    OK — handshake echoed the challenge (Caddy route + ${WHATSAPP_SERVICE_NAME} live)."
+  else
+    echo "    WARNING: handshake did not echo the challenge (got: '${WA_RESP}')." >&2
+    echo "             Check: '${WHATSAPP_SERVICE_NAME}' active, Caddy /whatsapp/* route, verify token." >&2
+  fi
+else
+  echo "    Skipped — WHATSAPP_WEBHOOK_VERIFY_TOKEN not found in local .env."
+fi
 
 echo "==> Deploy complete"
 echo "Open: https://143.198.35.136.sslip.io/demo.html"
