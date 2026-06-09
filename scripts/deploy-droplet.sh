@@ -209,6 +209,10 @@ if [[ "$CONFIGURE_PINLESS_DIALIN" == "true" ]]; then
   fi
 fi
 
+echo "==> Ensuring system libs for WhatsApp-call WebRTC (OpenCV needs libGL)"
+ssh "${HOST}" "DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgl1 libglib2.0-0" \
+  || echo "    WARNING: could not install libgl1/libglib2.0-0 — WhatsApp calls will fail to import cv2 without them."
+
 echo "==> Installing/updating dependencies"
 ssh "${HOST}" "su - '${REMOTE_USER}' -c 'cd \"${REMOTE_APP_DIR}\" && /home/${REMOTE_USER}/.local/bin/uv sync'"
 

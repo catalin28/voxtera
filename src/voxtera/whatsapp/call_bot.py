@@ -31,6 +31,7 @@ from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
+from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -174,6 +175,19 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
         cancel_on_idle_timeout=settings.pipeline_idle_timeout_secs is not None,
         idle_timeout_secs=settings.pipeline_idle_timeout_secs,
     )
+
+    # Greet the caller the moment the WebRTC media connects, so they hear the
+    # agent immediately instead of dead air. Queued on connect (not at build)
+    # because the audio track isn't live until the peer connection is up.
+    greeting_text = (
+        "Hello! You've reached Voxtera, your travel concierge. "
+        "How can I help you plan your trip today?"
+    )
+
+    @transport.event_handler("on_client_connected")
+    async def _on_client_connected(_transport, _client) -> None:  # noqa: ANN001
+        logger.info("[whatsapp-call] client connected — greeting (session={})", session_id)
+        await task.queue_frames([TTSSpeakFrame(text=greeting_text)])
 
     # handle_sigint=False: the bot runs inside the async webhook service, not as a
     # dedicated process, so it must not install signal handlers.
