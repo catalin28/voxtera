@@ -63,6 +63,19 @@ def _require(name: str) -> str:
     return value
 
 
+def property_hotel_id() -> str | None:
+    """The travel↔hotel demo switch for the WhatsApp channel (P1.4).
+
+    Set ``WHATSAPP_HOTEL_ID`` (or the global ``CONCIERGE_HOTEL_ID``) and both
+    WhatsApp text and calls answer as that property's concierge from its own
+    guide; unset → travel agent. Read per turn/call so flipping the env only
+    needs a service restart.
+    """
+    return (
+        os.environ.get("WHATSAPP_HOTEL_ID") or os.environ.get("CONCIERGE_HOTEL_ID") or ""
+    ).strip() or None
+
+
 def load_whatsapp_settings() -> WhatsAppSettings:
     """Build settings from the current environment.
 
