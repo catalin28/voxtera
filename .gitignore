@@ -60,3 +60,5 @@ tmp/
 demo-hotel/traces/
 output/
 tools/voice-test-lab/clips/
+.env.bak.*
+.env.fra

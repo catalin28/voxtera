@@ -39,7 +39,6 @@ KEY_HTTP = "wa_http_session"
 KEY_CLIENT = "wa_client"
 KEY_DEPS = "wa_concierge_deps"
 KEY_SEEN = "wa_seen_message_ids"
-KEY_CALL_CLIENT = "wa_call_client"  # Pipecat WhatsAppClient for voice calls
 
 # Bound the de-dupe cache so a long-running server doesn't grow unbounded.
 _SEEN_LIMIT = 2000
@@ -64,15 +63,6 @@ def verify_signature(*, app_secret: str, payload: bytes, header: str | None) -> 
 # --------------------------------------------------------------------------- #
 # Payload parsing                                                              #
 # --------------------------------------------------------------------------- #
-def is_calls_event(body: dict[str, Any]) -> bool:
-    """True if this webhook payload carries a voice-call event (field == 'calls')."""
-    for entry in body.get("entry", []) or []:
-        for change in entry.get("changes", []) or []:
-            if change.get("field") == "calls":
-                return True
-    return False
-
-
 def extract_text_messages(body: dict[str, Any]) -> list[dict[str, str]]:
     """Pull text messages out of a webhook payload.
 
@@ -185,23 +175,6 @@ async def _process_message(app: web.Application, msg: dict[str, str]) -> None:
         logger.exception("Failed to send WhatsApp reply to {}: {}", wa_id, e)
 
 
-async def _process_call(app: web.Application, body: dict[str, Any]) -> None:
-    """Hand a `calls` webhook to Pipecat's WhatsAppClient, which terminates the
-    WebRTC media (SDP answer + pre_accept/accept) and runs the voice bot."""
-    from pipecat.transports.whatsapp.api import WhatsAppWebhookRequest
-
-    from voxtera.whatsapp.call_bot import run_call_bot
-
-    client = app[KEY_CALL_CLIENT]
-    try:
-        request = WhatsAppWebhookRequest(**body)
-        # Signature already validated by our handler, so the Pipecat client is
-        # constructed without a secret and skips its own re-validation.
-        await client.handle_webhook_request(request, connection_callback=run_call_bot)
-    except Exception as e:  # noqa: BLE001
-        logger.exception("WhatsApp call handling failed: {}", e)
-
-
 def _already_seen(app: web.Application, message_id: str) -> bool:
     """Return True if this message id was processed before; record it if not."""
     seen: OrderedDict[str, None] = app[KEY_SEEN]
@@ -248,17 +221,12 @@ async def handle_webhook(request: web.Request) -> web.Response:
     except Exception:  # noqa: BLE001
         return web.Response(status=400, text="invalid json")
 
-    # Voice call events go to the Pipecat WhatsApp client (WebRTC); text
-    # messages go to the concierge. ACK fast in both cases (Meta retries on
-    # slow responses), so the actual work runs as a background task.
-    if is_calls_event(body):
-        asyncio.create_task(_process_call(request.app, body))
-    else:
-        for msg in extract_text_messages(body):
-            if _already_seen(request.app, msg["id"]):
-                logger.debug("Skipping duplicate message {}", msg["id"])
-                continue
-            asyncio.create_task(_process_message(request.app, msg))
+    for msg in extract_text_messages(body):
+        if _already_seen(request.app, msg["id"]):
+            logger.debug("Skipping duplicate message {}", msg["id"])
+            continue
+        # Fire-and-forget so Meta gets its 200 immediately (avoids retries).
+        asyncio.create_task(_process_message(request.app, msg))
 
     return web.Response(text="EVENT_RECEIVED")
 
@@ -267,21 +235,11 @@ async def handle_webhook(request: web.Request) -> web.Response:
 # App factory                                                                  #
 # --------------------------------------------------------------------------- #
 async def _on_startup(app: web.Application) -> None:
-    from pipecat.transports.whatsapp.client import WhatsAppClient as PipecatWhatsAppClient
-
     http = aiohttp.ClientSession()
-    settings: WhatsAppSettings = app[KEY_SETTINGS]
     app[KEY_HTTP] = http
-    app[KEY_CLIENT] = WhatsAppClient(settings=settings, session=http)
+    app[KEY_CLIENT] = WhatsAppClient(settings=app[KEY_SETTINGS], session=http)
     app[KEY_DEPS] = await _build_concierge_deps(http)
     app[KEY_SEEN] = OrderedDict()
-    # Pipecat WhatsApp client handles the WebRTC call media + Calls API.
-    # whatsapp_secret omitted: our handler validates the signature before dispatch.
-    app[KEY_CALL_CLIENT] = PipecatWhatsAppClient(
-        whatsapp_token=settings.access_token,
-        phone_number_id=settings.phone_number_id,
-        session=http,
-    )
 
 
 async def _on_cleanup(app: web.Application) -> None:

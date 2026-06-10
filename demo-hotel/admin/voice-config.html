@@ -1,0 +1,504 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<!-- Voice Configuration Panel v0.3 -->
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Voxtera — Voice Configuration</title>
+<style>
+:root {
+  --bg:#0f0f1a;--bg2:#1a1a2e;--bg3:#25253d;--border:#2a2a40;
+  --text:#e8e8f0;--muted:#9ca3af;--gold:#c9a84c;--gold2:#a08030;
+  --green:#4caf50;--red:#ef5350;--drawer-w:390px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.hidden{display:none!important}
+#token-gate{max-width:420px;margin:80px auto;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:24px}
+#token-gate h2{color:var(--gold);margin-bottom:6px}
+#token-gate p{color:var(--muted);font-size:13px;margin-bottom:14px}
+#token-gate input{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px}
+#token-gate input:focus{outline:none;border-color:var(--gold)}
+#token-err{color:#ff9d9d;font-size:13px;min-height:18px;margin-top:6px}
+.trow{display:flex;justify-content:flex-end;margin-top:10px}
+header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:12px}
+.title{font-size:18px;font-weight:600;color:var(--gold)}
+.sub{font-size:12px;color:var(--muted)}
+.grow{flex:1}
+#app{display:flex;flex-direction:column;height:100vh}
+.page-body{flex:1;display:flex;overflow:hidden}
+#left{flex:1;overflow-y:auto;padding:16px}
+button{font:inherit;border-radius:8px;padding:8px 14px;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text)}
+button:hover:not(:disabled){opacity:.88}
+button:disabled{opacity:.42;cursor:not-allowed}
+.btn-gold{background:var(--gold);color:#111;border-color:var(--gold2);font-weight:600}
+.preview-strip{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;gap:10px;align-items:center;margin-bottom:12px}
+.preview-strip input{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:14px}
+.preview-strip input:focus{outline:none;border-color:var(--gold)}
+.char-counter{font-size:12px;color:var(--muted);white-space:nowrap}
+.char-counter.warn{color:#ff9d9d}
+.filter-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.filter-bar label{font-size:12px;color:var(--muted)}
+.filter-bar select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 10px;font-size:13px}
+.pill{background:var(--bg3);border:1px solid var(--border);border-radius:16px;padding:4px 10px;font-size:12px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.vcard{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px;transition:border-color .15s}
+.vcard:hover{border-color:#3a3b5a}
+.vcard.active{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold2)}
+.vcard h3{font-size:15px}
+.vmeta{font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap}
+.saved-badge{font-size:11px;background:#1c2e1c;color:#8ecf8e;border:1px solid #2a4a2a;border-radius:6px;padding:2px 7px;display:inline-flex;align-items:center;gap:4px;margin-bottom:2px}
+.tags{display:flex;gap:5px;flex-wrap:wrap}
+.tag{font-size:11px;background:#202239;color:#cfd4ff;border:1px solid #30345d;border-radius:999px;padding:2px 8px}
+.card-actions{display:flex;gap:6px;margin-top:auto}
+.card-actions button{padding:7px 12px;font-size:13px}
+#drawer{width:var(--drawer-w);min-width:var(--drawer-w);background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;transform:translateX(var(--drawer-w));transition:transform .22s cubic-bezier(.4,0,.2,1);overflow-y:auto}
+#drawer.open{transform:translateX(0)}
+.drawer-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px}
+.drawer-head .dinfo{flex:1}
+.drawer-head h3{font-size:16px}
+.drawer-head .dmeta{font-size:12px;color:var(--muted);margin-top:2px}
+.drawer-close{background:none;border:none;color:var(--muted);font-size:18px;padding:2px 6px;cursor:pointer}
+.drawer-close:hover{color:var(--text)}
+.drawer-section{padding:14px 16px;border-bottom:1px solid var(--border)}
+.drawer-section h4{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:12px}
+.param-row{margin-bottom:14px}
+.param-row label{display:block;font-size:13px;color:var(--text);margin-bottom:4px}
+.param-row .hint{font-size:11px;color:var(--muted);line-height:1.4;margin-top:3px}
+.slider-wrap{display:flex;align-items:center;gap:10px}
+.slider-wrap input[type=range]{flex:1;accent-color:var(--gold)}
+.slider-val{font-size:12px;color:var(--muted);min-width:40px;text-align:right}
+.toggle-wrap{display:flex;align-items:center;gap:10px;margin-top:4px}
+.toggle{position:relative;width:38px;height:20px}
+.toggle input{opacity:0;width:0;height:0}
+.slider-thumb{position:absolute;inset:0;background:var(--bg3);border-radius:999px;cursor:pointer;transition:background .2s;border:1px solid var(--border)}
+.slider-thumb::before{content:"";position:absolute;width:14px;height:14px;background:var(--muted);border-radius:50%;left:2px;top:2px;transition:transform .2s,background .2s}
+.toggle input:checked+.slider-thumb{background:#2a4a2a}
+.toggle input:checked+.slider-thumb::before{transform:translateX(18px);background:var(--green)}
+.toggle-label{font-size:13px}
+.emotion-grid{display:flex;flex-wrap:wrap;gap:6px}
+.e-chip{font-size:12px;padding:5px 10px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;color:var(--text);transition:background .15s,border-color .15s}
+.e-chip.level-low{background:#1c2840;border-color:#3a5080;color:#a0c8ff}
+.e-chip.level-medium{background:#1c2c40;border-color:#4a70a0;color:#80b8ff}
+.e-chip.level-high{background:#1c3855;border-color:#5a88c0;color:#60a8ff}
+.no-params-note{font-size:13px;color:var(--muted);line-height:1.5}
+.drawer-preview{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center}
+.drawer-preview input{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:13px}
+.drawer-preview input:focus{outline:none;border-color:var(--gold)}
+.drawer-footer{padding:14px 16px;display:flex;gap:8px;align-items:flex-end}
+.drawer-footer .resets{display:flex;flex-direction:column;gap:6px;flex:1}
+.drawer-footer .resets button{font-size:12px;padding:6px 10px}
+#toast{position:fixed;right:14px;bottom:14px;z-index:999;padding:10px 14px;border-radius:8px;font-size:13px;display:none;max-width:320px}
+#toast.ok{background:#1e2f1e;border:1px solid #355a35;color:#b8f2b8}
+#toast.err{background:#3a1a1a;border:1px solid #5e2d2d;color:#ffb3b3}
+@media(max-width:700px){
+  #drawer{position:fixed;right:0;top:0;bottom:0;z-index:100;transform:translateX(100%)}
+  #drawer.open{transform:translateX(0)}
+}
+</style>
+</head>
+<body>
+
+<div id="token-gate" class="hidden">
+  <h2>Voice Configuration</h2>
+  <p>Enter the admin token to continue.</p>
+  <input id="token-input" type="password" placeholder="VOXTERA_ADMIN_TOKEN" autocomplete="off" />
+  <div id="token-err"></div>
+  <div class="trow"><button id="token-submit" class="btn-gold">Sign in</button></div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <div><div class="title">Voice Configuration</div><div class="sub" id="property-label">Property: demo</div></div>
+    <div class="grow"></div>
+    <button id="back-btn">← Back</button>
+  </header>
+  <div class="page-body">
+    <div id="left">
+      <div class="preview-strip">
+        <input id="preview-text" type="text" maxlength="200" placeholder="Good evening. How can I help you today?" />
+        <span id="char-counter" class="char-counter">0/200</span>
+      </div>
+      <div class="filter-bar">
+        <label>Provider</label>
+        <select id="f-provider">
+          <option value="all">All</option><option value="google">Google</option>
+          <option value="cartesia">Cartesia</option><option value="elevenlabs">ElevenLabs</option>
+        </select>
+        <label>Gender</label>
+        <select id="f-gender">
+          <option value="all">All</option><option value="female">Female</option>
+          <option value="male">Male</option><option value="neutral">Neutral</option>
+        </select>
+        <span class="pill" id="current-pill">Current: none</span>
+        <span class="pill" id="prev-pill">Previously: none</span>
+      </div>
+      <div id="grid" class="grid"></div>
+    </div>
+
+    <aside id="drawer">
+      <div class="drawer-head">
+        <div class="dinfo">
+          <h3 id="d-name">—</h3>
+          <div class="dmeta" id="d-meta"></div>
+        </div>
+        <button class="drawer-close" id="d-close" title="Close">✕</button>
+      </div>
+      <div class="drawer-section" id="d-params-section">
+        <h4>Parameters</h4>
+        <div id="d-params-body"></div>
+      </div>
+      <div class="drawer-preview">
+        <input id="d-preview-text" type="text" maxlength="200" placeholder="Preview text…" />
+        <button id="d-preview-btn">▶</button>
+      </div>
+      <div class="drawer-footer">
+        <div class="resets">
+          <button id="d-reset-defaults">Reset to defaults</button>
+          <button id="d-reset-saved" disabled>Reset to saved</button>
+        </div>
+        <button id="d-save" class="btn-gold" disabled>Save</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(() => {
+'use strict';
+const TK = 'voxtera_admin_token';
+const propertyId = new URLSearchParams(location.search).get('property_id') || 'demo';
+
+const DEFAULTS = {
+  google: {},
+  cartesia: { speed: 0, emotion: [], volume: 0, pronunciation_dict_id: '' },
+  elevenlabs: { stability: 0.71, similarity_boost: 0.75, style: 0, use_speaker_boost: true, speed: 1.0 },
+};
+const EMOTIONS = ['Neutral','Positive','Excited','Sad','Angry','Curious'];
+const E_LEVELS = ['','low','medium','high'];
+
+let S = {
+  token: sessionStorage.getItem(TK) || '',
+  voices: [], savedCfg: null, prevCfg: null,
+  selKey: null, drawerParams: {},
+  playingKey: null, previewAudio: null, debounceTimer: null,
+};
+
+const $ = id => document.getElementById(id);
+const el = {
+  gate:$('token-gate'), app:$('app'),
+  ti:$('token-input'), ts:$('token-submit'), te:$('token-err'),
+  pl:$('property-label'),
+  pt:$('preview-text'), cc:$('char-counter'),
+  fp:$('f-provider'), fg:$('f-gender'),
+  grid:$('grid'), cp:$('current-pill'), pp:$('prev-pill'),
+  drawer:$('drawer'), dn:$('d-name'), dm:$('d-meta'),
+  dc:$('d-close'), dpb:$('d-params-body'),
+  dpt:$('d-preview-text'), dpbtn:$('d-preview-btn'),
+  drd:$('d-reset-defaults'), drs:$('d-reset-saved'), ds:$('d-save'),
+  bb:$('back-btn'), toast:$('toast'),
+};
+
+function toast(msg, ok=true){ el.toast.textContent=msg; el.toast.className=ok?'ok':'err'; el.toast.style.display='block'; setTimeout(()=>el.toast.style.display='none',2400); }
+function api(p,o={}){ return fetch(p,{...o,headers:{'X-Admin-Token':S.token,...(o.headers||{})}}); }
+function voiceByKey(k){ return S.voices.find(v=>v.voice_key===k); }
+function pEq(a,b){ return JSON.stringify(a)===JSON.stringify(b); }
+function updateCounter(){ const n=el.pt.value.length; el.cc.textContent=n+'/200'; el.cc.classList.toggle('warn',n>=180); }
+function previewText(){ return (el.dpt.value||el.pt.value||'').trim()||'Good evening. How can I help you today?'; }
+
+/* ── Drawer state ── */
+function updateDrawerState(){
+  if(!S.selKey) return;
+  const savedParams = S.savedCfg?.voice_key===S.selKey ? (S.savedCfg?.params||{}) : null;
+  const diffFromSaved = savedParams===null || !pEq(S.drawerParams,savedParams) || S.selKey!==S.savedCfg?.voice_key;
+  el.ds.disabled = !diffFromSaved;
+  el.drs.disabled = !diffFromSaved || savedParams===null;
+}
+
+/* ── Synthesis ── */
+async function synthesize(voiceKey, params={}, fromDrawer=false){
+  if(S.previewAudio){ S.previewAudio.pause(); S.previewAudio=null; }
+  S.playingKey=voiceKey; renderGrid();
+  if(fromDrawer) el.dpbtn.textContent='…';
+  try{
+    const r = await api('/api/admin/voice-preview',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({voice_key:voiceKey,text:previewText(),property_id:propertyId,params}),
+    });
+    if(!r.ok){ const e=await r.json().catch(()=>{}); throw new Error(e?.error||'Preview failed'); }
+    const url = URL.createObjectURL(await r.blob());
+    const audio = new Audio(url);
+    S.previewAudio=audio;
+    if(fromDrawer) el.dpbtn.textContent='■';
+    audio.onended=()=>{ URL.revokeObjectURL(url); S.playingKey=null; S.previewAudio=null; renderGrid(); if(fromDrawer) el.dpbtn.textContent='▶'; };
+    await audio.play();
+  }catch(err){ S.playingKey=null; renderGrid(); if(fromDrawer) el.dpbtn.textContent='▶'; toast(err.message||'Preview failed',false); }
+}
+
+function scheduleAuto(){
+  clearTimeout(S.debounceTimer);
+  if(!previewText()) return;
+  S.debounceTimer=setTimeout(()=>{ if(S.selKey) synthesize(S.selKey,S.drawerParams,false); },1000);
+}
+
+/* ── Param rendering ── */
+function renderParams(provider){
+  const body=el.dpb; body.innerHTML='';
+  const p=S.drawerParams;
+
+  if(provider==='google'){
+    body.innerHTML='<p class="no-params-note">Chirp 3 HD voices have no adjustable parameters — what you hear in the preview is exactly what your guests will hear.</p>';
+    return;
+  }
+
+  if(provider==='cartesia'){
+    body.appendChild(mkSlider('Speaking speed','speed',-1,1,0.5,p.speed??0,
+      v=>{S.drawerParams.speed=v;scheduleAuto();},v=>v.toFixed(1),null));
+    body.appendChild(mkSlider('Volume adjustment','volume',-50,50,1,p.volume??0,
+      v=>{S.drawerParams.volume=v;scheduleAuto();},v=>(v>0?'+':'')+v+'%',null));
+
+    const eRow=document.createElement('div'); eRow.className='param-row';
+    eRow.innerHTML='<label>Emotional tone</label>';
+    const eg=document.createElement('div'); eg.className='emotion-grid';
+    const ae=p.emotion||[];
+    EMOTIONS.forEach(name=>{
+      const key=name.toLowerCase();
+      const ex=ae.find(e=>e.startsWith(key+':'));
+      const lvlIdx=ex?E_LEVELS.indexOf(ex.split(':')[1]):0;
+      const chip=document.createElement('button');
+      chip.className='e-chip'+(lvlIdx>0?' level-'+E_LEVELS[lvlIdx]:'');
+      chip.textContent=name+(lvlIdx>0?' · '+E_LEVELS[lvlIdx]:'');
+      chip.type='button';
+      chip.addEventListener('click',()=>{
+        const next=(lvlIdx+1)%E_LEVELS.length;
+        S.drawerParams.emotion=(S.drawerParams.emotion||[]).filter(e=>!e.startsWith(key+':'));
+        if(E_LEVELS[next]) S.drawerParams.emotion.push(key+':'+E_LEVELS[next]);
+        renderParams('cartesia'); scheduleAuto(); updateDrawerState();
+      });
+      eg.appendChild(chip);
+    });
+    eRow.appendChild(eg); body.appendChild(eRow);
+
+    const dr=document.createElement('div'); dr.className='param-row';
+    dr.innerHTML='<label>Pronunciation dictionary ID <span style="color:var(--muted)">(optional)</span></label>';
+    const di=document.createElement('input');
+    Object.assign(di.style,{width:'100%',background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:'8px',padding:'7px 10px',fontSize:'13px'});
+    di.value=p.pronunciation_dict_id||''; di.placeholder='UUID';
+    di.addEventListener('input',()=>{ S.drawerParams.pronunciation_dict_id=di.value.trim(); updateDrawerState(); });
+    dr.appendChild(di); body.appendChild(dr);
+  }
+
+  if(provider==='elevenlabs'){
+    body.appendChild(mkSlider('Consistency','stability',0,1,0.01,p.stability??0.71,
+      v=>{S.drawerParams.stability=v;scheduleAuto();},v=>Math.round(v*100)+'%','Higher = more stable, lower = more expressive'));
+    body.appendChild(mkSlider('Voice clarity','similarity_boost',0,1,0.01,p.similarity_boost??0.75,
+      v=>{S.drawerParams.similarity_boost=v;scheduleAuto();},v=>Math.round(v*100)+'%','How closely the voice matches the original character'));
+    body.appendChild(mkSlider('Style intensity','style',0,1,0.01,p.style??0,
+      v=>{S.drawerParams.style=v;scheduleAuto();},v=>Math.round(v*100)+'%','Keep at 0 for professional use'));
+    body.appendChild(mkSlider('Speaking speed','speed',0.7,1.2,0.05,p.speed??1.0,
+      v=>{S.drawerParams.speed=v;scheduleAuto();},v=>v.toFixed(2)+'×',null));
+    const tr=document.createElement('div'); tr.className='param-row';
+    tr.innerHTML=`<label>Speaker boost</label><div class="toggle-wrap"><label class="toggle"><input type="checkbox" id="spkb" ${(p.use_speaker_boost??true)?'checked':''}><span class="slider-thumb"></span></label><span class="toggle-label">Improves clarity — slight latency increase</span></div>`;
+    tr.querySelector('#spkb').addEventListener('change',e=>{ S.drawerParams.use_speaker_boost=e.target.checked; scheduleAuto(); updateDrawerState(); });
+    body.appendChild(tr);
+  }
+}
+
+function mkSlider(label,_k,min,max,step,init,onChange,fmt,hint){
+  const row=document.createElement('div'); row.className='param-row';
+  const vl=document.createElement('span'); vl.className='slider-val'; vl.textContent=fmt(init);
+  const rng=document.createElement('input');
+  rng.type='range'; rng.min=min; rng.max=max; rng.step=step; rng.value=init;
+  rng.addEventListener('input',()=>{ vl.textContent=fmt(+rng.value); onChange(+rng.value); updateDrawerState(); });
+  row.innerHTML=`<label>${label}</label>`;
+  const w=document.createElement('div'); w.className='slider-wrap';
+  w.appendChild(rng); w.appendChild(vl); row.appendChild(w);
+  if(hint){ const h=document.createElement('div'); h.className='hint'; h.textContent=hint; row.appendChild(h); }
+  return row;
+}
+
+/* ── Open/close drawer ── */
+function openDrawer(key){
+  const v=voiceByKey(key); if(!v) return;
+  if(S.selKey&&S.selKey!==key&&!el.ds.disabled){
+    const prev=voiceByKey(S.selKey);
+    if(!confirm(`You have unsaved changes to ${prev?.display_name||S.selKey}. Discard them?`)) return;
+  }
+  S.selKey=key;
+  S.drawerParams=S.savedCfg?.voice_key===key
+    ? structuredClone(S.savedCfg.params||{})
+    : structuredClone(DEFAULTS[v.provider]||{});
+  el.dn.textContent=`${v.display_name} (${v.provider_label})`;
+  el.dm.textContent=`${v.gender} · ${v.language_coverage} languages · ${v.model}`;
+  el.dpt.value=el.pt.value;
+  renderParams(v.provider); updateDrawerState();
+  el.drawer.classList.add('open'); renderGrid();
+}
+
+function closeDrawer(){
+  if(S.selKey&&!el.ds.disabled){
+    const v=voiceByKey(S.selKey);
+    if(!confirm(`You have unsaved changes to ${v?.display_name||S.selKey}. Discard them?`)) return;
+  }
+  el.drawer.classList.remove('open'); S.selKey=null; renderGrid();
+}
+
+/* ── Grid ── */
+function renderGrid(){
+  const list=S.voices.filter(v=>{
+    if(el.fp.value!=='all'&&v.provider!==el.fp.value) return false;
+    if(el.fg.value!=='all'&&v.gender!==el.fg.value) return false;
+    return true;
+  });
+  if(!list.length){ el.grid.innerHTML='<div style="color:var(--muted);padding:20px">No voices match the filters.</div>'; return; }
+  el.grid.innerHTML=list.map(v=>{
+    const saved=S.savedCfg?.voice_key===v.voice_key;
+    const active=S.selKey===v.voice_key;
+    const playing=S.playingKey===v.voice_key;
+    const tags=(v.tone_tags||[]).map(t=>`<span class="tag">${t}</span>`).join('');
+    const badge=saved?`<div class="saved-badge">✓ Active${paramSummary(S.savedCfg)}</div>`:'';
+    return `<div class="vcard${active?' active':''}" data-key="${v.voice_key}">
+      <h3>${v.display_name} <span class="sub">(${v.provider_label})</span></h3>
+      ${badge}
+      <div class="vmeta"><span>${v.gender}</span><span>${v.language_coverage} lang</span><span>${v.model}</span></div>
+      <div class="tags">${tags}</div>
+      <div class="card-actions">
+        <button data-action="preview" data-key="${v.voice_key}">${playing?'■ Stop':'▶ Preview'}</button>
+        <button data-action="select" data-key="${v.voice_key}" class="${active?'btn-gold':''}">${active?'Selected':'Select'}</button>
+      </div></div>`;
+  }).join('');
+}
+
+function paramSummary(cfg){
+  if(!cfg?.params) return '';
+  const p=cfg.params; const pts=[];
+  if(p.speed!=null&&p.speed!==0&&p.speed!==1.0) pts.push('speed');
+  if(p.emotion?.length) pts.push('emotion');
+  if(p.stability!=null) pts.push('tuned');
+  return pts.length?' · '+pts.join(', '):'';
+}
+
+/* ── Load ── */
+async function loadData(){
+  const [cr,vr]=await Promise.all([
+    api('/api/admin/voice-catalog'),
+    api(`/api/voice/config?property_id=${encodeURIComponent(propertyId)}`),
+  ]);
+  if(!cr.ok) throw new Error('Could not load voice catalog');
+  if(!vr.ok) throw new Error('Could not load voice config');
+  const cat=await cr.json(), cfg=await vr.json();
+  S.voices=cat.voices||[];
+  if(cat.default_preview_text) el.pt.placeholder=cat.default_preview_text;
+  S.savedCfg=cfg.current||null; S.prevCfg=cfg.previous||null;
+  el.cp.textContent='Current: '+(S.savedCfg?.display_name||'none');
+  el.pp.textContent='Previously: '+(S.prevCfg?.display_name||'none');
+  renderGrid();
+  // Auto-open drawer for currently saved voice
+  if(S.savedCfg?.voice_key){
+    const savedVoice=voiceByKey(S.savedCfg.voice_key);
+    if(savedVoice) openDrawer(S.savedCfg.voice_key);
+  }
+}
+
+/* ── Save ── */
+async function saveVoice(){
+  if(!S.selKey) return;
+  const v=voiceByKey(S.selKey);
+  // Build fallback_chain: all providers except the active one
+  const allProviders=['google','cartesia','elevenlabs'];
+  const fallbackChain=allProviders.filter(p=>p!==v.provider);
+  // Build complete tts_config.json structure per spec
+  const payload={
+    property_id:propertyId,
+    _meta:{
+      schema_version:'1.0',
+      description:'Voxtera TTS configuration',
+      updated_at:new Date().toISOString(),
+      updated_by:S.token.substring(0,8)+'...'
+    },
+    active_voice:{
+      voice_key:S.selKey,
+      display_name:`${v.display_name} (${v.provider_label})`,
+      provider:v.provider,
+      model:v.model
+    },
+    parameters:S.drawerParams,
+    fallback_chain:fallbackChain
+  };
+  const r=await api('/api/voice/config',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload),
+  });
+  if(!r.ok){ const e=await r.json().catch(()=>{}); throw new Error(e?.error||'Save failed'); }
+  await loadData();
+  if(S.selKey) openDrawer(S.selKey);
+  toast('Voice updated. Changes are live.');
+}
+
+/* ── Events ── */
+el.bb.addEventListener('click',()=>location.href='/admin/index.html');
+el.pt.addEventListener('input',updateCounter);
+el.fp.addEventListener('change',renderGrid);
+el.fg.addEventListener('change',renderGrid);
+
+el.grid.addEventListener('click',async e=>{
+  const btn=e.target.closest('button[data-action]'); if(!btn) return;
+  const key=btn.getAttribute('data-key'), action=btn.getAttribute('data-action');
+  if(action==='select'){ openDrawer(key); return; }
+  if(action==='preview'){
+    if(S.playingKey===key&&S.previewAudio){ S.previewAudio.pause(); S.previewAudio=null; S.playingKey=null; renderGrid(); return; }
+    await synthesize(key,{});
+  }
+});
+
+el.dc.addEventListener('click',closeDrawer);
+
+el.dpbtn.addEventListener('click',async()=>{
+  if(S.playingKey&&S.previewAudio){ S.previewAudio.pause(); S.previewAudio=null; S.playingKey=null; el.dpbtn.textContent='▶'; return; }
+  await synthesize(S.selKey,S.drawerParams,true);
+});
+
+el.dpt.addEventListener('input',()=>{ el.pt.value=el.dpt.value; updateCounter(); scheduleAuto(); });
+
+el.drd.addEventListener('click',()=>{
+  const v=voiceByKey(S.selKey); if(!v) return;
+  S.drawerParams=structuredClone(DEFAULTS[v.provider]||{});
+  renderParams(v.provider); updateDrawerState(); scheduleAuto();
+});
+
+el.drs.addEventListener('click',()=>{
+  if(!S.savedCfg||S.savedCfg.voice_key!==S.selKey) return;
+  S.drawerParams=structuredClone(S.savedCfg.params||{});
+  renderParams(voiceByKey(S.selKey)?.provider||'google'); updateDrawerState();
+});
+
+el.ds.addEventListener('click',async()=>{
+  el.ds.disabled=true;
+  try{ await saveVoice(); }catch(err){ toast(err.message||'Save failed',false); el.ds.disabled=false; }
+});
+
+el.ts.addEventListener('click',async()=>{
+  S.token=(el.ti.value||'').trim();
+  if(!S.token){ el.te.textContent='Token required.'; return; }
+  try{
+    if(!(await api('/api/admin/verify')).ok){ el.te.textContent='Token rejected.'; return; }
+    sessionStorage.setItem(TK,S.token); boot();
+  }catch{ el.te.textContent='Could not reach server.'; }
+});
+el.ti.addEventListener('keydown',e=>{ if(e.key==='Enter') el.ts.click(); });
+
+async function boot(){
+  el.pl.textContent='Property: '+propertyId;
+  const ok=S.token&&await api('/api/admin/verify').then(r=>r.ok).catch(()=>false);
+  if(!ok){ el.gate.classList.remove('hidden'); el.app.classList.add('hidden'); return; }
+  el.gate.classList.add('hidden'); el.app.classList.remove('hidden');
+  try{ await loadData(); }catch(err){ toast(err.message,false); }
+}
+
+boot();
+})();
+</script>
+</body>
+</html>
