@@ -310,7 +310,7 @@
     "link_press": "Kit presse",
     "link_careers": "Carrières",
     "copyright": "© 2026 Voxtera — Construit au Canada",
-    "legal": "Confidentialité · CGU · RGPD · DPA",
+    "legal": "<a href=\"/privacy.html\" style=\"color:inherit;\">Confidentialité</a> · CGU · RGPD · DPA",
     "col2_title": "Produit",
     "how_it_works": "Comment ça marche",
     "languages": "Langues",

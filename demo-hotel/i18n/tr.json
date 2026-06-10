@@ -310,7 +310,7 @@
     "link_press": "Basın kiti",
     "link_careers": "Kariyer",
     "copyright": "© 2026 Voxtera — Kanada'da üretildi",
-    "legal": "Gizlilik · Koşullar · GDPR · DPA",
+    "legal": "<a href=\"/privacy.html\" style=\"color:inherit;\">Gizlilik</a> · Koşullar · GDPR · DPA",
     "col2_title": "Ürün",
     "how_it_works": "Nasıl çalışır",
     "languages": "Diller",

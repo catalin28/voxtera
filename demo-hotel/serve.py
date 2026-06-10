@@ -486,10 +486,6 @@ _DAILY_DYNAMIC_ROOMS: bool = os.environ.get("DAILY_DYNAMIC_ROOMS", "true").lower
 _DAILY_ROOM_MAX_PARTICIPANTS: int = int(os.environ.get("DAILY_ROOM_MAX_PARTICIPANTS", "2"))
 _MAX_CONCURRENT_SESSIONS: int = int(os.environ.get("DAILY_MAX_CONCURRENT_SESSIONS", "50"))
 _SESSION_TIMEOUT_SECS: int = int(os.environ.get("VOXTERA_SESSION_TIMEOUT_SECS", "180"))
-_VOICE_CONFIGS_PATH: Path = Path(__file__).resolve().parent / "admin" / "voice_configs.json"
-
-# Shared preview text used by the voice configuration panel.
-_VOICE_PREVIEW_DEFAULT_TEXT = "Good evening. How can I help you today?"
 
 # ---------------------------------------------------------------------------
 # PSTN Telephony config
@@ -1579,9 +1575,7 @@ def _tts_openai(text: str, voice: str) -> bytes:
     return response.content
 
 
-def _tts_cartesia(
-    text: str, voice: str, language: str = "en", *, params: dict | None = None
-) -> bytes:
+def _tts_cartesia(text: str, voice: str, language: str = "en") -> bytes:
     """Generate speech via Cartesia Sonic-3 HTTP API and return raw MP3 bytes.
 
     This is the synchronous /tts/bytes endpoint used by the demo's
@@ -1600,29 +1594,19 @@ def _tts_cartesia(
     # suffix (e.g. "en-US" → "en") so callers can pass either form.
     lang_code = language.split("-")[0] if "-" in language else language
 
-    p = params or {}
-    body_dict: dict = {
-        "model_id": model,
-        "voice": {"mode": "id", "id": voice},
-        "language": lang_code,
-        "transcript": text,
-        "output_format": {
-            "container": "mp3",
-            "encoding": "mp3",
-            "sample_rate": 22050,
-        },
-    }
-    # Apply speed / emotion / volume if provided
-    if "speed" in p or "emotion" in p:
-        body_dict["_experimental_voice_controls"] = {
-            k: v for k, v in p.items() if k in ("speed", "emotion", "volume")
+    payload = json.dumps(
+        {
+            "model_id": model,
+            "voice": {"mode": "id", "id": voice},
+            "language": lang_code,
+            "transcript": text,
+            "output_format": {
+                "container": "mp3",
+                "encoding": "mp3",
+                "sample_rate": 22050,
+            },
         }
-    if "pronunciation_dict_id" in p and p["pronunciation_dict_id"]:
-        body_dict["pronunciation_dictionary_locators"] = [
-            {"pronunciation_dictionary_id": p["pronunciation_dict_id"]}
-        ]
-
-    payload = json.dumps(body_dict).encode()
+    ).encode()
 
     req = urllib.request.Request(
         "https://api.cartesia.ai/tts/bytes",
@@ -1644,9 +1628,7 @@ def _tts_cartesia(
         raise RuntimeError(f"Cartesia TTS error {exc.code}: {body}") from exc
 
 
-def _tts_elevenlabs(
-    text: str, voice: str, language: str = "en", *, params: dict | None = None
-) -> bytes:
+def _tts_elevenlabs(text: str, voice: str, language: str = "en") -> bytes:
     """Generate speech via the ElevenLabs HTTP TTS API and return raw MP3 bytes.
 
     This is the synchronous one-shot endpoint used by the demo's "Test
@@ -1675,22 +1657,6 @@ def _tts_elevenlabs(
     if model.endswith("_v2_5"):
         body_obj["language_code"] = lang_code
 
-    # Apply voice settings params (stability, similarity_boost, style, etc.)
-    p = params or {}
-    voice_settings: dict = {}
-    if "stability" in p:
-        voice_settings["stability"] = float(p["stability"])
-    if "similarity_boost" in p:
-        voice_settings["similarity_boost"] = float(p["similarity_boost"])
-    if "style" in p:
-        voice_settings["style"] = float(p["style"])
-    if "use_speaker_boost" in p:
-        voice_settings["use_speaker_boost"] = bool(p["use_speaker_boost"])
-    if voice_settings:
-        body_obj["voice_settings"] = voice_settings
-    if "speed" in p:
-        body_obj["speed"] = float(p["speed"])
-
     payload = json.dumps(body_obj).encode()
     # output_format=mp3_22050_32 works on the free tier and matches the
     # Cartesia test path's 22.05 kHz; higher MP3 bitrates need a paid plan.
@@ -1713,103 +1679,6 @@ def _tts_elevenlabs(
         # from the browser console.
         body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"ElevenLabs TTS error {exc.code}: {body}") from exc
-
-
-_ELEVENLABS_VOICES_CACHE: list[dict] = []
-_ELEVENLABS_VOICES_CACHE_TS = 0.0
-_ELEVENLABS_VOICES_CACHE_TTL_SECS = 300
-
-_CARTESIA_VOICES_CACHE: list[dict] = []
-_CARTESIA_VOICES_CACHE_TS = 0.0
-_CARTESIA_VOICES_CACHE_TTL_SECS = 300
-
-
-def _list_cartesia_voices() -> list[dict]:
-    """Return Cartesia voices from API, with a short in-memory cache.
-
-    Falls back to the last cached API response (if any) when the request fails.
-    """
-    global _CARTESIA_VOICES_CACHE, _CARTESIA_VOICES_CACHE_TS
-
-    api_key = os.environ.get("CARTESIA_API_KEY", "").strip()
-    if not api_key:
-        return []
-
-    now = time.time()
-    if (
-        _CARTESIA_VOICES_CACHE
-        and (now - _CARTESIA_VOICES_CACHE_TS) < _CARTESIA_VOICES_CACHE_TTL_SECS
-    ):
-        return list(_CARTESIA_VOICES_CACHE)
-
-    req = urllib.request.Request(
-        "https://api.cartesia.ai/voices",
-        headers={
-            "X-API-Key": api_key,
-            "Cartesia-Version": "2025-04-16",
-            "Accept": "application/json",
-        },
-        method="GET",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-        if isinstance(payload, list):
-            raw_voices = payload
-        elif isinstance(payload, dict):
-            raw_voices = payload.get("data") or payload.get("voices") or []
-        else:
-            raw_voices = []
-        voices = [v for v in raw_voices if isinstance(v, dict) and str(v.get("id", "")).strip()]
-        voices.sort(key=lambda v: str(v.get("name", "")).lower())
-        _CARTESIA_VOICES_CACHE = voices
-        _CARTESIA_VOICES_CACHE_TS = now
-        return list(voices)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[voice-catalog] Cartesia API unavailable ({exc}); using fallback list")
-        return list(_CARTESIA_VOICES_CACHE)
-
-
-def _list_elevenlabs_voices() -> list[dict]:
-    """Return ElevenLabs voices from API, with a short in-memory cache.
-
-    Falls back to the last cached API response (if any) when the request fails.
-    """
-    global _ELEVENLABS_VOICES_CACHE, _ELEVENLABS_VOICES_CACHE_TS
-
-    api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
-    if not api_key:
-        return []
-
-    now = time.time()
-    if (
-        _ELEVENLABS_VOICES_CACHE
-        and (now - _ELEVENLABS_VOICES_CACHE_TS) < _ELEVENLABS_VOICES_CACHE_TTL_SECS
-    ):
-        return list(_ELEVENLABS_VOICES_CACHE)
-
-    req = urllib.request.Request(
-        "https://api.elevenlabs.io/v1/voices",
-        headers={
-            "xi-api-key": api_key,
-            "Accept": "application/json",
-        },
-        method="GET",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-        raw_voices = payload.get("voices", [])
-        voices = [
-            v for v in raw_voices if isinstance(v, dict) and str(v.get("voice_id", "")).strip()
-        ]
-        voices.sort(key=lambda v: str(v.get("name", "")).lower())
-        _ELEVENLABS_VOICES_CACHE = voices
-        _ELEVENLABS_VOICES_CACHE_TS = now
-        return list(voices)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[voice-catalog] ElevenLabs API unavailable ({exc}); using fallback list")
-        return list(_ELEVENLABS_VOICES_CACHE)
 
 
 def _tts_google(text: str, voice: str, language: str) -> bytes:
@@ -2162,6 +2031,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_rooms()
         if self.path == "/api/admin/prompts":
             return self._handle_admin_prompts_list()
+        if self.path == "/api/admin/greetings":
+            return self._handle_admin_greetings_get()
         if self.path == "/api/admin/voice-prompts":
             return self._handle_admin_voice_prompts_list()
         if self.path == "/api/admin/call-center/status":
@@ -2203,12 +2074,6 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_rag_chunks()
         if self.path.startswith("/api/admin/concierge-logs"):
             return self._handle_concierge_logs()
-        if self.path == "/api/admin/voice-catalog":
-            return self._handle_admin_voice_catalog()
-        if self.path == "/api/voice/config" or self.path.startswith("/api/voice/config?"):
-            return self._handle_voice_config_get()
-        if self.path.startswith("/api/admin/properties/") and self.path.endswith("/voice-config"):
-            return self._handle_admin_property_voice_get()
         if self.path.startswith("/api/trace/sessions/") and self.path.endswith("/events"):
             sid = self.path[len("/api/trace/sessions/") : -len("/events")]
             return self._handle_session_events(sid)
@@ -2216,19 +2081,6 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # which aggressively disk-caches) never serve a stale version. JS/CSS
         # assets are unversioned so they get the same treatment.
         stripped = self.path.split("?")[0]
-        if stripped.startswith("/admin/properties/") and stripped.endswith("/voice"):
-            parts = [p for p in stripped.split("/") if p]
-            if len(parts) == 4 and parts[0] == "admin" and parts[1] == "properties":
-                property_id = urllib.parse.quote(parts[2], safe="")
-                self.send_response(302)
-                self.send_header("Location", f"/admin/voice-config.html?property_id={property_id}")
-                self.end_headers()
-                return None
-        if stripped == "/admin/voice/" or stripped == "/admin/voice":
-            self.send_response(302)
-            self.send_header("Location", "/admin/voice-config.html?property_id=demo")
-            self.end_headers()
-            return None
         # Root URL → redirect to voxtera.html (landing page).
         if stripped in ("/", "/index.html"):
             self.send_response(302)
@@ -2283,14 +2135,10 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_tune()
         if self.path == "/api/admin/prompts":
             return self._handle_admin_prompts_save()
+        if self.path == "/api/admin/greetings":
+            return self._handle_admin_greetings_post()
         if self.path == "/api/admin/voice-prompts":
             return self._handle_admin_voice_prompts_save()
-        if self.path == "/api/admin/voice-preview":
-            return self._handle_admin_voice_preview()
-        if self.path == "/api/voice/config":
-            return self._handle_voice_config_save()
-        if self.path.startswith("/api/admin/properties/") and self.path.endswith("/voice-config"):
-            return self._handle_admin_property_voice_save()
         if self.path == "/api/admin/call-center/qdrant/search":
             return self._handle_admin_call_center_qdrant_search()
         # Phase 3 — on-demand bot launcher
@@ -2316,6 +2164,9 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         return None
 
     def do_DELETE(self):  # noqa: N802
+        if self.path.startswith("/api/admin/greetings/"):
+            lang = self.path[len("/api/admin/greetings/") :].split("?", 1)[0]
+            return self._handle_admin_greetings_delete(lang)
         if self.path.startswith("/api/trace/sessions/"):
             sid = self.path[len("/api/trace/sessions/") :]
             return self._handle_delete_session(sid)
@@ -2456,253 +2307,6 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # (around line 377). When BOT_NAME changes, both sites must update.
         return user_name == _BOT_NAME
 
-    def _load_voice_configs(self) -> dict:
-        if not _VOICE_CONFIGS_PATH.exists():
-            return {}
-        try:
-            data = json.loads(_VOICE_CONFIGS_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
-        return data if isinstance(data, dict) else {}
-
-    def _save_voice_configs(self, data: dict) -> None:
-        _VOICE_CONFIGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = _VOICE_CONFIGS_PATH.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(_VOICE_CONFIGS_PATH)
-
-    def _provider_preview_ready(self, provider: str) -> tuple[bool, str | None]:
-        if provider == "google":
-            creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
-            if not creds:
-                return False, "GOOGLE_APPLICATION_CREDENTIALS is not set"
-            creds_path = Path(creds)
-            if not creds_path.is_absolute():
-                creds_path = Path(__file__).resolve().parent.parent / creds_path
-            if not creds_path.exists():
-                return False, f"Google credentials file not found: {creds_path}"
-            return True, None
-        if provider == "cartesia":
-            if not os.environ.get("CARTESIA_API_KEY", "").strip():
-                return False, "CARTESIA_API_KEY is not set"
-            return True, None
-        if provider == "elevenlabs":
-            if not os.environ.get("ELEVENLABS_API_KEY", "").strip():
-                return False, "ELEVENLABS_API_KEY is not set"
-            return True, None
-        return False, "unsupported provider"
-
-    @staticmethod
-    def _voice_gender_from_label(label: str) -> str:
-        text = label.lower()
-        if "female" in text:
-            return "female"
-        if "male" in text:
-            return "male"
-        return "neutral"
-
-    @staticmethod
-    def _voice_tones_from_label(label: str) -> list[str]:
-        tokens = []
-        text = label.lower()
-        for raw, normalized in (
-            ("warm", "Warm"),
-            ("gentle", "Gentle"),
-            ("cheerful", "Cheerful"),
-            ("formal", "Formal"),
-            ("energetic", "Energetic"),
-            ("calm", "Calm"),
-            ("deep", "Deep"),
-            ("stable", "Stable"),
-            ("professional", "Professional"),
-        ):
-            if raw in text:
-                tokens.append(normalized)
-        if not tokens:
-            tokens.append("Professional")
-        return tokens[:3]
-
-    def _build_voice_catalog(self) -> list[dict]:
-        languages = LANG_CONFIG.get("languages", {})
-        google_coverage = sum(
-            1
-            for entry in languages.values()
-            if isinstance(entry, dict)
-            and bool(entry.get("tts", {}).get("google", {}).get("supported", False))
-        )
-
-        voices: list[dict] = []
-
-        for char in LANG_CONFIG.get("voices", {}).get("google_chirp3_characters", []):
-            if not isinstance(char, dict):
-                continue
-            voice_id = str(char.get("id", "")).strip()
-            if not voice_id:
-                continue
-            label = str(char.get("name", voice_id))
-            voices.append(
-                {
-                    "voice_key": f"google:{voice_id}",
-                    "voice_id": voice_id,
-                    "display_name": voice_id,
-                    "provider": "google",
-                    "provider_label": "Google",
-                    "model": "chirp3-hd",
-                    "gender": self._voice_gender_from_label(label),
-                    "tone_tags": self._voice_tones_from_label(label),
-                    "language_coverage": google_coverage,
-                    "preview_enabled": self._provider_preview_ready("google")[0],
-                    "preview_error": self._provider_preview_ready("google")[1],
-                }
-            )
-
-        cartesia_api_voices = _list_cartesia_voices()
-        if cartesia_api_voices:
-            for voice in cartesia_api_voices:
-                voice_id = str(voice.get("id", "")).strip()
-                if not voice_id:
-                    continue
-                name = str(voice.get("name", voice_id)).strip() or voice_id
-
-                description = str(voice.get("description", "")).strip()
-                labels = voice.get("labels") if isinstance(voice.get("labels"), dict) else {}
-                gender = str(labels.get("gender", "")).strip().lower()
-                if gender not in ("female", "male", "neutral"):
-                    gender = self._voice_gender_from_label(f"{name} {description}")
-
-                language = voice.get("language") if isinstance(voice.get("language"), str) else ""
-                language_coverage = 1 if language else 42
-
-                tone_tags: list[str] = []
-                for candidate in (
-                    str(labels.get("style", "")).strip(),
-                    str(labels.get("accent", "")).strip(),
-                    str(labels.get("age", "")).strip(),
-                ):
-                    if candidate:
-                        tag = candidate.split(",", 1)[0].strip().title()
-                        if tag and tag not in tone_tags:
-                            tone_tags.append(tag)
-                if not tone_tags and description:
-                    tone_tags = self._voice_tones_from_label(description)
-                if not tone_tags:
-                    tone_tags = self._voice_tones_from_label(name)
-
-                voices.append(
-                    {
-                        "voice_key": f"cartesia:{voice_id}",
-                        "voice_id": voice_id,
-                        "display_name": name.split("(", 1)[0].strip() or name,
-                        "provider": "cartesia",
-                        "provider_label": "Cartesia",
-                        "model": os.environ.get("CARTESIA_MODEL", "sonic-3"),
-                        "gender": gender,
-                        "tone_tags": tone_tags[:3],
-                        "language_coverage": language_coverage,
-                        "preview_enabled": self._provider_preview_ready("cartesia")[0],
-                        "preview_error": self._provider_preview_ready("cartesia")[1],
-                    }
-                )
-        else:
-            for voice in LANG_CONFIG.get("voices", {}).get("cartesia", []):
-                if not isinstance(voice, dict):
-                    continue
-                voice_id = str(voice.get("id", "")).strip()
-                if not voice_id:
-                    continue
-                name = str(voice.get("name", voice_id))
-                voices.append(
-                    {
-                        "voice_key": f"cartesia:{voice_id}",
-                        "voice_id": voice_id,
-                        "display_name": name.split("(", 1)[0].strip() or name,
-                        "provider": "cartesia",
-                        "provider_label": "Cartesia",
-                        "model": os.environ.get("CARTESIA_MODEL", "sonic-3"),
-                        "gender": self._voice_gender_from_label(name),
-                        "tone_tags": self._voice_tones_from_label(name),
-                        "language_coverage": 42,
-                        "preview_enabled": self._provider_preview_ready("cartesia")[0],
-                        "preview_error": self._provider_preview_ready("cartesia")[1],
-                    }
-                )
-
-        elevenlabs_api_voices = _list_elevenlabs_voices()
-        if elevenlabs_api_voices:
-            for voice in elevenlabs_api_voices:
-                voice_id = str(voice.get("voice_id", "")).strip()
-                if not voice_id:
-                    continue
-                name = str(voice.get("name", voice_id)).strip() or voice_id
-                labels = voice.get("labels") if isinstance(voice.get("labels"), dict) else {}
-                gender = str(labels.get("gender", "")).strip().lower()
-                if gender not in ("female", "male", "neutral"):
-                    gender = self._voice_gender_from_label(name)
-
-                tone_tags: list[str] = []
-                for k in ("description", "accent", "age", "use case"):
-                    val = str(labels.get(k, "")).strip()
-                    if val:
-                        tag = val.split(",", 1)[0].strip().title()
-                        if tag and tag not in tone_tags:
-                            tone_tags.append(tag)
-                category = str(voice.get("category", "")).strip()
-                if category and category.title() not in tone_tags:
-                    tone_tags.append(category.title())
-                if not tone_tags:
-                    tone_tags = self._voice_tones_from_label(name)
-
-                voices.append(
-                    {
-                        "voice_key": f"elevenlabs:{voice_id}",
-                        "voice_id": voice_id,
-                        "display_name": name.split("(", 1)[0].strip() or name,
-                        "provider": "elevenlabs",
-                        "provider_label": "ElevenLabs",
-                        "model": os.environ.get("ELEVENLABS_MODEL", "eleven_flash_v2_5"),
-                        "gender": gender,
-                        "tone_tags": tone_tags[:3],
-                        "language_coverage": 32,
-                        "preview_enabled": self._provider_preview_ready("elevenlabs")[0],
-                        "preview_error": self._provider_preview_ready("elevenlabs")[1],
-                    }
-                )
-        else:
-            for voice in LANG_CONFIG.get("voices", {}).get("elevenlabs", []):
-                if not isinstance(voice, dict):
-                    continue
-                voice_id = str(voice.get("id", "")).strip()
-                if not voice_id:
-                    continue
-                name = str(voice.get("name", voice_id))
-                voices.append(
-                    {
-                        "voice_key": f"elevenlabs:{voice_id}",
-                        "voice_id": voice_id,
-                        "display_name": name.split("(", 1)[0].strip() or name,
-                        "provider": "elevenlabs",
-                        "provider_label": "ElevenLabs",
-                        "model": os.environ.get("ELEVENLABS_MODEL", "eleven_flash_v2_5"),
-                        "gender": self._voice_gender_from_label(name),
-                        "tone_tags": self._voice_tones_from_label(name),
-                        "language_coverage": 32,
-                        "preview_enabled": self._provider_preview_ready("elevenlabs")[0],
-                        "preview_error": self._provider_preview_ready("elevenlabs")[1],
-                    }
-                )
-
-        return voices
-
-    def _parse_property_id_from_path(self) -> str | None:
-        path = urllib.parse.urlparse(self.path).path
-        parts = [p for p in path.split("/") if p]
-        # /api/admin/properties/{property_id}/voice-config
-        if len(parts) != 5:
-            return None
-        if parts[:3] != ["api", "admin", "properties"] or parts[4] != "voice-config":
-            return None
-        return urllib.parse.unquote(parts[3]).strip() or None
-
     # ------------------------------------------------------------------
     # /api/admin/health — does NOT require the token. Lets the page
     # decide whether to even render the token gate.
@@ -2742,228 +2346,6 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(401, {"error": "unauthorized"})
             return
         self._send_json(200, {"ok": True})
-
-    def _handle_admin_voice_catalog(self) -> None:
-        ok, _ = self._admin_auth(require_daily=False)
-        if not ok:
-            return
-        self._send_json(
-            200,
-            {
-                "voices": self._build_voice_catalog(),
-                "default_preview_text": _VOICE_PREVIEW_DEFAULT_TEXT,
-            },
-        )
-
-    def _handle_admin_property_voice_get(self) -> None:
-        ok, _ = self._admin_auth(require_daily=False)
-        if not ok:
-            return
-        property_id = self._parse_property_id_from_path()
-        if not property_id:
-            self._send_json(400, {"error": "invalid_property_path"})
-            return
-        configs = self._load_voice_configs()
-        entry = configs.get(property_id, {}) if isinstance(configs.get(property_id), dict) else {}
-        self._send_json(
-            200,
-            {
-                "property_id": property_id,
-                "current": entry.get("current"),
-                "previous": entry.get("previous"),
-            },
-        )
-
-    def _handle_admin_property_voice_save(self) -> None:
-        ok, _ = self._admin_auth(require_daily=False)
-        if not ok:
-            return
-        property_id = self._parse_property_id_from_path()
-        if not property_id:
-            self._send_json(400, {"error": "invalid_property_path"})
-            return
-
-        body = self._read_json_body()
-        voice_key = str(body.get("voice_key", "")).strip()
-        if not voice_key:
-            self._send_json(422, {"error": "voice_key is required"})
-            return
-
-        catalog = {v["voice_key"]: v for v in self._build_voice_catalog()}
-        selected = catalog.get(voice_key)
-        if not selected:
-            self._send_json(422, {"error": "unknown voice_key"})
-            return
-
-        now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        updated_by = self.headers.get("X-Admin-Actor") or "admin"
-
-        record = {
-            "property_id": property_id,
-            "voice_key": selected["voice_key"],
-            "display_name": f"{selected['display_name']} ({selected['provider_label']})",
-            "provider": selected["provider"],
-            "model": selected["model"],
-            "updated_at": now,
-            "updated_by": updated_by,
-        }
-
-        configs = self._load_voice_configs()
-        prior = configs.get(property_id, {}) if isinstance(configs.get(property_id), dict) else {}
-        prev_current = prior.get("current") if isinstance(prior, dict) else None
-        configs[property_id] = {"current": record, "previous": prev_current}
-        self._save_voice_configs(configs)
-
-        self._send_json(
-            200,
-            {
-                "property_id": property_id,
-                "voice_key": record["voice_key"],
-                "updated_at": record["updated_at"],
-            },
-        )
-
-    def _handle_admin_voice_preview(self) -> None:
-        ok, _ = self._admin_auth(require_daily=False)
-        if not ok:
-            return
-
-        try:
-            body = self._read_json_body()
-            voice_key = str(body.get("voice_key", "")).strip()
-            text = (
-                str(body.get("text", _VOICE_PREVIEW_DEFAULT_TEXT)).strip()
-                or _VOICE_PREVIEW_DEFAULT_TEXT
-            )
-            language = str(body.get("language", "en")).strip() or "en"
-            params = body.get("params") if isinstance(body.get("params"), dict) else {}
-            if len(text) > 200:
-                self._send_json(422, {"error": "preview text exceeds 200 characters"})
-                return
-            if ":" not in voice_key:
-                self._send_json(422, {"error": "voice_key must be '<provider>:<voice_id>'"})
-                return
-            provider, voice_id = voice_key.split(":", 1)
-        except Exception:  # noqa: BLE001
-            self._send_json(422, {"error": "invalid request body"})
-            return
-
-        try:
-            if provider == "google":
-                full_voice_id = (
-                    voice_id if "Chirp3-HD-" in voice_id else f"en-US-Chirp3-HD-{voice_id}"
-                )
-                audio = _tts_google(text, full_voice_id, language)
-            elif provider == "cartesia":
-                audio = _tts_cartesia(text, voice_id, language, params=params)
-            elif provider == "elevenlabs":
-                audio = _tts_elevenlabs(text, voice_id, language, params=params)
-            else:
-                self._send_json(422, {"error": "unsupported provider"})
-                return
-
-            self.send_response(200)
-            self._cors_headers()
-            self.send_header("Content-Type", "audio/mpeg")
-            self.send_header("Content-Length", str(len(audio)))
-            self.end_headers()
-            self.wfile.write(audio)
-        except Exception as exc:  # noqa: BLE001
-            self._send_json(500, {"error": f"preview_failed: {exc}"})
-
-    def _handle_voice_config_get(self) -> None:
-        """GET /api/voice/config?property_id=<id> — return current saved voice config."""
-        ok, _ = self._admin_auth(require_daily=False)
-        if not ok:
-            return
-        from urllib.parse import parse_qs
-        from urllib.parse import urlparse as _urlparse2
-
-        qs = parse_qs(_urlparse2(self.path).query)
-        property_id = (qs.get("property_id", [""])[0] or "").strip() or "demo"
-        configs = self._load_voice_configs()
-        entry = configs.get(property_id, {})
-        self._send_json(
-            200,
-            {
-                "property_id": property_id,
-                "current": entry.get("current") if isinstance(entry, dict) else None,
-                "previous": entry.get("previous") if isinstance(entry, dict) else None,
-            },
-        )
-
-    def _handle_voice_config_save(self) -> None:
-        """POST /api/voice/config — save voice + params for a property.
-
-        Accepts both old format (voice_key, params, display_name) and new format
-        (complete tts_config.json structure with _meta, active_voice, parameters, fallback_chain).
-        """
-        ok, _ = self._admin_auth(require_daily=False)
-        if not ok:
-            return
-        body = self._read_json_body()
-        property_id = str(body.get("property_id", "")).strip() or "demo"
-
-        # Handle new payload format (with active_voice and parameters)
-        if "active_voice" in body and isinstance(body.get("active_voice"), dict):
-            active_voice = body["active_voice"]
-            voice_key = str(active_voice.get("voice_key", "")).strip()
-            display_name = str(active_voice.get("display_name", "")).strip()
-            provider = str(active_voice.get("provider", "")).strip()
-            model = str(active_voice.get("model", "")).strip()
-            parameters = (
-                body.get("parameters", {}) if isinstance(body.get("parameters"), dict) else {}
-            )
-        else:
-            # Handle old payload format (backward compatibility)
-            voice_key = str(body.get("voice_key", "")).strip()
-            display_name = str(body.get("display_name", "")).strip()
-            provider = body.get("provider", "").strip()
-            model = body.get("model", "").strip()
-            parameters = body.get("params", {}) if isinstance(body.get("params"), dict) else {}
-
-        if not voice_key:
-            self._send_json(422, {"error": "voice_key is required"})
-            return
-
-        catalog = {v["voice_key"]: v for v in self._build_voice_catalog()}
-        selected = catalog.get(voice_key)
-        if not selected:
-            self._send_json(422, {"error": "unknown voice_key"})
-            return
-
-        # Use provided values or fall back to catalog
-        provider = provider or selected.get("provider", "")
-        model = model or selected.get("model", "")
-        display_name = display_name or f"{selected['display_name']} ({selected['provider_label']})"
-
-        now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-        # Build record with all required fields
-        record = {
-            "property_id": property_id,
-            "voice_key": selected["voice_key"],
-            "display_name": display_name,
-            "provider": provider,
-            "model": model,
-            "params": parameters,
-            "updated_at": now,
-            "updated_by": self.headers.get("X-Admin-Actor") or "admin",
-        }
-
-        configs = self._load_voice_configs()
-        prior = configs.get(property_id, {}) if isinstance(configs.get(property_id), dict) else {}
-        configs[property_id] = {"current": record, "previous": prior.get("current")}
-        self._save_voice_configs(configs)
-
-        self._send_json(
-            200,
-            {
-                "property_id": property_id,
-                "voice_key": record["voice_key"],
-                "updated_at": record["updated_at"],
-            },
-        )
 
     # ------------------------------------------------------------------
     # /api/admin/visitors — parsed Caddy access log with enrichment
@@ -5896,6 +5278,139 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             pass  # backup is best-effort; never block a save on it
         path.write_bytes(content.encode("utf-8"))
         self._send_json(200, {"ok": True, "name": name, "mtime": path.stat().st_mtime})
+
+    # Legacy compatibility: keep the old Greetings Editor API working.
+    def _greetings_json_path(self) -> Path:
+        return (_voice_prompts_dir() / _VOICE_PROMPT_REGISTRY["greetings"]["file"]).resolve()
+
+    def _load_greetings_json(self) -> tuple[Path, dict] | tuple[Path, None]:
+        path = self._greetings_json_path()
+        if not path.is_file():
+            return path, None
+        data = json.loads(path.read_bytes().decode("utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("greetings.json top level must be an object")
+        if not isinstance(data.get("greetings"), dict):
+            data["greetings"] = {}
+        if not isinstance(data.get("timed_greetings"), dict):
+            data["timed_greetings"] = {}
+        if not isinstance(data.get("generic_hotel"), dict):
+            data["generic_hotel"] = {}
+        return path, data
+
+    def _write_greetings_json(self, path: Path, data: dict) -> None:
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+        err = _validate_greetings_json(content)
+        if err:
+            raise ValueError(err)
+        path.write_bytes((content + "\n").encode("utf-8"))
+
+    def _handle_admin_greetings_get(self) -> None:
+        """GET /api/admin/greetings — return full greetings JSON."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        try:
+            _, data = self._load_greetings_json()
+        except (ValueError, OSError) as exc:
+            self._send_json(500, {"error": "invalid_greetings_file", "detail": str(exc)})
+            return
+        if data is None:
+            self._send_json(404, {"error": "greetings.json not found"})
+            return
+        self._send_json(200, data)
+
+    def _handle_admin_greetings_post(self) -> None:
+        """POST /api/admin/greetings — update or add one language greeting."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        lang = (body.get("lang") or "").strip().lower()
+        greeting_raw = body.get("greeting")
+        greeting = greeting_raw.strip() if isinstance(greeting_raw, str) else ""
+        timed = body.get("timed")
+        if not lang or not greeting:
+            self._send_json(400, {"error": "lang and greeting are required"})
+            return
+        if timed is not None and not isinstance(timed, dict):
+            self._send_json(400, {"error": "timed must be an object when provided"})
+            return
+        try:
+            path, data = self._load_greetings_json()
+        except (ValueError, OSError) as exc:
+            self._send_json(500, {"error": "invalid_greetings_file", "detail": str(exc)})
+            return
+        if data is None:
+            data = {"greetings": {}, "timed_greetings": {}, "generic_hotel": {}}
+
+        data["greetings"][lang] = greeting
+        if isinstance(timed, dict):
+            morning = (timed.get("morning") or "").strip() or greeting
+            afternoon = (timed.get("afternoon") or "").strip() or greeting
+            evening = (timed.get("evening") or "").strip() or greeting
+            data["timed_greetings"][lang] = {
+                "morning": morning,
+                "afternoon": afternoon,
+                "evening": evening,
+            }
+
+        try:
+            self._write_greetings_json(path, data)
+        except ValueError as exc:
+            self._send_json(400, {"error": "invalid_greetings", "detail": str(exc)})
+            return
+        except OSError as exc:
+            self._send_json(500, {"error": "write_failed", "detail": str(exc)})
+            return
+        self._send_json(200, {"ok": True, "lang": lang})
+
+    def _handle_admin_greetings_delete(self, lang: str) -> None:
+        """DELETE /api/admin/greetings/<lang> — remove one language."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        lang = (lang or "").strip().lower()
+        if not lang:
+            self._send_json(400, {"error": "language code required"})
+            return
+        if lang == "en":
+            self._send_json(400, {"error": "cannot delete English (fallback language)"})
+            return
+
+        try:
+            path, data = self._load_greetings_json()
+        except (ValueError, OSError) as exc:
+            self._send_json(500, {"error": "invalid_greetings_file", "detail": str(exc)})
+            return
+        if data is None:
+            self._send_json(404, {"error": "greetings.json not found"})
+            return
+
+        removed = False
+        if lang in data["greetings"]:
+            del data["greetings"][lang]
+            removed = True
+        if lang in data["timed_greetings"]:
+            del data["timed_greetings"][lang]
+            removed = True
+        if lang in data["generic_hotel"]:
+            del data["generic_hotel"][lang]
+            removed = True
+
+        if not removed:
+            self._send_json(404, {"error": f"language '{lang}' not found"})
+            return
+
+        try:
+            self._write_greetings_json(path, data)
+        except ValueError as exc:
+            self._send_json(400, {"error": "invalid_greetings", "detail": str(exc)})
+            return
+        except OSError as exc:
+            self._send_json(500, {"error": "write_failed", "detail": str(exc)})
+            return
+        self._send_json(200, {"ok": True, "deleted": lang})
 
     def _handle_admin_voice_prompts_list(self) -> None:
         """GET /api/admin/voice-prompts — voice-concierge prompts + explanations."""
