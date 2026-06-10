@@ -1579,7 +1579,9 @@ def _tts_openai(text: str, voice: str) -> bytes:
     return response.content
 
 
-def _tts_cartesia(text: str, voice: str, language: str = "en", *, params: dict | None = None) -> bytes:
+def _tts_cartesia(
+    text: str, voice: str, language: str = "en", *, params: dict | None = None
+) -> bytes:
     """Generate speech via Cartesia Sonic-3 HTTP API and return raw MP3 bytes.
 
     This is the synchronous /tts/bytes endpoint used by the demo's
@@ -1612,9 +1614,13 @@ def _tts_cartesia(text: str, voice: str, language: str = "en", *, params: dict |
     }
     # Apply speed / emotion / volume if provided
     if "speed" in p or "emotion" in p:
-        body_dict["_experimental_voice_controls"] = {k: v for k, v in p.items() if k in ("speed", "emotion", "volume")}
+        body_dict["_experimental_voice_controls"] = {
+            k: v for k, v in p.items() if k in ("speed", "emotion", "volume")
+        }
     if "pronunciation_dict_id" in p and p["pronunciation_dict_id"]:
-        body_dict["pronunciation_dictionary_locators"] = [{"pronunciation_dictionary_id": p["pronunciation_dict_id"]}]
+        body_dict["pronunciation_dictionary_locators"] = [
+            {"pronunciation_dictionary_id": p["pronunciation_dict_id"]}
+        ]
 
     payload = json.dumps(body_dict).encode()
 
@@ -1638,7 +1644,9 @@ def _tts_cartesia(text: str, voice: str, language: str = "en", *, params: dict |
         raise RuntimeError(f"Cartesia TTS error {exc.code}: {body}") from exc
 
 
-def _tts_elevenlabs(text: str, voice: str, language: str = "en", *, params: dict | None = None) -> bytes:
+def _tts_elevenlabs(
+    text: str, voice: str, language: str = "en", *, params: dict | None = None
+) -> bytes:
     """Generate speech via the ElevenLabs HTTP TTS API and return raw MP3 bytes.
 
     This is the synchronous one-shot endpoint used by the demo's "Test
@@ -1728,7 +1736,10 @@ def _list_cartesia_voices() -> list[dict]:
         return []
 
     now = time.time()
-    if _CARTESIA_VOICES_CACHE and (now - _CARTESIA_VOICES_CACHE_TS) < _CARTESIA_VOICES_CACHE_TTL_SECS:
+    if (
+        _CARTESIA_VOICES_CACHE
+        and (now - _CARTESIA_VOICES_CACHE_TS) < _CARTESIA_VOICES_CACHE_TTL_SECS
+    ):
         return list(_CARTESIA_VOICES_CACHE)
 
     req = urllib.request.Request(
@@ -1771,7 +1782,10 @@ def _list_elevenlabs_voices() -> list[dict]:
         return []
 
     now = time.time()
-    if _ELEVENLABS_VOICES_CACHE and (now - _ELEVENLABS_VOICES_CACHE_TS) < _ELEVENLABS_VOICES_CACHE_TTL_SECS:
+    if (
+        _ELEVENLABS_VOICES_CACHE
+        and (now - _ELEVENLABS_VOICES_CACHE_TS) < _ELEVENLABS_VOICES_CACHE_TTL_SECS
+    ):
         return list(_ELEVENLABS_VOICES_CACHE)
 
     req = urllib.request.Request(
@@ -1786,7 +1800,9 @@ def _list_elevenlabs_voices() -> list[dict]:
         with urllib.request.urlopen(req, timeout=12) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
         raw_voices = payload.get("voices", [])
-        voices = [v for v in raw_voices if isinstance(v, dict) and str(v.get("voice_id", "")).strip()]
+        voices = [
+            v for v in raw_voices if isinstance(v, dict) and str(v.get("voice_id", "")).strip()
+        ]
         voices.sort(key=lambda v: str(v.get("name", "")).lower())
         _ELEVENLABS_VOICES_CACHE = voices
         _ELEVENLABS_VOICES_CACHE_TS = now
@@ -2815,7 +2831,10 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         try:
             body = self._read_json_body()
             voice_key = str(body.get("voice_key", "")).strip()
-            text = str(body.get("text", _VOICE_PREVIEW_DEFAULT_TEXT)).strip() or _VOICE_PREVIEW_DEFAULT_TEXT
+            text = (
+                str(body.get("text", _VOICE_PREVIEW_DEFAULT_TEXT)).strip()
+                or _VOICE_PREVIEW_DEFAULT_TEXT
+            )
             language = str(body.get("language", "en")).strip() or "en"
             params = body.get("params") if isinstance(body.get("params"), dict) else {}
             if len(text) > 200:
@@ -2831,7 +2850,9 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
 
         try:
             if provider == "google":
-                full_voice_id = voice_id if "Chirp3-HD-" in voice_id else f"en-US-Chirp3-HD-{voice_id}"
+                full_voice_id = (
+                    voice_id if "Chirp3-HD-" in voice_id else f"en-US-Chirp3-HD-{voice_id}"
+                )
                 audio = _tts_google(text, full_voice_id, language)
             elif provider == "cartesia":
                 audio = _tts_cartesia(text, voice_id, language, params=params)
@@ -2855,27 +2876,51 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         ok, _ = self._admin_auth(require_daily=False)
         if not ok:
             return
-        from urllib.parse import parse_qs, urlparse as _urlparse2
+        from urllib.parse import parse_qs
+        from urllib.parse import urlparse as _urlparse2
+
         qs = parse_qs(_urlparse2(self.path).query)
         property_id = (qs.get("property_id", [""])[0] or "").strip() or "demo"
         configs = self._load_voice_configs()
         entry = configs.get(property_id, {})
-        self._send_json(200, {
-            "property_id": property_id,
-            "current": entry.get("current") if isinstance(entry, dict) else None,
-            "previous": entry.get("previous") if isinstance(entry, dict) else None,
-        })
+        self._send_json(
+            200,
+            {
+                "property_id": property_id,
+                "current": entry.get("current") if isinstance(entry, dict) else None,
+                "previous": entry.get("previous") if isinstance(entry, dict) else None,
+            },
+        )
 
     def _handle_voice_config_save(self) -> None:
-        """POST /api/voice/config — save voice + params for a property."""
+        """POST /api/voice/config — save voice + params for a property.
+
+        Accepts both old format (voice_key, params, display_name) and new format
+        (complete tts_config.json structure with _meta, active_voice, parameters, fallback_chain).
+        """
         ok, _ = self._admin_auth(require_daily=False)
         if not ok:
             return
         body = self._read_json_body()
         property_id = str(body.get("property_id", "")).strip() or "demo"
-        voice_key = str(body.get("voice_key", "")).strip()
-        params = body.get("params") if isinstance(body.get("params"), dict) else {}
-        display_name = str(body.get("display_name", "")).strip()
+
+        # Handle new payload format (with active_voice and parameters)
+        if "active_voice" in body and isinstance(body.get("active_voice"), dict):
+            active_voice = body["active_voice"]
+            voice_key = str(active_voice.get("voice_key", "")).strip()
+            display_name = str(active_voice.get("display_name", "")).strip()
+            provider = str(active_voice.get("provider", "")).strip()
+            model = str(active_voice.get("model", "")).strip()
+            parameters = (
+                body.get("parameters", {}) if isinstance(body.get("parameters"), dict) else {}
+            )
+        else:
+            # Handle old payload format (backward compatibility)
+            voice_key = str(body.get("voice_key", "")).strip()
+            display_name = str(body.get("display_name", "")).strip()
+            provider = body.get("provider", "").strip()
+            model = body.get("model", "").strip()
+            parameters = body.get("params", {}) if isinstance(body.get("params"), dict) else {}
 
         if not voice_key:
             self._send_json(422, {"error": "voice_key is required"})
@@ -2887,14 +2932,21 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(422, {"error": "unknown voice_key"})
             return
 
+        # Use provided values or fall back to catalog
+        provider = provider or selected.get("provider", "")
+        model = model or selected.get("model", "")
+        display_name = display_name or f"{selected['display_name']} ({selected['provider_label']})"
+
         now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+        # Build record with all required fields
         record = {
             "property_id": property_id,
             "voice_key": selected["voice_key"],
-            "display_name": display_name or f"{selected['display_name']} ({selected['provider_label']})",
-            "provider": selected["provider"],
-            "model": selected["model"],
-            "params": params,
+            "display_name": display_name,
+            "provider": provider,
+            "model": model,
+            "params": parameters,
             "updated_at": now,
             "updated_by": self.headers.get("X-Admin-Actor") or "admin",
         }
@@ -2904,11 +2956,14 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         configs[property_id] = {"current": record, "previous": prior.get("current")}
         self._save_voice_configs(configs)
 
-        self._send_json(200, {
-            "property_id": property_id,
-            "voice_key": record["voice_key"],
-            "updated_at": record["updated_at"],
-        })
+        self._send_json(
+            200,
+            {
+                "property_id": property_id,
+                "voice_key": record["voice_key"],
+                "updated_at": record["updated_at"],
+            },
+        )
 
     # ------------------------------------------------------------------
     # /api/admin/visitors — parsed Caddy access log with enrichment
