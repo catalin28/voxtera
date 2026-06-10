@@ -640,6 +640,16 @@ async function loadSessions() {
   }
 }
 
+// Derive a channel badge from the session id prefix so WhatsApp voice calls
+// (session ids start with "wacall_") are distinguishable from hotel/web
+// sessions in the picker. Add new channels here as they appear.
+function channelBadge(sessionId) {
+  const sid = sessionId || '';
+  if (sid.startsWith('wacall_')) return '[WA] ';
+  if (sid.startsWith('tra')) return '[WEB] ';
+  return '';
+}
+
 function fmtSessionLabel(s) {
   const ts = s.started_at ? new Date(s.started_at) : null;
   const when = ts
@@ -649,7 +659,7 @@ function fmtSessionLabel(s) {
   const preview = (s.transcript_first || '').slice(0, 40);
   const tag = s.active ? ' ● LIVE' : (s.in_progress ? ' (in progress)' : (s.orphan ? ' (orphan)' : ''));
   const parts = [when, turns, preview ? `"${preview}"` : ''].filter(Boolean);
-  return parts.join(' · ') + tag;
+  return channelBadge(s.session_id) + parts.join(' · ') + tag;
 }
 
 function renderSessionPicker(sessions) {

@@ -6,24 +6,39 @@ WebRTC media (generates the SDP answer, pre-accepts + accepts the call) and hand
 us a live ``SmallWebRTCConnection``. ``run_call_bot`` wraps that connection in a
 ``SmallWebRTCTransport`` and runs a Pipecat voice pipeline:
 
-    transport.in → VAD → STT → context.user → TravelAgentBrain → TTS → transport.out
+    transport.in → [raw-rec] → VAD → STT → [transcript] → context.user
+        → TravelAgentBrain → [tracer] → TTS → transport.out → [call-rec] → context.assistant
 
 The answering brain is the SAME ``TravelAgentBrain`` used by the web voice orb and
 WhatsApp text — it forwards each turn to the shared ``/api/concierge`` endpoint, so
 voice calls, web voice, and chat all behave identically (one source of truth).
 
-This is a self-contained pipeline (it does NOT go through ``build_pipeline``) to
-keep the WhatsApp call path fully isolated from the tuned hotel/Daily pipeline —
-a bug here can never destabilise the production voice paths.
+Observability (WAV + transcript + trace), mirroring the hotel pipeline:
+  * ``RawInputRecorder`` → ``logs/calls/<session_id>/input_raw.wav`` (caller audio)
+  * ``CallAudioRecorder`` → ``logs/calls/<session_id>/call.wav`` (full stereo call)
+  * ``TranscriptStageTimer`` (user turns) + ``PipelineTracer`` (bot turns) →
+    ``logs/calls/<session_id>/record.json`` (transcript + per-turn timings)
+  * ``TraceForwarder`` ships trace events to serve.py so the call shows up in the
+    Voxtera Trace dashboard, tagged channel ``wa``.
 
-Note: the WebRTC media path can only be exercised on a publicly reachable host
-(ICE/STUN need a real public IP); import/compile is checkable in dev, full call
-testing happens on the deployed droplet.
+CONCURRENCY CAVEAT: the recording/trace layer uses process-global singletons
+(``call_record``, env vars) designed for "one call = one subprocess". This service
+is "one process = many calls", so recording/trace is correct for ONE call at a
+time (matches the box's 1–2 call ceiling and how the demo is used). Truly
+simultaneous calls would mix recordings — that needs a per-call refactor. The call
+audio itself is per-pipeline and unaffected; only the recording/trace artifacts
+are shared. All observability is best-effort: a failure here never breaks the call.
+
+This is a self-contained pipeline (it does NOT go through ``build_pipeline``) to
+keep the WhatsApp call path fully isolated from the tuned hotel/Daily pipeline.
+The WebRTC media path can only be exercised on a publicly reachable host
+(ICE/STUN need a real public IP); full call testing happens on the droplet.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import os
 import uuid
 
 from loguru import logger
@@ -61,6 +76,13 @@ from voxtera.whatsapp.config import load_whatsapp_settings
 _AUDIO_IN_RATE = 16000
 _AUDIO_OUT_RATE = 24000
 
+# Trace label/source + channel so WhatsApp calls are distinguishable in the
+# Voxtera Trace dashboard (sessions tagged "wa", events sourced "whatsapp").
+_TRACE_LABEL = "whatsapp"
+_TRACE_CHANNEL = "wa"
+# serve.py (the UI/dashboard) runs on the same droplet on :8080.
+_LAUNCHER_URL = os.environ.get("VOXTERA_LAUNCHER_URL", "http://127.0.0.1:8080/api/bot-event")
+
 
 def _call_settings() -> Settings:
     """Settings forced into voice + travel-agent mode for a WhatsApp call."""
@@ -71,6 +93,20 @@ def _call_settings() -> Settings:
         bot_brain="travel_agent",  # answer via ConciergePipeline
         rag_enabled=False,  # travel brain uses /api/concierge, not local RAG
     )
+
+
+def _smart_turn_stop_secs(settings: Settings) -> float:
+    """SmartTurn hard end-of-turn cap for calls. Higher = more patient with long
+    thinking pauses (e.g. "scuba diving … and a spa"), at the cost of a longer
+    wait when the caller has genuinely finished. Tune via WHATSAPP_SMART_TURN_STOP_SECS.
+    """
+    raw = os.environ.get("WHATSAPP_SMART_TURN_STOP_SECS", "").strip()
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            logger.warning("[whatsapp-call] bad WHATSAPP_SMART_TURN_STOP_SECS={!r}", raw)
+    return settings.smart_turn_stop_secs
 
 
 def _build_transport(connection: SmallWebRTCConnection) -> SmallWebRTCTransport:
@@ -88,15 +124,62 @@ def _build_transport(connection: SmallWebRTCConnection) -> SmallWebRTCTransport:
     )
 
 
+def _init_call_record(settings: Settings, session_id: str) -> None:
+    """Start the per-call WAV + transcript record (best-effort).
+
+    Sets the process-global session id/channel the recorders + tracer read.
+    """
+    os.environ["VOXTERA_SESSION_ID"] = session_id
+    os.environ["VOXTERA_CHANNEL"] = _TRACE_CHANNEL
+    from voxtera import call_record
+
+    call_record.init_call(
+        enabled=True,
+        hotel_id=None,
+        bot_name=settings.bot_name,
+        transport_mode="whatsapp",
+        stt_provider=settings.stt_provider,
+        tts_provider=settings.tts_provider,
+        llm_model=os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001"),
+    )
+
+
+async def _finalize_call_record() -> None:
+    """Flush WAVs + write the transcript record on hang-up (best-effort)."""
+    from voxtera import call_record
+
+    for flush in (
+        call_record.flush_audio,
+        call_record.flush_raw_input,
+        call_record.flush_stage_recorders,
+    ):
+        try:
+            await flush()
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[whatsapp-call] {} failed: {}", getattr(flush, "__name__", flush), e)
+    try:
+        call_record.finalize()
+    except Exception as e:  # noqa: BLE001
+        logger.debug("[whatsapp-call] call_record.finalize failed: {}", e)
+
+
 async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     """Run a Pipecat voice pipeline for one WhatsApp call. Returns on hang-up.
 
     Invoked as the ``connection_callback`` of ``WhatsAppClient.handle_webhook_request``.
-    Each concurrent call gets its own pipeline + STT/TTS streams.
     """
     settings = _call_settings()
-    session_id = f"wacall:{uuid.uuid4().hex[:12]}"
+    # Filesystem-safe id (no colon) — used as the logs/calls/<id>/ folder name.
+    session_id = f"wacall_{uuid.uuid4().hex[:12]}"
     logger.info("[whatsapp-call] starting bot session={}", session_id)
+
+    # Observability: WAV + transcript record. Best-effort — never break the call.
+    record_enabled = True
+    try:
+        _init_call_record(settings, session_id)
+    except Exception as e:  # noqa: BLE001
+        record_enabled = False
+        logger.error("[whatsapp-call] call_record init failed (recording off): {}", e)
 
     transport = _build_transport(connection)
 
@@ -120,7 +203,7 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     context = LLMContext([])
     smart_turn = LocalSmartTurnAnalyzerV3(
         cpu_count=settings.smart_turn_cpu_count,
-        params=SmartTurnParams(stop_secs=settings.smart_turn_stop_secs),
+        params=SmartTurnParams(stop_secs=_smart_turn_stop_secs(settings)),
     )
     user_turn_strategies = UserTurnStrategies(
         start=default_user_turn_start_strategies(),
@@ -136,7 +219,30 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     wa_region = load_whatsapp_settings().default_region
     brain = TravelAgentBrain(region=wa_region or None, session_id=session_id)
 
+    # Optional observability processors (WAV + transcript). Imported lazily and
+    # guarded so a recording problem can never stop a call from connecting.
+    raw_recorder = None
+    transcript_timer = None
+    tracer = None
+    call_recorder = None
+    if record_enabled:
+        try:
+            from voxtera.call_record import CallAudioRecorder, RawInputRecorder
+            from voxtera.observability import PipelineTracer, TranscriptStageTimer
+
+            raw_recorder = RawInputRecorder(sample_rate=_AUDIO_IN_RATE)
+            transcript_timer = TranscriptStageTimer(label=_TRACE_LABEL)
+            tracer = PipelineTracer(label=_TRACE_LABEL)
+            call_recorder = CallAudioRecorder()
+        except Exception as e:  # noqa: BLE001
+            logger.error("[whatsapp-call] observability processors unavailable: {}", e)
+
+    # Assemble the pipeline in the same order as build_pipeline: raw recorder
+    # early, transcript timer between STT and the user aggregator, tracer after
+    # the brain, call recorder after transport.output().
     processors: list = [transport.input()]
+    if raw_recorder is not None:
+        processors.append(raw_recorder)
     if needs_vad:
         processors.append(
             VADProcessor(
@@ -151,16 +257,18 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
                 )
             )
         )
-    processors.extend(
-        [
-            stt,
-            context_aggregator.user(),
-            brain,
-            tts,
-            transport.output(),
-            context_aggregator.assistant(),
-        ]
-    )
+    processors.append(stt)
+    if transcript_timer is not None:
+        processors.append(transcript_timer)
+    processors.append(context_aggregator.user())
+    processors.append(brain)
+    if tracer is not None:
+        processors.append(tracer)
+    processors.append(tts)
+    processors.append(transport.output())
+    if call_recorder is not None:
+        processors.append(call_recorder)
+    processors.append(context_aggregator.assistant())
 
     task = PipelineTask(
         Pipeline(processors),
@@ -176,6 +284,19 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
         idle_timeout_secs=settings.pipeline_idle_timeout_secs,
     )
 
+    # Ship trace events to serve.py so the call appears in the dashboard (tagged
+    # channel "wa"). Best-effort — a forwarder failure must not break the call.
+    trace_forwarder = None
+    if record_enabled:
+        try:
+            from voxtera.trace import TraceForwarder
+
+            trace_forwarder = TraceForwarder(launcher_url=_LAUNCHER_URL, session_id=session_id)
+            await trace_forwarder.start()
+        except Exception as e:  # noqa: BLE001
+            logger.error("[whatsapp-call] trace forwarder start failed: {}", e)
+            trace_forwarder = None
+
     # Greet the caller the moment the WebRTC media connects, so they hear the
     # agent immediately instead of dead air. Queued on connect (not at build)
     # because the audio track isn't live until the peer connection is up.
@@ -186,7 +307,19 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
 
     @transport.event_handler("on_client_connected")
     async def _on_client_connected(_transport, _client) -> None:  # noqa: ANN001
-        logger.info("[whatsapp-call] client connected — greeting (session={})", session_id)
+        logger.info("[whatsapp-call] client connected (session={})", session_id)
+        # Activate the lazy Gladia STT session. The _LazyConnectGladiaSTTService
+        # skips its own connect and waits for an explicit lazy_connect() (normally
+        # the STTRouter's job in the Daily pipeline). Without a router here, we
+        # trigger it ourselves or no transcripts are ever produced. Safe no-op for
+        # STT providers that don't have the method (e.g. Deepgram).
+        lazy_connect = getattr(stt, "lazy_connect", None)
+        if lazy_connect is not None:
+            try:
+                await lazy_connect()
+                logger.info("[whatsapp-call] STT lazy_connect triggered")
+            except Exception as e:  # noqa: BLE001
+                logger.error("[whatsapp-call] STT lazy_connect failed: {}", e)
         await task.queue_frames([TTSSpeakFrame(text=greeting_text)])
 
     # handle_sigint=False: the bot runs inside the async webhook service, not as a
@@ -195,4 +328,11 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     try:
         await runner.run(task)
     finally:
+        if trace_forwarder is not None:
+            try:
+                await trace_forwarder.stop()
+            except Exception as e:  # noqa: BLE001
+                logger.debug("[whatsapp-call] trace forwarder stop failed: {}", e)
+        if record_enabled:
+            await _finalize_call_record()
         logger.info("[whatsapp-call] bot session={} ended", session_id)
