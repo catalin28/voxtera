@@ -6,8 +6,23 @@ WebRTC media (generates the SDP answer, pre-accepts + accepts the call) and hand
 us a live ``SmallWebRTCConnection``. ``run_call_bot`` wraps that connection in a
 ``SmallWebRTCTransport`` and runs a Pipecat voice pipeline:
 
-    transport.in → [raw-rec] → VAD → STT → [transcript] → context.user
-        → TravelAgentBrain → [tracer] → TTS → transport.out → [call-rec] → context.assistant
+    transport.in → [raw-rec] → leakage-guard → VAD → STT → suppressor
+        → [transcript] → context.user → TravelAgentBrain → [tracer] → TTS
+        → transport.out → [call-rec] → context.assistant
+
+Echo / ghost-turn protection (same processors as the main Daily pipeline):
+  * ``PlaybackLeakageGuard`` zeroes mic audio while the bot is speaking or an
+    LLM response is in flight, so TTS playback leaking into the caller's mic
+    (the WhatsApp leg has no acoustic echo cancellation) never reaches VAD/STT.
+  * ``BotActiveUserFrameSuppressor`` drops residual VAD + interim/final
+    transcription frames that still arrive while the bot is active — e.g. a
+    late Gladia final from the tail of the caller's question, which would
+    otherwise start a ghost user turn (and, with barge-in enabled, cut the
+    bot off after a word or two).
+  Both honour the same WHATSAPP_ALLOW_INTERRUPTIONS flag as the pipeline's
+  ``allow_interruptions``: in strict mode (default) they suppress everything
+  while the bot is active; with barge-in enabled the guard's RMS gate lets
+  genuine near-field speech through.
 
 The answering brain is the SAME ``TravelAgentBrain`` used by the web voice orb and
 WhatsApp text — it forwards each turn to the shared ``/api/concierge`` endpoint, so
@@ -65,6 +80,7 @@ from pipecat.turns.user_turn_strategies import (
     default_user_turn_start_strategies,
 )
 
+from voxtera.audio import BotActiveUserFrameSuppressor, PlaybackLeakageGuard
 from voxtera.config import Settings, load_settings
 from voxtera.stt import _build_stt
 from voxtera.travel_agent_brain import TravelAgentBrain
@@ -254,11 +270,18 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
             logger.error("[whatsapp-call] observability processors unavailable: {}", e)
 
     # Assemble the pipeline in the same order as build_pipeline: raw recorder
-    # early, transcript timer between STT and the user aggregator, tracer after
-    # the brain, call recorder after transport.output().
+    # early, leakage guard before VAD (zeroes mic audio while the bot is
+    # active), suppressor after STT (drops late VAD/transcription frames),
+    # transcript timer between STT and the user aggregator, tracer after the
+    # brain, call recorder after transport.output().
+    allow_interruptions = _allow_interruptions()
     processors: list = [transport.input()]
     if raw_recorder is not None:
         processors.append(raw_recorder)
+    # Echo guard: the WhatsApp/WebRTC leg has no acoustic echo cancellation, so
+    # TTS playback can leak back through the caller's mic. Zero the mic audio
+    # while the bot is speaking/thinking so the leak never reaches VAD or STT.
+    processors.append(PlaybackLeakageGuard(allow_interruptions=allow_interruptions))
     if needs_vad:
         processors.append(
             VADProcessor(
@@ -274,6 +297,11 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
             )
         )
     processors.append(stt)
+    # Ghost-turn guard: drop residual VAD + interim/final transcriptions that
+    # arrive while the bot is active (e.g. a late Gladia final from the tail
+    # of the caller's question). Without this they start a new user turn and —
+    # with barge-in enabled — interrupt the bot after a word or two.
+    processors.append(BotActiveUserFrameSuppressor(allow_interruptions=allow_interruptions))
     if transcript_timer is not None:
         processors.append(transcript_timer)
     processors.append(context_aggregator.user())
@@ -292,7 +320,8 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
             # Off by default — the WhatsApp leg has no echo cancellation, so the
             # bot's own voice (heard through the caller's mic) would otherwise
             # trigger a false barge-in and cut the bot off after one word.
-            allow_interruptions=_allow_interruptions(),
+            # Same flag drives PlaybackLeakageGuard + BotActiveUserFrameSuppressor.
+            allow_interruptions=allow_interruptions,
             audio_in_sample_rate=_AUDIO_IN_RATE,
             audio_out_sample_rate=_AUDIO_OUT_RATE,
             enable_metrics=True,
