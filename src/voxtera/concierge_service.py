@@ -40,6 +40,7 @@ from loguru import logger
 # App keys for objects stashed on the aiohttp Application.
 KEY_DEPS = "concierge_deps"
 KEY_HTTP = "concierge_http_session"
+KEY_WARMUP = "concierge_warmup_enabled"
 
 DEFAULT_PORT = 8300
 
@@ -264,6 +265,8 @@ async def _on_startup(app: web.Application) -> None:
     http = aiohttp.ClientSession()
     app[KEY_HTTP] = http
     app[KEY_DEPS] = await build_concierge_deps(http)
+    if not app.get(KEY_WARMUP, True):
+        return  # tests: no model downloads / network warmups
     # Warm the expensive bits so the first guest turn doesn't pay them:
     # Redis connection, the Anthropic TLS/HTTP2 connection the decompose/
     # render calls reuse, and the e5 embedding weights (~3s cold).
@@ -286,6 +289,7 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning("[warmup] anthropic pre-warm failed: {}", exc)
 
     def _warm_embed() -> None:
+        # Travel-agent retrieval (Qdrant) embeds with e5-large.
         try:
             from voxtera.call_center.embeddings import embed_query
 
@@ -293,6 +297,16 @@ async def _on_startup(app: web.Application) -> None:
             logger.info("[warmup] call_center embed model ready")
         except Exception as exc:  # noqa: BLE001
             logger.warning("[warmup] embed pre-warm failed: {}", exc)
+        # Property (hotel-concierge) retrieval embeds with the rag e5-small
+        # stack — warm it too or the FIRST hotel-mode caller pays the ~3-6s
+        # in-process model load inside their turn (sidecar mode: cheap no-op).
+        try:
+            from voxtera.rag.embeddings import embed_sync
+
+            embed_sync(["warmup"])
+            logger.info("[warmup] property (rag) embed model ready")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[warmup] property embed pre-warm failed: {}", exc)
 
     asyncio.get_running_loop().run_in_executor(None, _warm_embed)
 
@@ -301,7 +315,7 @@ async def _on_cleanup(app: web.Application) -> None:
     await app[KEY_HTTP].close()
 
 
-def create_app(*, with_whatsapp: bool | None = None) -> web.Application:
+def create_app(*, with_whatsapp: bool | None = None, warmup: bool = True) -> web.Application:
     """Build the concierge app; optionally mount the WhatsApp webhook routes.
 
     Args:
@@ -309,8 +323,11 @@ def create_app(*, with_whatsapp: bool | None = None) -> web.Application:
             mount when WhatsApp env credentials are configured, skip (with a
             log line) when they aren't — so dev machines without Meta secrets
             still get the concierge API.
+        warmup: Pre-warm Redis/Anthropic/embedding models at startup. Disable
+            in tests — the embed warmup downloads models on a cold cache.
     """
     app = web.Application()
+    app[KEY_WARMUP] = warmup
     app.on_startup.append(_on_startup)
     app.on_cleanup.append(_on_cleanup)
     app.router.add_get("/health", handle_health)

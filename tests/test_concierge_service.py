@@ -90,7 +90,7 @@ def stub_concierge(monkeypatch):
 
 @pytest.fixture
 async def client(stub_concierge):
-    app = concierge_service.create_app(with_whatsapp=False)
+    app = concierge_service.create_app(with_whatsapp=False, warmup=False)
     test_client = TestClient(TestServer(app))
     await test_client.start_server()
     yield test_client

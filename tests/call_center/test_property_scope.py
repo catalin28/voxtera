@@ -40,6 +40,15 @@ def _scripted_decompose(payload: dict[str, Any]):
     return fn
 
 
+def _forbidden_decompose():
+    """Property fast path must never pay the decompose LLM call."""
+
+    async def fn(_u: str, _c: dict[str, Any]) -> dict[str, Any]:
+        raise AssertionError("decomposer must not run on the property fast path")
+
+    return fn
+
+
 class _FakeCompound:
     """Travel-listings retriever — must NOT be hit under property scope."""
 
@@ -83,18 +92,24 @@ class _FakePropertyKB:
 
 def _build(
     *,
-    decompose: dict[str, Any],
     compound: _FakeCompound,
     property_kb: _FakePropertyKB | None,
+    decompose: dict[str, Any] | None = None,
+    classify: dict[str, Any] | None = None,
 ) -> ConciergePipeline:
+    decompose_fn = (
+        _scripted_decompose(decompose) if decompose is not None else _forbidden_decompose()
+    )
     return ConciergePipeline(
         session_store=SessionStore(),  # in-memory fallback
         classifier=EscalationClassifier(
-            classify_fn=_scripted_classify({"type": "none", "confidence": 0.1, "signal": None}),
+            classify_fn=_scripted_classify(
+                classify or {"type": "none", "confidence": 0.1, "signal": None}
+            ),
             cache_get=None,
             cache_set=None,
         ),
-        decomposer=QueryDecomposer(decompose_fn=_scripted_decompose(decompose)),
+        decomposer=QueryDecomposer(decompose_fn=decompose_fn),
         triage=Triage(),
         router=SourceRouter(),
         compound=compound,
@@ -112,47 +127,42 @@ _SCOPED_DECOMP = {
 
 @pytest.mark.asyncio
 async def test_property_scope_reads_guide_not_listings() -> None:
+    """Fast path: guide retrieval + render only — NO decompose LLM call."""
     compound, kb = _FakeCompound(), _FakePropertyKB()
-    p = _build(decompose=_SCOPED_DECOMP, compound=compound, property_kb=kb)
+    p = _build(compound=compound, property_kb=kb)  # decomposer forbidden
     out = await p.run(utterance="What time is breakfast?", hotel_id=HOTEL)
 
     assert out["path"] == PATH_SCOPED
+    assert out["reason"] == "property_fast"
     assert out["retrieval"]["source"] == "property_kb"
     assert out["retrieval"]["hotels"][0]["hotel_id"] == HOTEL
     # Guide queried with the RAW utterance; travel listings untouched.
-    assert kb.calls == [{"hotel_id": HOTEL, "query": "What time is breakfast?", "language": "en"}]
+    assert kb.calls == [{"hotel_id": HOTEL, "query": "What time is breakfast?", "language": None}]
     assert compound.calls == []
     assert "Casa Dell Arte" in out["answer"]
 
 
 @pytest.mark.asyncio
-async def test_property_scope_collapses_hotel_resolution() -> None:
+async def test_property_scope_never_resolves_other_hotels() -> None:
     """A name mention can't trigger portfolio resolution — one property only."""
     compound, kb = _FakeCompound(), _FakePropertyKB()
-    decomp = dict(_SCOPED_DECOMP, hotel_mention="Some Other Hotel")
-    p = _build(decompose=decomp, compound=compound, property_kb=kb)
+    p = _build(compound=compound, property_kb=kb)
     out = await p.run(utterance="Tell me about Some Other Hotel", hotel_id=HOTEL)
 
     assert out["path"] == PATH_SCOPED
-    assert out["router"]["reason"] == "property_scope"
+    assert out["router"]["reason"] == "property_fast"
     assert len(kb.calls) == 1 and kb.calls[0]["hotel_id"] == HOTEL
     assert compound.calls == []
 
 
 @pytest.mark.asyncio
-async def test_property_scope_broad_query_uses_guide() -> None:
+async def test_property_scope_recommendation_uses_guide() -> None:
     """Recommendation-shaped questions still answer from the guide."""
     compound, kb = _FakeCompound(), _FakePropertyKB()
-    decomp = {
-        "query_type": "broad",
-        "intent": "recommendation",
-        "requirements": ["spa"],
-        "language": "en",
-    }
-    p = _build(decompose=decomp, compound=compound, property_kb=kb)
+    p = _build(compound=compound, property_kb=kb)
     out = await p.run(utterance="Do you have a spa?", hotel_id=HOTEL)
 
-    assert out["path"] == PATH_BROAD
+    assert out["path"] == PATH_SCOPED
     assert out["retrieval"]["source"] == "property_kb"
     assert compound.calls == []
 
@@ -161,12 +171,27 @@ async def test_property_scope_broad_query_uses_guide() -> None:
 async def test_property_scope_guide_miss_fails_closed() -> None:
     """No guide chunks → no-match answer; never rescued from travel listings."""
     compound, kb = _FakeCompound(), _FakePropertyKB(empty=True)
-    p = _build(decompose=_SCOPED_DECOMP, compound=compound, property_kb=kb)
+    p = _build(compound=compound, property_kb=kb)
     out = await p.run(utterance="Do you have a helipad?", hotel_id=HOTEL)
 
     assert out["retrieval"]["hotels"] == []
     assert compound.calls == []  # no semantic fallback across the boundary
     assert out["answer"]  # the localized no-match reply
+
+
+@pytest.mark.asyncio
+async def test_property_scope_escalation_still_works() -> None:
+    """The classifier runs concurrently and still gates the fast path."""
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    p = _build(
+        compound=compound,
+        property_kb=kb,
+        classify={"type": "live_complaint", "confidence": 0.95, "signal": "locked out"},
+    )
+    out = await p.run(utterance="I am locked out of my room!", hotel_id=HOTEL)
+
+    assert out["path"] == "escalate"
+    assert "colleague" in out["answer"].lower()
 
 
 @pytest.mark.asyncio
@@ -200,7 +225,7 @@ async def test_property_scope_pins_session_hotel() -> None:
             cache_get=None,
             cache_set=None,
         ),
-        decomposer=QueryDecomposer(decompose_fn=_scripted_decompose(_SCOPED_DECOMP)),
+        decomposer=QueryDecomposer(decompose_fn=_forbidden_decompose()),
         triage=Triage(),
         router=SourceRouter(),
         compound=compound,
@@ -209,6 +234,8 @@ async def test_property_scope_pins_session_hotel() -> None:
     out = await p.run(utterance="What time is breakfast?", session_id="s-1", hotel_id=HOTEL)
     sess = await store.load(out["session_id"])
     assert sess.get("active_hotel_id") == HOTEL
+    # Transcript memory works without decompose: the turn was appended.
+    assert [t.get("utterance") for t in sess.get("history") or []] == ["What time is breakfast?"]
 
 
 # ---------- PropertyKBRetriever shaping (inner retriever mocked) ----------

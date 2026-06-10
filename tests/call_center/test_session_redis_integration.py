@@ -19,13 +19,15 @@ import os
 import uuid
 
 import pytest
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
-# Make sure REDIS_URL from .env is loaded even when pytest is invoked
-# without a wrapper script.
-load_dotenv(override=False)
-
-REDIS_URL = os.environ.get("REDIS_URL", "")
+# Read REDIS_URL for the live tests WITHOUT mutating os.environ. pytest
+# imports this module during collection, so a load_dotenv() here used to
+# leak the production REDIS_URL into the whole test process — every
+# "in-memory" SessionStore() in OTHER test modules silently connected to
+# the production Redis, and fixed test session ids accumulated turns
+# across runs (flaky history-length asserts, polluted prod data).
+REDIS_URL = os.environ.get("REDIS_URL") or dotenv_values().get("REDIS_URL") or ""
 
 
 def _reachable(url: str, timeout: float = 2.0) -> bool:
@@ -34,8 +36,7 @@ def _reachable(url: str, timeout: float = 2.0) -> bool:
     try:
         import redis  # type: ignore
 
-        client = redis.Redis.from_url(url, socket_connect_timeout=timeout,
-                                      socket_timeout=timeout)
+        client = redis.Redis.from_url(url, socket_connect_timeout=timeout, socket_timeout=timeout)
         return bool(client.ping())
     except Exception:
         return False
@@ -68,8 +69,13 @@ async def cleanup_keys(itest_prefix: str):
 
     import redis.asyncio as aioredis  # type: ignore
 
-    client = aioredis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True,
-                               socket_connect_timeout=2.0, socket_timeout=2.0)
+    client = aioredis.from_url(
+        REDIS_URL,
+        encoding="utf-8",
+        decode_responses=True,
+        socket_connect_timeout=2.0,
+        socket_timeout=2.0,
+    )
     try:
         for sid in created:
             await client.delete(KEY_PREFIX + sid)
@@ -98,8 +104,13 @@ async def test_live_redis_roundtrip(itest_prefix: str, cleanup_keys: list[str]) 
     # TTL should be set (positive integer seconds, ≤ 60).
     import redis.asyncio as aioredis  # type: ignore
 
-    client = aioredis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True,
-                               socket_connect_timeout=2.0, socket_timeout=2.0)
+    client = aioredis.from_url(
+        REDIS_URL,
+        encoding="utf-8",
+        decode_responses=True,
+        socket_connect_timeout=2.0,
+        socket_timeout=2.0,
+    )
     try:
         ttl = await client.ttl(KEY_PREFIX + sid)
     finally:
@@ -111,7 +122,8 @@ async def test_live_redis_roundtrip(itest_prefix: str, cleanup_keys: list[str]) 
 
 @pytest.mark.asyncio
 async def test_live_redis_append_turn_persists(
-    itest_prefix: str, cleanup_keys: list[str],
+    itest_prefix: str,
+    cleanup_keys: list[str],
 ) -> None:
     """Verify append_turn + save survives a fresh SessionStore instance."""
     store = SessionStore(url=REDIS_URL, ttl_seconds=60)
@@ -120,8 +132,12 @@ async def test_live_redis_append_turn_persists(
 
     s = await store.load(sid)
     await store.append_turn(
-        s, utterance="Belek'te spa olan otel?", decomposition={"requirements": ["spa"]},
-        reason=None, answer="Rixos Premium Belek...", is_clarification=False,
+        s,
+        utterance="Belek'te spa olan otel?",
+        decomposition={"requirements": ["spa"]},
+        reason=None,
+        answer="Rixos Premium Belek...",
+        is_clarification=False,
     )
     await store.save(s)
     await store.close()
@@ -137,7 +153,8 @@ async def test_live_redis_append_turn_persists(
 
 @pytest.mark.asyncio
 async def test_live_redis_ttl_expiry_removes_key(
-    itest_prefix: str, cleanup_keys: list[str],
+    itest_prefix: str,
+    cleanup_keys: list[str],
 ) -> None:
     """Use a 1-second TTL and confirm the key disappears."""
     store = SessionStore(url=REDIS_URL, ttl_seconds=1)

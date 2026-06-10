@@ -815,6 +815,16 @@ def _hybrid_answer(
     return "\n\n".join(parts)
 
 
+def _escalation_answer(lang: str) -> str:
+    """Localised hand-off line for the escalation short-circuit."""
+    return {
+        "tr": ("Sizi hemen bu konuda yardımcı olabilecek bir çalışma arkadaşıma aktarıyorum."),
+        "es": "Le pongo enseguida con un compañero que puede ayudarle con eso.",
+        "fr": ("Je vous mets tout de suite en relation avec un collègue qui pourra vous aider."),
+        "de": "Ich verbinde Sie sofort mit einem Kollegen, der Ihnen dabei helfen kann.",
+    }.get(lang, "Let me connect you to a colleague who can help with that right away.")
+
+
 class ConciergePipeline:
     """End-to-end orchestrator for the call-center concierge."""
 
@@ -911,6 +921,15 @@ class ConciergePipeline:
                 timings=timings,
             )
 
+        # Property fast path (P1.4): when the bot IS one hotel, decompose/
+        # triage/routing are pure latency — there is nothing to extract or
+        # route. One retrieval + ONE render LLM call, like the legacy hotel
+        # brain, with escalation classified concurrently. (~2x faster turns.)
+        if self._property_hotel_id:
+            return await self._run_property_turn(
+                sid=sid, utterance=utterance, t_start=t_start, timings=timings
+            )
+
         # 1+2+3 fan-out: classify runs in parallel with (load_session -> decompose).
         # Decompose needs session context (pending_slots merge, active_region),
         # so it can't run truly independent of session_load; but classify is
@@ -982,21 +1001,7 @@ class ConciergePipeline:
             # Localised — decomposition ran concurrently, so the detected
             # language is available even on the escalation short-circuit.
             esc_lang = (decomposition.get("language") or session.get("language") or "en").lower()
-            answer = {
-                "tr": (
-                    "Sizi hemen bu konuda yardımcı olabilecek bir çalışma arkadaşıma"
-                    " aktarıyorum."
-                ),
-                "es": "Le pongo enseguida con un compañero que puede ayudarle con eso.",
-                "fr": (
-                    "Je vous mets tout de suite en relation avec un collègue qui"
-                    " pourra vous aider."
-                ),
-                "de": "Ich verbinde Sie sofort mit einem Kollegen, der Ihnen dabei helfen kann.",
-            }.get(
-                esc_lang,
-                "Let me connect you to a colleague who can help with that right away.",
-            )
+            answer = _escalation_answer(esc_lang)
             return self._finish(
                 sid=sid,
                 utterance=utterance,
@@ -1523,6 +1528,137 @@ class ConciergePipeline:
             "missing_requirements": [],
             "reason": "comparison_of_presented",
         }
+
+    async def _run_property_turn(
+        self,
+        *,
+        sid: str,
+        utterance: str,
+        t_start: float,
+        timings: dict[str, float],
+    ) -> dict[str, Any]:
+        """Property (hotel-concierge) fast path — ONE render LLM call per turn.
+
+        The full travel pipeline spends an LLM round-trip on classify+decompose
+        before the render ever starts. That buys region/hotel extraction and
+        source routing — all meaningless when the bot IS one hotel. This path
+        mirrors the legacy hotel brain's shape (retrieve guide chunks → answer)
+        on the concierge machinery:
+
+          - escalation classification runs CONCURRENTLY with session load +
+            guide retrieval (it gates the render but adds ~0 wall time),
+          - the render is the only blocking LLM call (persona rules make it
+            answer in the guest's language, so skipping the decomposer's
+            language detection costs nothing),
+          - the deterministic micro-branches (web-offer yes/no, explicit
+            "search online") are kept — they are regex checks, not LLM calls,
+          - conversational turns ("thanks", "what did I ask?") are answered by
+            the render from the transcript, exactly like the old hotel brain.
+        """
+        pid = self._property_hotel_id
+
+        async def _classify_leg() -> dict[str, Any]:
+            t0 = time.perf_counter()
+            v = await self._classifier.classify(utterance)
+            timings["classify_ms"] = _ms(time.perf_counter() - t0)
+            return v
+
+        async def _session_retrieve_leg() -> tuple[dict[str, Any], dict[str, Any]]:
+            t0 = time.perf_counter()
+            sess = await self._sessions.load(sid)
+            timings["session_load_ms"] = _ms(time.perf_counter() - t0)
+            # Pin the session to the property (scoped follow-ups, hybrid path).
+            sess["active_hotel_id"] = pid
+            t0 = time.perf_counter()
+            retrieval_local = await self._run_kb(
+                {"language": sess.get("language")}, sess, PATH_SCOPED
+            )
+            timings["retrieve_ms"] = _ms(time.perf_counter() - t0)
+            return sess, retrieval_local
+
+        verdict, (session, retrieval) = await asyncio.gather(
+            _classify_leg(), _session_retrieve_leg()
+        )
+
+        if verdict.get("escalate"):
+            answer = _escalation_answer((session.get("language") or "en").lower())
+            return self._finish(
+                sid=sid,
+                utterance=utterance,
+                path=PATH_ESCALATE,
+                reason="escalation_classifier",
+                escalation=verdict,
+                answer=answer,
+                t_start=t_start,
+                timings=timings,
+            )
+
+        # Web-offer follow-ups and explicit "search online" requests reuse the
+        # standard handlers (the hybrid path keeps the property scope).
+        pending_web_offer = bool(session.pop("pending_web_offer", False))
+        if self._web is not None and pending_web_offer and _is_affirmation(utterance):
+            return await self._handle_web_request(sid, utterance, session, t_start, timings)
+        if pending_web_offer and _is_refusal(utterance):
+            lang = (session.get("language") or "en").lower()
+            ack = (
+                "Tabii, başka bir konuda yardımcı olabilir miyim?"
+                if lang == "tr"
+                else "No problem. Is there anything else I can help with?"
+            )
+            await self._sessions.append_turn(
+                session,
+                utterance=utterance,
+                decomposition=None,
+                reason="web_offer_declined",
+                answer=ack,
+                is_clarification=False,
+            )
+            await self._sessions.save(session)
+            return self._finish(
+                sid=sid,
+                utterance=utterance,
+                path="clarify",
+                reason="web_offer_declined",
+                answer=ack,
+                t_start=t_start,
+                timings=timings,
+            )
+        if self._web is not None and _is_web_search_request(utterance):
+            return await self._handle_web_request(sid, utterance, session, t_start, timings)
+
+        session["last_question"] = utterance
+
+        # Minimal synthetic decomposition: the render formats language/type
+        # from it; persona rules handle the actual reply language.
+        decomposition = {"query_type": "scoped", "language": session.get("language")}
+        answer = await self._render(utterance, decomposition, retrieval, session)
+
+        await self._sessions.append_turn(
+            session,
+            utterance=utterance,
+            decomposition=None,
+            reason="property_fast",
+            answer=answer,
+            is_clarification=False,
+        )
+        await self._sessions.save(session)
+        return self._finish(
+            sid=sid,
+            utterance=utterance,
+            path=PATH_SCOPED,
+            reason="property_fast",
+            decomposition=decomposition,
+            router={
+                "path": PATH_SCOPED,
+                "sources": ["property_kb"],
+                "reason": "property_fast",
+                "needs": None,
+            },
+            retrieval=retrieval,
+            answer=answer,
+            t_start=t_start,
+            timings=timings,
+        )
 
     async def _run_kb(
         self,
