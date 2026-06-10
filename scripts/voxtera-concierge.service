@@ -1,0 +1,26 @@
+[Unit]
+# Voxtera concierge service — the warm ConciergePipeline behind HTTP, plus the
+# WhatsApp channel (text + voice calls) mounted on the same app. Supersedes
+# voxtera-whatsapp.service (:8200), which duplicated the concierge stack.
+# Routes: /api/concierge* (sync, stream, replay, feedback), /health,
+# /whatsapp/webhook (text → pipeline; calls → Pipecat WebRTC bot).
+# Listens on CONCIERGE_PORT (default 8300); Caddy routes
+# voxtera.io/api/concierge* and voxtera.io/whatsapp/* here.
+Description=Voxtera concierge service (pipeline + WhatsApp text/calls)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=voxtera
+WorkingDirectory=/opt/voxtera/app
+EnvironmentFile=/etc/voxtera/voxtera.env
+Environment=CONCIERGE_PORT=8300
+ExecStart=/usr/bin/env uv run python -m voxtera.concierge_service
+Restart=always
+RestartSec=3
+# WebRTC (WhatsApp calls) needs UDP egress/ingress on the host's public IP —
+# ensure the droplet firewall allows UDP.
+
+[Install]
+WantedBy=multi-user.target

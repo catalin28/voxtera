@@ -40,6 +40,9 @@ KEY_CLIENT = "wa_client"
 KEY_DEPS = "wa_concierge_deps"
 KEY_SEEN = "wa_seen_message_ids"
 KEY_CALL_CLIENT = "wa_call_client"  # Pipecat WhatsAppClient for voice calls
+# When the host app already owns a warm concierge deps dict (the concierge
+# service), this key names it so we reuse it instead of building a second copy.
+KEY_SHARED_DEPS = "wa_shared_deps_key"
 
 # Bound the de-dupe cache so a long-running server doesn't grow unbounded.
 _SEEN_LIMIT = 2000
@@ -95,60 +98,15 @@ def extract_text_messages(body: dict[str, Any]) -> list[dict[str, str]]:
 
 
 # --------------------------------------------------------------------------- #
-# Concierge wiring (mirrors demo-hotel/serve.py /api/concierge)                #
+# Concierge wiring (shared with the concierge service)                         #
 # --------------------------------------------------------------------------- #
-async def _build_concierge_deps(http: aiohttp.ClientSession) -> dict[str, Any]:
-    """Heavy shared deps for the concierge, created once and reused."""
-    import os
-
-    from voxtera.call_center.classifier import EscalationClassifier
-    from voxtera.call_center.concierge import (
-        _build_anthropic_converse,
-        _build_anthropic_render,
-        _build_anthropic_web_query,
-        _build_anthropic_web_synth,
-    )
-    from voxtera.call_center.decompose import QueryDecomposer
-    from voxtera.call_center.session import SessionStore
-
-    model = os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001")
-    return {
-        "http": http,
-        "store": SessionStore(),
-        "classifier": EscalationClassifier(),
-        "decomposer": QueryDecomposer(),
-        "render_fn": _build_anthropic_render(model),
-        "web_synth_fn": _build_anthropic_web_synth(model),
-        "converse_fn": _build_anthropic_converse(model),
-        "web_query_fn": _build_anthropic_web_query(model),
-    }
-
-
 async def run_concierge(
     *, deps: dict[str, Any], utterance: str, session_id: str, region: str | None
 ) -> dict[str, Any]:
     """Build a per-request pipeline around the shared deps and run one turn."""
-    from voxtera.call_center.compound import CompoundAndDiscovery
-    from voxtera.call_center.pipeline import ConciergePipeline
-    from voxtera.call_center.resolver import HotelResolver
-    from voxtera.call_center.router import SourceRouter
-    from voxtera.call_center.triage import Triage
-    from voxtera.call_center.web_retriever import WebRetriever
+    from voxtera.call_center.deps import build_pipeline
 
-    pipeline = ConciergePipeline(
-        session_store=deps["store"],
-        classifier=deps["classifier"],
-        decomposer=deps["decomposer"],
-        triage=Triage(),
-        router=SourceRouter(),
-        compound=CompoundAndDiscovery(session=deps["http"]),
-        resolver=HotelResolver(session=deps["http"]),
-        web_retriever=WebRetriever(),
-        render_fn=deps["render_fn"],
-        web_synth_fn=deps["web_synth_fn"],
-        converse_fn=deps["converse_fn"],
-        web_query_fn=deps["web_query_fn"],
-    )
+    pipeline = build_pipeline(deps)
     return await pipeline.run(utterance=utterance, session_id=session_id, region=region)
 
 
@@ -269,11 +227,19 @@ async def handle_webhook(request: web.Request) -> web.Response:
 async def _on_startup(app: web.Application) -> None:
     from pipecat.transports.whatsapp.client import WhatsAppClient as PipecatWhatsAppClient
 
+    from voxtera.call_center.deps import build_concierge_deps
+
     http = aiohttp.ClientSession()
     settings: WhatsAppSettings = app[KEY_SETTINGS]
     app[KEY_HTTP] = http
     app[KEY_CLIENT] = WhatsAppClient(settings=settings, session=http)
-    app[KEY_DEPS] = await _build_concierge_deps(http)
+    # Reuse the host app's warm concierge deps when it has them (the concierge
+    # service); build our own only when running standalone.
+    shared_key = app.get(KEY_SHARED_DEPS)
+    if shared_key and app.get(shared_key) is not None:
+        app[KEY_DEPS] = app[shared_key]
+    else:
+        app[KEY_DEPS] = await build_concierge_deps(http)
     app[KEY_SEEN] = OrderedDict()
     # Pipecat WhatsApp client handles the WebRTC call media + Calls API.
     # whatsapp_secret omitted: our handler validates the signature before dispatch.
@@ -289,9 +255,23 @@ async def _on_cleanup(app: web.Application) -> None:
     await http.close()
 
 
-def register_whatsapp_routes(app: web.Application, *, settings: WhatsAppSettings) -> None:
-    """Attach WhatsApp routes + lifecycle hooks to an existing aiohttp app."""
+def register_whatsapp_routes(
+    app: web.Application,
+    *,
+    settings: WhatsAppSettings,
+    shared_deps_key: str | None = None,
+) -> None:
+    """Attach WhatsApp routes + lifecycle hooks to an existing aiohttp app.
+
+    Args:
+        shared_deps_key: App key under which the HOST app stores an
+            already-built concierge deps dict; when given (and populated by
+            the time startup hooks run), the webhook reuses it instead of
+            building a second copy of the warm concierge stack.
+    """
     app[KEY_SETTINGS] = settings
+    if shared_deps_key:
+        app[KEY_SHARED_DEPS] = shared_deps_key
     app.on_startup.append(_on_startup)
     app.on_cleanup.append(_on_cleanup)
     app.router.add_get("/whatsapp/webhook", handle_verify)

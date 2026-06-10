@@ -38,7 +38,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from collections import OrderedDict, deque
+from collections import deque
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -281,143 +281,17 @@ def _validate_greetings_json(content: str) -> str | None:
     return None
 
 
-# ── Persistent concierge runtime ────────────────────────────────────────────
-# ONE background event loop + shared connections for ALL /api/concierge
-# requests. The previous per-request `asyncio.new_event_loop()` threw away
-# every connection pool after each turn, so each turn paid fresh TLS handshakes
-# to Anthropic/OpenAI, a Redis reconnect (the ~390ms "session_load"), and new
-# aiohttp connections to the remote ES/Qdrant box. One long-lived loop keeps
-# all of them warm; handlers submit work via run_coroutine_threadsafe.
-_concierge_rt: dict = {"loop": None, "deps": None}
-_concierge_rt_lock = threading.Lock()
-
-
-def _concierge_loop() -> asyncio.AbstractEventLoop:
-    with _concierge_rt_lock:
-        loop = _concierge_rt["loop"]
-        if loop is None or loop.is_closed():
-            loop = asyncio.new_event_loop()
-            threading.Thread(target=loop.run_forever, name="concierge-loop", daemon=True).start()
-            _concierge_rt["loop"] = loop
-            _concierge_rt["deps"] = None
-        return loop
-
-
-async def _concierge_deps() -> dict:
-    """Heavy shared deps, created ONCE on the persistent loop and reused.
-
-    Holds the warm aiohttp session (ES/Qdrant), the Redis-backed SessionStore,
-    and the LLM fn closures (whose Anthropic/OpenAI clients are module
-    singletons that now stay bound to this one loop). Per-request pipeline
-    objects are wired around these — cheap, and keeps per-run state isolated.
-    """
-    if _concierge_rt["deps"] is None:
-        import aiohttp as _aio
-
-        from voxtera.call_center.classifier import EscalationClassifier
-        from voxtera.call_center.concierge import (
-            _build_anthropic_converse,
-            _build_anthropic_render,
-            _build_anthropic_web_query,
-            _build_anthropic_web_synth,
-        )
-        from voxtera.call_center.decompose import QueryDecomposer
-        from voxtera.call_center.session import SessionStore
-
-        model = os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001")
-        _concierge_rt["deps"] = {
-            "http": _aio.ClientSession(),
-            "store": SessionStore(),
-            "classifier": EscalationClassifier(),
-            "decomposer": QueryDecomposer(),
-            "render_fn": _build_anthropic_render(model),
-            "web_synth_fn": _build_anthropic_web_synth(model),
-            "converse_fn": _build_anthropic_converse(model),
-            "web_query_fn": _build_anthropic_web_query(model),
-        }
-    return _concierge_rt["deps"]
-
-
-# ── WhatsApp inbound webhook runtime ─────────────────────────────────────────
-# The /whatsapp/webhook routes (GET verify + POST receive) live in THIS server
-# so deploying the UI service also serves the webhook — no separate process and
-# no ngrok. Incoming WhatsApp text runs through the SAME warm ConciergePipeline
-# as /api/concierge, keyed by the sender's wa_id for per-contact memory.
-_wa_settings_cache = None
-_wa_seen_ids: "OrderedDict[str, None]" = OrderedDict()
-_WA_SEEN_LIMIT = 2000
-
-
-def _wa_settings():
-    """Lazy-load + cache WhatsApp settings from env (raises if misconfigured)."""
-    global _wa_settings_cache
-    if _wa_settings_cache is None:
-        from voxtera.whatsapp.config import load_whatsapp_settings
-
-        _wa_settings_cache = load_whatsapp_settings()
-    return _wa_settings_cache
-
-
-def _wa_already_seen(message_id: str) -> bool:
-    """True if this inbound message id was processed before (de-dupe retries)."""
-    if message_id in _wa_seen_ids:
-        return True
-    _wa_seen_ids[message_id] = None
-    while len(_wa_seen_ids) > _WA_SEEN_LIMIT:
-        _wa_seen_ids.popitem(last=False)
-    return False
-
-
-async def _wa_process_message(msg: dict, settings) -> None:
-    """Run the concierge for one inbound WhatsApp text and reply. Best-effort.
-
-    Mirrors the /api/concierge wiring so voice, chat, and WhatsApp share one
-    pipeline. session_id is namespaced ``wa:<wa_id>`` so WhatsApp conversations
-    keep their own multi-turn memory, distinct from web sessions.
-    """
-    from voxtera.call_center.compound import CompoundAndDiscovery
-    from voxtera.call_center.pipeline import ConciergePipeline
-    from voxtera.call_center.resolver import HotelResolver
-    from voxtera.call_center.router import SourceRouter
-    from voxtera.call_center.triage import Triage
-    from voxtera.call_center.web_retriever import WebRetriever
-    from voxtera.whatsapp.client import WhatsAppClient
-
-    wa_id = msg["from"]
-    deps = await _concierge_deps()
-    try:
-        pipeline = ConciergePipeline(
-            session_store=deps["store"],
-            classifier=deps["classifier"],
-            decomposer=deps["decomposer"],
-            triage=Triage(),
-            router=SourceRouter(),
-            compound=CompoundAndDiscovery(session=deps["http"]),
-            resolver=HotelResolver(session=deps["http"]),
-            web_retriever=WebRetriever(),
-            render_fn=deps["render_fn"],
-            web_synth_fn=deps["web_synth_fn"],
-            converse_fn=deps["converse_fn"],
-            web_query_fn=deps["web_query_fn"],
-        )
-        result = await pipeline.run(
-            utterance=msg["text"],
-            session_id=f"wa:{wa_id}",
-            region=settings.default_region,
-        )
-        answer = (result.get("answer") or "").strip() or (
-            "Sorry, I couldn't put together a reply just now."
-        )
-    except Exception as exc:  # noqa: BLE001
-        print(f"[whatsapp] concierge error for {wa_id}: {exc}")
-        answer = "Sorry — something went wrong on our side. Please try again."
-
-    client = WhatsAppClient(settings=settings, session=deps["http"])
-    try:
-        await client.send_text(to=wa_id, body=answer)
-        print(f"[whatsapp] replied to {wa_id} ({len(answer)} chars)")
-    except Exception as exc:  # noqa: BLE001
-        print(f"[whatsapp] send failed for {wa_id}: {exc}")
+# ── Concierge service proxy ─────────────────────────────────────────────────
+# P0.2: the warm ConciergePipeline and the WhatsApp webhook moved OUT of this
+# process into the standalone concierge service (voxtera.concierge_service,
+# aiohttp, port 8300, own systemd unit). On the droplet Caddy routes
+# /api/concierge* and /whatsapp/* straight to it; the thin proxies below keep
+# local dev (everything through :8080, no Caddy) and stale clients working.
+# A concierge crash/restart no longer takes down the launcher/admin/static
+# server — these proxies answer 502 and everything else stays up.
+_CONCIERGE_SERVICE_URL = os.environ.get(
+    "VOXTERA_CONCIERGE_SERVICE_URL", "http://127.0.0.1:8300"
+).rstrip("/")
 
 
 from voxtera.actions import (  # noqa: E402
@@ -1215,6 +1089,9 @@ def _spawn_bot(
     env["VOXTERA_SESSION_ID"] = session_id
     env["VOXTERA_LAUNCHER_URL"] = callback_url
     env["VOXTERA_BOT_PORT"] = str(tune_port)
+    # Bots call the concierge service directly (not through this process),
+    # so a slow render or a serve.py restart can't stall a live call.
+    env.setdefault("VOXTERA_CONCIERGE_URL", f"{_CONCIERGE_SERVICE_URL}/api/concierge/stream")
     if llm_model:
         env["LLM_MODEL_OVERRIDE"] = llm_model
     if room_name:
@@ -5606,336 +5483,107 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         path.write_bytes(content.encode("utf-8"))
         self._send_json(200, {"ok": True, "name": name, "mtime": path.stat().st_mtime})
 
-    def _handle_concierge(self) -> None:
-        """POST /api/concierge — synchronous JSON Q&A backed by ConciergePipeline.
+    # ── Concierge service proxies ────────────────────────────────────────
+    # The warm ConciergePipeline + WhatsApp webhook live in the standalone
+    # concierge service (voxtera.concierge_service, :8300). On the droplet
+    # Caddy routes these paths straight there; the proxies below keep local
+    # dev (everything through :8080, no Caddy) and stale clients working.
 
-        Request:  {"utterance": str, "region": str, "session_id": str | None}
-        Response: full ConciergePipeline.run() dict
-                  (session_id, path, reason, answer, escalation,
-                   clarification, decomposition, router, retrieval, timings).
+    def _concierge_proxy_request(self):
+        """Forward this request to the concierge service; return the response.
+
+        Returns None after answering 502 when the service is unreachable —
+        the launcher/admin/static server stays up regardless.
         """
-        from voxtera.call_center.compound import CompoundAndDiscovery
-        from voxtera.call_center.pipeline import ConciergePipeline
-        from voxtera.call_center.resolver import HotelResolver
-        from voxtera.call_center.router import SourceRouter
-        from voxtera.call_center.triage import Triage
-        from voxtera.call_center.web_retriever import WebRetriever
+        import http.client as _http_client
+        from urllib.parse import urlparse as _urlparse
 
-        body = self._read_json_body()
-        utterance = (body.get("utterance") or "").strip()
-        # Preserve empty string as explicit "all regions" signal (distinct from None/absent).
-        raw_region = body.get("region")
-        region = raw_region.strip() if isinstance(raw_region, str) else None
-        session_id = (body.get("session_id") or "").strip() or None
-        if not utterance:
-            self._send_json(400, {"error": "utterance_required"})
-            return
-
-        async def _run() -> dict:
-            # Shared warm deps (connections, LLM fns) + cheap per-request wiring
-            # so per-run pipeline state stays isolated across concurrent requests.
-            deps = await _concierge_deps()
-            pipeline = ConciergePipeline(
-                session_store=deps["store"],
-                classifier=deps["classifier"],
-                decomposer=deps["decomposer"],
-                triage=Triage(),
-                router=SourceRouter(),
-                compound=CompoundAndDiscovery(session=deps["http"]),
-                resolver=HotelResolver(session=deps["http"]),
-                web_retriever=WebRetriever(),
-                render_fn=deps["render_fn"],
-                web_synth_fn=deps["web_synth_fn"],
-                converse_fn=deps["converse_fn"],
-                web_query_fn=deps["web_query_fn"],
-            )
-            return await pipeline.run(
-                utterance=utterance,
-                session_id=session_id,
-                region=region,
-                brief=bool(body.get("brief")),
-            )
-
-        try:
-            result = asyncio.run_coroutine_threadsafe(_run(), _concierge_loop()).result(timeout=120)
-        except Exception as exc:  # noqa: BLE001
-            print(f"[concierge] error: {exc}")
-            self._send_json(500, {"error": str(exc)})
-            return
-        self._send_json(200, result)
-
-    def _handle_whatsapp_verify(self) -> None:
-        """GET /whatsapp/webhook — Meta verification handshake (echo challenge)."""
-        from urllib.parse import parse_qs, urlparse
-
-        try:
-            settings = _wa_settings()
-        except Exception as exc:  # noqa: BLE001
-            self._send_json(500, {"error": f"whatsapp_misconfigured: {exc}"})
-            return
-        q = parse_qs(urlparse(self.path).query)
-        mode = (q.get("hub.mode") or [None])[0]
-        token = (q.get("hub.verify_token") or [None])[0]
-        challenge = (q.get("hub.challenge") or [""])[0]
-        if mode == "subscribe" and token == settings.verify_token:
-            body = challenge.encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-        else:
-            self.send_response(403)
-            self.end_headers()
-
-    def _handle_whatsapp_webhook(self) -> None:
-        """POST /whatsapp/webhook — verify signature, ACK fast, process async.
-
-        Meta retries unless answered with 200 quickly, so we ACK immediately and
-        run the concierge + reply on the warm loop in the background. Inbound
-        message ids are de-duplicated so retries don't double-answer.
-        """
-        from voxtera.whatsapp.webhook import extract_text_messages, verify_signature
-
+        parsed = _urlparse(_CONCIERGE_SERVICE_URL)
         length = int(self.headers.get("Content-Length", 0))
-        raw = self.rfile.read(length) if length > 0 else b""
+        body = self.rfile.read(length) if length > 0 else None
+        headers = {}
+        for name in ("Content-Type", "X-Hub-Signature-256"):
+            value = self.headers.get(name)
+            if value:
+                headers[name] = value
         try:
-            settings = _wa_settings()
-        except Exception as exc:  # noqa: BLE001
-            self._send_json(500, {"error": f"whatsapp_misconfigured: {exc}"})
+            conn = _http_client.HTTPConnection(parsed.hostname, parsed.port or 80, timeout=130)
+            conn.request(self.command, self.path, body=body, headers=headers)
+            return conn.getresponse()
+        except OSError as exc:
+            print(f"[concierge-proxy] {self.path} unreachable: {exc}")
+            self._send_json(502, {"error": "concierge_service_unreachable"})
+            return None
+
+    def _proxy_concierge_json(self) -> None:
+        """Buffered passthrough for the JSON concierge endpoints."""
+        upstream = self._concierge_proxy_request()
+        if upstream is None:
             return
-        if not verify_signature(
-            app_secret=settings.app_secret,
-            payload=raw,
-            header=self.headers.get("X-Hub-Signature-256"),
-        ):
-            self.send_response(401)
-            self.end_headers()
-            return
-        try:
-            data = json.loads(raw) if raw else {}
-        except json.JSONDecodeError:
-            self.send_response(400)
-            self.end_headers()
-            return
-        for msg in extract_text_messages(data):
-            if _wa_already_seen(msg["id"]):
-                continue
-            asyncio.run_coroutine_threadsafe(_wa_process_message(msg, settings), _concierge_loop())
-        body = b"EVENT_RECEIVED"
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _handle_concierge_stream(self) -> None:
-        """POST /api/concierge/stream — SAME ConciergePipeline as /api/concierge,
-        but streams the render token-by-token so the voice bot can start speaking
-        the first sentence mid-render instead of waiting for the full answer.
-
-        Request:  {"utterance", "region", "session_id", "brief"}  (same shape)
-        Response: NDJSON (chunked), in order:
-          {"type": "text",  "chunk": "<delta>"}     # render deltas as generated
-          {"type": "done",  "result": {<full run() dict>}}  # for debug + session
-          {"type": "error", "error": "..."}
-
-        Only the render is streamed (the one LLM step that writes the answer);
-        the upstream stages run identically to /api/concierge, so chat and voice
-        stay the same pipeline. A teeing render_fn pushes deltas onto a
-        thread-safe queue that this HTTP thread drains and writes out.
-        """
-        import queue as _queue_mod
-
-        from voxtera.call_center.compound import CompoundAndDiscovery
-        from voxtera.call_center.concierge import _build_anthropic_render_stream
-        from voxtera.call_center.pipeline import ConciergePipeline
-        from voxtera.call_center.resolver import HotelResolver
-        from voxtera.call_center.router import SourceRouter
-        from voxtera.call_center.triage import Triage
-        from voxtera.call_center.web_retriever import WebRetriever
-
-        body = self._read_json_body()
-        utterance = (body.get("utterance") or "").strip()
-        raw_region = body.get("region")
-        region = raw_region.strip() if isinstance(raw_region, str) else None
-        session_id = (body.get("session_id") or "").strip() or None
-        brief = bool(body.get("brief"))
-
-        self.send_response(200)
+        data = upstream.read()
+        self.send_response(upstream.status)
         self._cors_headers()
-        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Content-Type", upstream.getheader("Content-Type", "application/json"))
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _proxy_concierge_stream(self) -> None:
+        """Chunk-passthrough for /api/concierge/stream (NDJSON)."""
+        upstream = self._concierge_proxy_request()
+        if upstream is None:
+            return
+        self.send_response(upstream.status)
+        self._cors_headers()
+        self.send_header(
+            "Content-Type", upstream.getheader("Content-Type", "application/x-ndjson")
+        )
         self.send_header("Transfer-Encoding", "chunked")
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
-
-        def push(obj: dict) -> None:
-            line = (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
-            self.wfile.write(f"{len(line):x}\r\n".encode() + line + b"\r\n")
-            self.wfile.flush()
-
-        def finish() -> None:
-            self.wfile.write(b"0\r\n\r\n")
-            self.wfile.flush()
-
-        if not utterance:
-            push({"type": "error", "error": "utterance_required"})
-            finish()
-            return
-
-        # Thread-safe bridge: the async pipeline (on the concierge loop) puts
-        # ("text"|"done"|"error", value) tuples here; this HTTP thread drains them.
-        bridge: _queue_mod.Queue = _queue_mod.Queue()
-        _sentinel = object()
-        model = os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001")
-
-        async def _run() -> None:
-            try:
-                deps = await _concierge_deps()
-                render_stream = _build_anthropic_render_stream(model)
-
-                async def _teeing_render(payload: dict) -> str:
-                    # Stream deltas to the bridge AND return the joined string so
-                    # ConciergePipeline.run still gets its answer for the result.
-                    parts: list[str] = []
-                    async for delta in render_stream(payload):
-                        parts.append(delta)
-                        bridge.put(("text", delta))
-                    return "".join(parts).strip()
-
-                pipeline = ConciergePipeline(
-                    session_store=deps["store"],
-                    classifier=deps["classifier"],
-                    decomposer=deps["decomposer"],
-                    triage=Triage(),
-                    router=SourceRouter(),
-                    compound=CompoundAndDiscovery(session=deps["http"]),
-                    resolver=HotelResolver(session=deps["http"]),
-                    web_retriever=WebRetriever(),
-                    render_fn=_teeing_render,
-                    web_synth_fn=deps["web_synth_fn"],
-                    converse_fn=deps["converse_fn"],
-                    web_query_fn=deps["web_query_fn"],
-                )
-                result = await pipeline.run(
-                    utterance=utterance,
-                    session_id=session_id,
-                    region=region,
-                    brief=brief,
-                )
-                bridge.put(("done", result))
-            except Exception as exc:  # noqa: BLE001 — surface to the client
-                bridge.put(("error", str(exc)))
-            finally:
-                bridge.put((_sentinel, None))
-
-        asyncio.run_coroutine_threadsafe(_run(), _concierge_loop())
-
         try:
             while True:
-                try:
-                    kind, val = bridge.get(timeout=130)
-                except _queue_mod.Empty:
-                    push({"type": "error", "error": "timeout"})
+                chunk = upstream.read1(8192)
+                if not chunk:
                     break
-                if kind is _sentinel:
-                    break
-                if kind == "text":
-                    push({"type": "text", "chunk": val})
-                elif kind == "done":
-                    push({"type": "done", "result": val})
-                elif kind == "error":
-                    push({"type": "error", "error": val})
+                self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
+                self.wfile.flush()
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
             return  # client hung up mid-stream
-        finish()
 
-    def _handle_concierge_feedback(self) -> None:
-        """POST /api/concierge/feedback — store a thumbs up/down rating + comment.
+    def _handle_concierge(self) -> None:
+        """POST /api/concierge — proxied to the concierge service."""
+        self._proxy_concierge_json()
 
-        Request:  {"session_id": str|null, "utterance": str, "answer": str,
-                   "rating": "up"|"down", "comment": str}
-        Appended as a ``{"type": "feedback"}`` NDJSON record to the same daily
-        ``travel_agent_consierge-*.jsonl`` log as the dialog records, so each
-        conversation and its user feedback live in one file.
-        """
-        from voxtera.call_center.pipeline import append_feedback_record
-
-        body = self._read_json_body()
-        rating = (body.get("rating") or "").strip().lower()
-        if rating not in ("up", "down"):
-            self._send_json(400, {"error": "rating_must_be_up_or_down"})
-            return
-        append_feedback_record(
-            {
-                "session_id": (body.get("session_id") or "").strip() or None,
-                "utterance": str(body.get("utterance") or "")[:2000],
-                "answer": str(body.get("answer") or "")[:4000],
-                "rating": rating,
-                "comment": str(body.get("comment") or "")[:2000],
-            }
-        )
-        self._send_json(200, {"ok": True})
+    def _handle_concierge_stream(self) -> None:
+        """POST /api/concierge/stream — proxied (NDJSON passthrough)."""
+        self._proxy_concierge_stream()
 
     def _handle_concierge_replay(self) -> None:
-        """POST /api/concierge/replay — DEBUG: run the pipeline from a user-edited
-        decomposition, skipping the LLM decompose step.
+        """POST /api/concierge/replay — proxied to the concierge service."""
+        self._proxy_concierge_json()
 
-        Lets you fix a field (e.g. set hotel_mention) in the debug drawer and see
-        whether the DOWNSTREAM (triage → route → resolve → retrieve → render) then
-        works — isolating decomposer bugs from retrieval bugs. The decomposition
-        is used VERBATIM (no coerce), so what you type is exactly what runs.
+    def _handle_concierge_feedback(self) -> None:
+        """POST /api/concierge/feedback — proxied to the concierge service."""
+        self._proxy_concierge_json()
 
-        Request:  {"utterance": str, "region": str|null, "session_id": str|null,
-                   "decomposition": {...edited fields...}}
-        Response: same shape as /api/concierge.
-        """
-        from voxtera.call_center.compound import CompoundAndDiscovery
-        from voxtera.call_center.pipeline import ConciergePipeline
-        from voxtera.call_center.resolver import HotelResolver
-        from voxtera.call_center.router import SourceRouter
-        from voxtera.call_center.triage import Triage
-
-        body = self._read_json_body()
-        utterance = (body.get("utterance") or "").strip()
-        raw_region = body.get("region")
-        region = raw_region.strip() if isinstance(raw_region, str) else None
-        session_id = (body.get("session_id") or "").strip() or None
-        edited = body.get("decomposition")
-        if not utterance or not isinstance(edited, dict):
-            self._send_json(400, {"error": "utterance_and_decomposition_required"})
+    def _handle_whatsapp_verify(self) -> None:
+        """GET /whatsapp/webhook — proxied (Meta handshake; dev/ngrok path)."""
+        upstream = self._concierge_proxy_request()
+        if upstream is None:
             return
+        data = upstream.read()
+        self.send_response(upstream.status)
+        self.send_header("Content-Type", upstream.getheader("Content-Type", "text/plain"))
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
-        class _FixedDecomposer:
-            """Returns the operator's edited decomposition verbatim (no LLM, no coerce)."""
-
-            async def decompose(self, _utterance: str, _ctx: dict) -> dict:
-                return dict(edited)
-
-        async def _run() -> dict:
-            deps = await _concierge_deps()
-            pipeline = ConciergePipeline(
-                session_store=deps["store"],
-                classifier=deps["classifier"],
-                decomposer=_FixedDecomposer(),  # <-- the only difference from /api/concierge
-                triage=Triage(),
-                router=SourceRouter(),
-                compound=CompoundAndDiscovery(session=deps["http"]),
-                resolver=HotelResolver(session=deps["http"]),
-                render_fn=deps["render_fn"],
-                web_synth_fn=deps["web_synth_fn"],
-                converse_fn=deps["converse_fn"],
-                web_query_fn=deps["web_query_fn"],
-            )
-            return await pipeline.run(utterance=utterance, session_id=session_id, region=region)
-
-        try:
-            result = asyncio.run_coroutine_threadsafe(_run(), _concierge_loop()).result(timeout=120)
-        except Exception as exc:  # noqa: BLE001
-            print(f"[concierge-replay] error: {exc}")
-            self._send_json(500, {"error": str(exc)})
-            return
-        self._send_json(200, result)
+    def _handle_whatsapp_webhook(self) -> None:
+        """POST /whatsapp/webhook — proxied (signature checked upstream)."""
+        self._handle_whatsapp_verify()
 
     def _handle_product_chat(self):
         """POST /api/product-chat — streaming NDJSON: Voxtera product Q&A backed by the
@@ -6136,45 +5784,24 @@ if __name__ == "__main__":
     _cleanup_orphaned_rooms()
 
     # --------------------------------------------------------------------------
-    # Pre-warm the call-center embedding model (e5-large) in a background
-    # thread so the first /api/concierge request doesn't pay the ~3s cold
-    # load. Embedding the warmup string forces sentence-transformers to
-    # load weights now.
-    def _warm_call_center_embed() -> None:
+    # Concierge warm-up moved into the concierge service itself (P0.2): the
+    # embed model, Redis connection, and Anthropic TLS warm-up happen in
+    # voxtera.concierge_service's startup hook. Here we only report whether
+    # the service is reachable so a missing unit is obvious at boot.
+    def _check_concierge_service() -> None:
+        import urllib.request
+
         try:
-            from voxtera.call_center.embeddings import embed_query
+            with urllib.request.urlopen(f"{_CONCIERGE_SERVICE_URL}/health", timeout=3) as resp:
+                print(f"[startup] concierge service OK at {_CONCIERGE_SERVICE_URL} ({resp.status})")
+        except OSError as exc:
+            print(
+                f"[startup] WARNING: concierge service not reachable at "
+                f"{_CONCIERGE_SERVICE_URL} ({exc}) — /api/concierge* and /whatsapp/* "
+                f"will return 502 until `python -m voxtera.concierge_service` is up"
+            )
 
-            t0 = time.perf_counter()
-            embed_query("warmup")
-            print(f"[warmup] call_center embed model ready in {time.perf_counter() - t0:.1f}s")
-        except Exception as exc:  # noqa: BLE001
-            print(f"[warmup] embed pre-warm failed: {exc}")
-        # Also warm the persistent concierge runtime so the first guest turn
-        # doesn't pay it: create the shared loop + deps (Redis client, aiohttp
-        # session) and fire a 1-token Anthropic ping to establish the TLS/HTTP2
-        # connection the decompose/render calls will reuse.
-        try:
-            t0 = time.perf_counter()
-
-            async def _warm_deps() -> None:
-                deps = await _concierge_deps()
-                # touch Redis so the connection is established now
-                await deps["store"].load("warmup")
-                if os.environ.get("ANTHROPIC_API_KEY"):
-                    from voxtera.call_center.clients import anthropic_client
-
-                    await anthropic_client().messages.create(
-                        model=os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001"),
-                        max_tokens=1,
-                        messages=[{"role": "user", "content": "ping"}],
-                    )
-
-            asyncio.run_coroutine_threadsafe(_warm_deps(), _concierge_loop()).result(timeout=60)
-            print(f"[warmup] concierge runtime warm in {time.perf_counter() - t0:.1f}s")
-        except Exception as exc:  # noqa: BLE001
-            print(f"[warmup] concierge runtime pre-warm failed: {exc}")
-
-    threading.Thread(target=_warm_call_center_embed, daemon=True).start()
+    threading.Thread(target=_check_concierge_service, daemon=True).start()
     # --------------------------------------------------------------------------
     socketserver.ThreadingTCPServer.allow_reuse_address = True
     with socketserver.ThreadingTCPServer(("", port), DemoHandler) as httpd:

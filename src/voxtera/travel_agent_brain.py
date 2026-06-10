@@ -137,21 +137,19 @@ def _last_user_text(context: Any) -> str:
 
 
 def _resolve_concierge_url() -> str:
-    """Resolve the launcher's /api/concierge/stream URL the bot should call.
+    """Resolve the /api/concierge/stream URL the bot should call.
 
     Streaming variant of /api/concierge: same pipeline, but the render is
     streamed token-by-token so TTS can start mid-render. Prefers an explicit
-    ``VOXTERA_CONCIERGE_URL``; otherwise derives it from ``VOXTERA_LAUNCHER_URL``
-    (``http://host:port/api/bot-event``) by swapping the path.
+    ``VOXTERA_CONCIERGE_URL``; otherwise defaults to the standalone concierge
+    service (P0.2 — ``voxtera.concierge_service`` on ``CONCIERGE_PORT``,
+    default 8300, on the same host).
     """
     explicit = os.environ.get("VOXTERA_CONCIERGE_URL")
     if explicit:
         return explicit
-    launcher = os.environ.get("VOXTERA_LAUNCHER_URL") or ""
-    suffix = "/api/bot-event"
-    if launcher.endswith(suffix):
-        return launcher[: -len(suffix)] + "/api/concierge/stream"
-    return "http://127.0.0.1:8080/api/concierge/stream"
+    port = os.environ.get("CONCIERGE_PORT", "8300")
+    return f"http://127.0.0.1:{port}/api/concierge/stream"
 
 
 class TravelAgentBrain(FrameProcessor):
