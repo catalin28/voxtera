@@ -138,12 +138,21 @@ def emit(
     """Convenience wrapper around :meth:`TraceBus.emit`.
 
     Most callers should use this rather than handling the bus directly.
+    When a per-call :class:`~voxtera.call_context.CallContext` is active
+    (multi-call services like the WhatsApp bot), the event is stamped with
+    that call's session id so concurrent calls stay separable on the shared
+    bus. Single-call processes leave it ``None`` (the forwarder stamps the
+    whole batch, as before).
     """
+    from voxtera import call_context as _call_context  # lazy: avoids import cycle
+
+    ctx = _call_context.current()
     TraceBus.instance().emit(
         TraceEvent(
             kind=kind,
             source=source,
             turn_id=turn_id,
+            session_id=ctx.session_id if ctx is not None and ctx.session_id else None,
             data=data or {},
         )
     )
@@ -314,12 +323,24 @@ class TurnTracker:
         self._anchors.pop(key, None)
 
 
-# Process-wide tracker. All processors that emit per-turn events read from this.
+# Fallback tracker for single-call processes (Daily, local CLI). Multi-call
+# services activate a CallContext, whose per-call tracker takes precedence.
 _TRACKER: TurnTracker | None = None
 
 
 def tracker() -> TurnTracker:
-    """Return the process-wide :class:`TurnTracker`."""
+    """Return the active call's :class:`TurnTracker`.
+
+    Resolution: the active :class:`~voxtera.call_context.CallContext`'s
+    tracker when one is set (so concurrent calls in one process never share
+    turn ids or timing anchors), otherwise the process-wide fallback —
+    identical to the old behaviour for single-call processes.
+    """
+    from voxtera import call_context as _call_context  # lazy: avoids import cycle
+
+    ctx = _call_context.current()
+    if ctx is not None and ctx.tracker is not None:
+        return ctx.tracker
     global _TRACKER
     if _TRACKER is None:
         _TRACKER = TurnTracker()
@@ -361,6 +382,17 @@ class TraceForwarder:
     def enabled(self) -> bool:
         return bool(self._launcher_url and self._session_id)
 
+    def _accepts(self, event: TraceEvent) -> bool:
+        """Whether this forwarder should ship ``event``.
+
+        The bus is process-wide, so in a multi-call process every call's
+        forwarder sees every call's events. Events stamped with a session id
+        (emitted while a CallContext was active) belong to exactly one
+        forwarder; unstamped events (single-call processes, process-level
+        sources) are shipped by everyone — matching the old behaviour.
+        """
+        return event.session_id is None or event.session_id == self._session_id
+
     async def start(self) -> None:
         """Begin draining the bus into HTTP POSTs."""
         if self._task is not None:
@@ -375,7 +407,7 @@ class TraceForwarder:
             )
         else:
             logger.info(
-                "[trace] forwarder started in standalone mode " "(no launcher callback configured)"
+                "[trace] forwarder started in standalone mode (no launcher callback configured)"
             )
 
     async def stop(self) -> None:
@@ -400,7 +432,8 @@ class TraceForwarder:
             timeout = max(0.0, self._flush_interval - (time.monotonic() - last_flush))
             try:
                 event = await asyncio.wait_for(self._queue.get(), timeout=timeout or 0.001)
-                batch.append(event)
+                if self._accepts(event):
+                    batch.append(event)
             except TimeoutError:
                 pass
 
@@ -419,7 +452,8 @@ class TraceForwarder:
         while True:
             try:
                 event = self._queue.get_nowait()
-                batch.append(event)
+                if self._accepts(event):
+                    batch.append(event)
             except asyncio.QueueEmpty:
                 break
         if batch and self.enabled:

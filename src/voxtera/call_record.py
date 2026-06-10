@@ -1,7 +1,11 @@
 """Per-call conversation record — one self-contained record per voice call.
 
-Voxtera spawns one bot process per Daily room join, so one process == one
-call. For the lifetime of that process this module collects:
+All state lives on the call's :class:`~voxtera.call_context.CallContext`,
+so one process can host many concurrent calls (the WhatsApp service) without
+mixing records. The module-level functions are facades that resolve the
+active context; single-call processes (Daily, local CLI) never activate a
+context and transparently use the process-wide default. Per call, this
+module collects:
 
 - **call metadata**: session id, hotel, transport, providers, start/end time,
   duration, the set of languages the guest used, interruption count, per-turn
@@ -50,6 +54,9 @@ from pipecat.frames.frames import CancelFrame, EndFrame, InputAudioRawFrame, Sta
 from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
+from voxtera import call_context as _call_context
+from voxtera.call_context import CallContext
+
 # ``logs/`` lives at the repo root — two parents up from ``src/voxtera/``.
 # Matches the directory ``conversation_logger`` uses for its JSONL files.
 _LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
@@ -93,10 +100,12 @@ def write_wav(path: Path, pcm: bytes, *, sample_rate: int, num_channels: int) ->
 class CallRecord:
     """Mutable, thread-safe record of a single call.
 
-    One bot process handles exactly one call, so the module-level singleton
-    :data:`_record` is the whole call. Every mutator takes the lock and
-    rewrites ``record.json`` atomically (temp file + ``os.replace``), so a
-    process killed mid-call still leaves a coherent record on disk.
+    One instance == one call. The instance lives on the call's
+    :class:`~voxtera.call_context.CallContext`; the module-level functions
+    below are thin facades that resolve the active context. Every mutator
+    takes the lock and rewrites ``record.json`` atomically (temp file +
+    ``os.replace``), so a process killed mid-call still leaves a coherent
+    record on disk.
 
     When :meth:`start` is never called (the feature is disabled), every
     mutator is a no-op and nothing is written.
@@ -375,14 +384,18 @@ class CallRecord:
             logger.warning("[call-record] could not write record.json: {}", exc)
 
 
-# Module-level singleton — one process handles one call (see module docstring).
-_record = CallRecord()
+# ---------------------------------------------------------------------- #
+# Module-level API — thin facades over the ACTIVE CallContext's record,    #
+# mirroring the call style of ``conversation_logger``. Single-call paths   #
+# (Daily/local) resolve to the process-wide default context and behave     #
+# exactly as the old module singleton did; multi-call services (WhatsApp)  #
+# activate a per-call context and these facades become call-local.         #
+# ---------------------------------------------------------------------- #
 
 
-# ---------------------------------------------------------------------- #
-# Module-level API — thin wrappers over the singleton, mirroring the      #
-# call style of ``conversation_logger``.                                  #
-# ---------------------------------------------------------------------- #
+def _active_record() -> CallRecord:
+    """The active call's :class:`CallRecord` (explicit context or default)."""
+    return _call_context.get_active().record
 
 
 def _resolve_session_id() -> str:
@@ -410,11 +423,21 @@ def init_call(
     stt_provider: str,
     tts_provider: str,
     llm_model: str,
+    context: CallContext | None = None,
 ) -> None:
-    """Begin recording the current call. Call once at bot startup."""
-    _record.start(
+    """Begin recording a call. Call once at bot startup.
+
+    Args:
+        context: The call's context. When omitted, the active context is
+            used (Daily/local single-call paths), and its session id is
+            resolved the legacy way (launcher env var or per-process UUID).
+    """
+    ctx = context or _call_context.get_active()
+    if not ctx.session_id:
+        ctx.session_id = _resolve_session_id()
+    ctx.record.start(
         enabled=enabled,
-        session_id=_resolve_session_id(),
+        session_id=ctx.session_id,
         hotel_id=hotel_id,
         bot_name=bot_name,
         transport_mode=transport_mode,
@@ -422,24 +445,24 @@ def init_call(
     )
 
 
-def finalize() -> None:
+def finalize(context: CallContext | None = None) -> None:
     """Stamp the end time and write the final record. Call once at shutdown."""
-    _record.finalize()
+    (context or _call_context.get_active()).record.finalize()
 
 
 def record_user_turn(*, text: str, language: str = "") -> None:
     """Record a transcribed guest utterance."""
-    _record.add_user_turn(text=text, language=language)
+    _active_record().add_user_turn(text=text, language=language)
 
 
 def record_bot_turn(*, text: str, latency_ms: float | None = None) -> None:
     """Record a bot reply."""
-    _record.add_bot_turn(text=text, latency_ms=latency_ms)
+    _active_record().add_bot_turn(text=text, latency_ms=latency_ms)
 
 
 def record_interruption() -> None:
     """Record a barge-in (guest cutting the bot off mid-reply)."""
-    _record.add_interruption()
+    _active_record().add_interruption()
 
 
 def record_usage(
@@ -450,7 +473,7 @@ def record_usage(
     cache_creation_tokens: int = 0,
 ) -> None:
     """Accumulate one turn's LLM token usage."""
-    _record.add_usage(
+    _active_record().add_usage(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         cache_read_tokens=cache_read_tokens,
@@ -460,30 +483,25 @@ def record_usage(
 
 def get_call_dir() -> Path | None:
     """Return the active call's directory, or None if not recording."""
-    return _record.call_dir()
+    return _active_record().call_dir()
 
 
 def is_enabled() -> bool:
-    """Return True if call recording is active for this process."""
-    return _record.enabled
+    """Return True if call recording is active for the current call."""
+    return _active_record().enabled
 
 
-# Module-level reference to the active audio recorder (set by CallAudioRecorder
-# on init). Used by :func:`flush_audio` to force-write the WAV on shutdown when
-# EndFrame cannot flow through the pipeline (SIGTERM, crash, etc.).
-_audio_recorder: CallAudioRecorder | None = None
-
-
-async def flush_audio() -> None:
+async def flush_audio(context: CallContext | None = None) -> None:
     """Force the audio recorder to write its buffer to disk.
 
     Call this from the bot's shutdown path when the pipeline may have already
     been cancelled and EndFrame will never reach the recorder naturally.
     Safe to call when recording is disabled or the recorder was never started.
     """
-    if _audio_recorder is not None and _audio_recorder._auto_started:
+    recorder = (context or _call_context.get_active()).audio_recorder
+    if recorder is not None and recorder._auto_started:
         try:
-            await _audio_recorder.stop_recording()
+            await recorder.stop_recording()
         except Exception as exc:  # noqa: BLE001
             logger.warning("[call-record] flush_audio failed: {}", exc)
 
@@ -505,8 +523,7 @@ class CallAudioRecorder(AudioBufferProcessor):
     calls.
     """
 
-    def __init__(self) -> None:
-        global _audio_recorder
+    def __init__(self, context: CallContext | None = None) -> None:
         super().__init__(
             sample_rate=RECORDING_SAMPLE_RATE,
             num_channels=RECORDING_CHANNELS,
@@ -514,7 +531,10 @@ class CallAudioRecorder(AudioBufferProcessor):
         )
         self._auto_started = False
         self.add_event_handler("on_audio_data", self._on_audio_data)
-        _audio_recorder = self
+        # Bind to the call's context so concurrent calls can't mix WAVs, and
+        # register for the shutdown flush path.
+        self._context = context or _call_context.get_active()
+        self._context.audio_recorder = self
 
     async def process_frame(self, frame, direction: FrameDirection) -> None:
         """Start recording on the first ``StartFrame``; delegate the rest."""
@@ -535,7 +555,7 @@ class CallAudioRecorder(AudioBufferProcessor):
         if not audio:
             logger.warning("[call-record] no audio captured — skipping WAV")
             return
-        call_dir = get_call_dir()
+        call_dir = self._context.record.call_dir()
         if call_dir is None:
             logger.warning("[call-record] call not initialised — skipping WAV")
             return
@@ -544,7 +564,7 @@ class CallAudioRecorder(AudioBufferProcessor):
             duration = write_wav(
                 wav_path, audio, sample_rate=sample_rate, num_channels=num_channels
             )
-            _record.set_audio(file_name=wav_path.name, duration_secs=duration)
+            self._context.record.set_audio(file_name=wav_path.name, duration_secs=duration)
             logger.info("[call-record] audio saved: {} ({:.1f}s)", wav_path, duration)
         except (OSError, wave.Error) as exc:
             logger.error("[call-record] failed to write WAV: {}", exc)
@@ -553,9 +573,6 @@ class CallAudioRecorder(AudioBufferProcessor):
 # ---------------------------------------------------------------------- #
 # Raw browser input recorder                                              #
 # ---------------------------------------------------------------------- #
-
-# Module-level reference so flush can be called from the force-exit path.
-_raw_input_recorder: RawInputRecorder | None = None
 
 
 class RawInputRecorder(FrameProcessor):
@@ -570,13 +587,13 @@ class RawInputRecorder(FrameProcessor):
     diagnosing STT issues, noise problems, or transport glitches.
     """
 
-    def __init__(self, sample_rate: int = 16000) -> None:
-        global _raw_input_recorder
+    def __init__(self, sample_rate: int = 16000, context: CallContext | None = None) -> None:
         super().__init__()
         self._sample_rate = sample_rate
         self._chunks: list[bytes] = []
         self._started = False
-        _raw_input_recorder = self
+        self._context = context or _call_context.get_active()
+        self._context.raw_input_recorder = self
 
     async def process_frame(self, frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -595,7 +612,7 @@ class RawInputRecorder(FrameProcessor):
         if not self._chunks:
             logger.debug("[call-record] raw input: no audio chunks to write")
             return
-        call_dir = get_call_dir()
+        call_dir = self._context.record.call_dir()
         if call_dir is None:
             logger.warning("[call-record] raw input: call not initialised — skipping")
             return
@@ -614,20 +631,16 @@ class RawInputRecorder(FrameProcessor):
         self._write_wav()
 
 
-async def flush_raw_input() -> None:
+async def flush_raw_input(context: CallContext | None = None) -> None:
     """Force-write the raw input buffer to disk. Non-fatal if not started."""
-    if _raw_input_recorder is not None and _raw_input_recorder._started:
-        _raw_input_recorder.flush()
+    recorder = (context or _call_context.get_active()).raw_input_recorder
+    if recorder is not None and recorder._started:
+        recorder.flush()
 
 
 # ---------------------------------------------------------------------- #
 # Per-stage audio taps (diagnostic).                                      #
 # ---------------------------------------------------------------------- #
-
-# Registry of every StageRecorder built this process, so the shutdown /
-# force-exit path can flush them all in one call (mirrors how
-# flush_raw_input handles the single raw recorder).
-_stage_recorders: list[StageRecorder] = []
 
 
 class StageRecorder(FrameProcessor):
@@ -650,13 +663,16 @@ class StageRecorder(FrameProcessor):
     time-aligned with the pre-gate stages.
     """
 
-    def __init__(self, label: str, sample_rate: int = 16000) -> None:
+    def __init__(
+        self, label: str, sample_rate: int = 16000, context: CallContext | None = None
+    ) -> None:
         super().__init__()
         self._label = label
         self._sample_rate = sample_rate
         self._chunks: list[bytes] = []
         self._started = False
-        _stage_recorders.append(self)
+        self._context = context or _call_context.get_active()
+        self._context.stage_recorders.append(self)
 
     async def process_frame(self, frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -674,7 +690,7 @@ class StageRecorder(FrameProcessor):
         if not self._chunks:
             logger.debug("[stage-record:{}] no audio chunks to write", self._label)
             return
-        call_dir = get_call_dir()
+        call_dir = self._context.record.call_dir()
         if call_dir is None:
             logger.warning("[stage-record:{}] call not initialised — skipping", self._label)
             return
@@ -692,8 +708,8 @@ class StageRecorder(FrameProcessor):
         self._write_wav()
 
 
-async def flush_stage_recorders() -> None:
+async def flush_stage_recorders(context: CallContext | None = None) -> None:
     """Force-write every stage recorder's buffer. Non-fatal if none started."""
-    for rec in _stage_recorders:
+    for rec in (context or _call_context.get_active()).stage_recorders:
         if rec._started:
             rec.flush()

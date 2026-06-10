@@ -44,6 +44,8 @@ try:
 except Exception:  # daily-python not available on Windows
     DailyOutputTransportMessageFrame = None  # type: ignore[assignment,misc]
 
+from voxtera import call_context as _call_context
+from voxtera.call_context import CallContext
 from voxtera.call_record import (
     record_bot_turn,
     record_interruption,
@@ -219,10 +221,20 @@ class PipelineTracer(FrameProcessor):
     intentionally not logged at any level.
     """
 
-    def __init__(self, label: str, *, hotel_id: str | None = None) -> None:
+    def __init__(
+        self,
+        label: str,
+        *,
+        hotel_id: str | None = None,
+        context: CallContext | None = None,
+    ) -> None:
         super().__init__()
         self._label = label
         self._hotel_id = hotel_id
+        # Per-call context (multi-call services). When set, it is re-activated
+        # on every frame so the tracker/record facades always resolve to THIS
+        # call even if a transport task was created outside the call's context.
+        self._call_context = context
         # LLM-internal state (only this processor sees the LLM frames going
         # downstream past it). Cross-stage anchors live on TurnTracker so
         # other processors at other positions can write/read them.
@@ -231,6 +243,11 @@ class PipelineTracer(FrameProcessor):
         self._llm_chunks: list[str] = []
         self._disconnect_error_logged = False
 
+    async def process_frame(self, frame, direction: FrameDirection) -> None:
+        if self._call_context is not None:
+            _call_context.activate(self._call_context)
+        await self._process_frame_inner(frame, direction)
+
     def _reset_turn_state(self) -> None:
         # Local LLM-internal state. Cross-stage anchors are cleared by
         # TurnTracker.start_user_turn / end_turn.
@@ -238,7 +255,7 @@ class PipelineTracer(FrameProcessor):
         self._llm_first_chunk_at = None
         self._llm_chunks = []
 
-    async def process_frame(self, frame, direction: FrameDirection) -> None:
+    async def _process_frame_inner(self, frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
 
         # Errors — always loud.
@@ -541,12 +558,22 @@ class TranscriptStageTimer(FrameProcessor):
     ``stt_to_llm`` gap.
     """
 
-    def __init__(self, label: str = "voxtera", *, hotel_id: str | None = None) -> None:
+    def __init__(
+        self,
+        label: str = "voxtera",
+        *,
+        hotel_id: str | None = None,
+        context: CallContext | None = None,
+    ) -> None:
         super().__init__()
         self._label = label
         self._hotel_id = hotel_id
+        # Per-call context (multi-call services) — see PipelineTracer.
+        self._call_context = context
 
     async def process_frame(self, frame, direction: FrameDirection) -> None:
+        if self._call_context is not None:
+            _call_context.activate(self._call_context)
         await super().process_frame(frame, direction)
 
         if isinstance(frame, TranscriptionFrame):

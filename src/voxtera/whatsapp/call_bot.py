@@ -42,13 +42,11 @@ Observability (WAV + transcript + trace), mirroring the hotel pipeline:
   * ``TraceForwarder`` ships trace events to serve.py so the call shows up in the
     Voxtera Trace dashboard, tagged channel ``wa``.
 
-CONCURRENCY CAVEAT: the recording/trace layer uses process-global singletons
-(``call_record``, env vars) designed for "one call = one subprocess". This service
-is "one process = many calls", so recording/trace is correct for ONE call at a
-time (matches the box's 1–2 call ceiling and how the demo is used). Truly
-simultaneous calls would mix recordings — that needs a per-call refactor. The call
-audio itself is per-pipeline and unaffected; only the recording/trace artifacts
-are shared. All observability is best-effort: a failure here never breaks the call.
+CONCURRENCY: this service is "one process = many calls". Each call gets its own
+``CallContext`` (created + activated at the top of ``run_call_bot``) owning the
+call record, the trace turn tracker, and the recorder references, so truly
+simultaneous calls keep separate WAVs, transcripts, and trace session ids. All
+observability is best-effort: a failure here never breaks the call.
 
 This is a self-contained pipeline (it does NOT go through ``build_pipeline``) to
 keep the WhatsApp call path fully isolated from the tuned hotel/Daily pipeline.
@@ -87,7 +85,9 @@ from pipecat.turns.user_turn_strategies import (
     default_user_turn_start_strategies,
 )
 
+from voxtera import call_context as call_context_mod
 from voxtera.audio import BotActiveUserFrameSuppressor, PlaybackLeakageGuard
+from voxtera.call_context import CallContext
 from voxtera.config import Settings, load_settings
 from voxtera.stt import _build_stt
 from voxtera.travel_agent_brain import TravelAgentBrain
@@ -165,13 +165,12 @@ def _build_transport(connection: SmallWebRTCConnection) -> SmallWebRTCTransport:
     )
 
 
-def _init_call_record(settings: Settings, session_id: str) -> None:
+def _init_call_record(settings: Settings, context: CallContext) -> None:
     """Start the per-call WAV + transcript record (best-effort).
 
-    Sets the process-global session id/channel the recorders + tracer read.
+    All state lives on ``context`` — nothing process-global is touched, so
+    concurrent calls each get their own record/WAVs/trace session.
     """
-    os.environ["VOXTERA_SESSION_ID"] = session_id
-    os.environ["VOXTERA_CHANNEL"] = _TRACE_CHANNEL
     from voxtera import call_record
 
     call_record.init_call(
@@ -182,10 +181,11 @@ def _init_call_record(settings: Settings, session_id: str) -> None:
         stt_provider=settings.stt_provider,
         tts_provider=settings.tts_provider,
         llm_model=os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001"),
+        context=context,
     )
 
 
-async def _finalize_call_record() -> None:
+async def _finalize_call_record(context: CallContext) -> None:
     """Flush WAVs + write the transcript record on hang-up (best-effort)."""
     from voxtera import call_record
 
@@ -195,11 +195,11 @@ async def _finalize_call_record() -> None:
         call_record.flush_stage_recorders,
     ):
         try:
-            await flush()
+            await flush(context)
         except Exception as e:  # noqa: BLE001
             logger.debug("[whatsapp-call] {} failed: {}", getattr(flush, "__name__", flush), e)
     try:
-        call_record.finalize()
+        call_record.finalize(context)
     except Exception as e:  # noqa: BLE001
         logger.debug("[whatsapp-call] call_record.finalize failed: {}", e)
 
@@ -214,10 +214,17 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     session_id = f"wacall_{uuid.uuid4().hex[:12]}"
     logger.info("[whatsapp-call] starting bot session={}", session_id)
 
+    # Per-call context: owns the call record, trace turn tracker, and recorder
+    # references for THIS call only. Activated on the contextvar so every task
+    # this coroutine spawns (the whole pipeline) resolves to it — concurrent
+    # calls in this one process can no longer mix WAVs/transcripts/trace ids.
+    call_ctx = call_context_mod.new_call_context(session_id=session_id, channel=_TRACE_CHANNEL)
+    call_context_mod.activate(call_ctx)
+
     # Observability: WAV + transcript record. Best-effort — never break the call.
     record_enabled = True
     try:
-        _init_call_record(settings, session_id)
+        _init_call_record(settings, call_ctx)
     except Exception as e:  # noqa: BLE001
         record_enabled = False
         logger.error("[whatsapp-call] call_record init failed (recording off): {}", e)
@@ -283,10 +290,10 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
             from voxtera.call_record import CallAudioRecorder, RawInputRecorder
             from voxtera.observability import PipelineTracer, TranscriptStageTimer
 
-            raw_recorder = RawInputRecorder(sample_rate=_AUDIO_IN_RATE)
-            transcript_timer = TranscriptStageTimer(label=_TRACE_LABEL)
-            tracer = PipelineTracer(label=_TRACE_LABEL)
-            call_recorder = CallAudioRecorder()
+            raw_recorder = RawInputRecorder(sample_rate=_AUDIO_IN_RATE, context=call_ctx)
+            transcript_timer = TranscriptStageTimer(label=_TRACE_LABEL, context=call_ctx)
+            tracer = PipelineTracer(label=_TRACE_LABEL, context=call_ctx)
+            call_recorder = CallAudioRecorder(context=call_ctx)
         except Exception as e:  # noqa: BLE001
             logger.error("[whatsapp-call] observability processors unavailable: {}", e)
 
@@ -402,5 +409,6 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
             except Exception as e:  # noqa: BLE001
                 logger.debug("[whatsapp-call] trace forwarder stop failed: {}", e)
         if record_enabled:
-            await _finalize_call_record()
+            await _finalize_call_record(call_ctx)
+        call_context_mod.deactivate()
         logger.info("[whatsapp-call] bot session={} ended", session_id)
