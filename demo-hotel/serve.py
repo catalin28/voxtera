@@ -2035,6 +2035,10 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_greetings_get()
         if self.path == "/api/admin/voice-prompts":
             return self._handle_admin_voice_prompts_list()
+        if self.path == "/api/admin/voice-catalog":
+            return self._handle_admin_voice_catalog()
+        if self.path == "/api/voice/config" or self.path.startswith("/api/voice/config?"):
+            return self._handle_voice_config_get()
         if self.path == "/api/admin/call-center/status":
             return self._handle_admin_call_center_status()
         if self.path.startswith("/api/admin/call-center/es/hotels"):
@@ -2139,6 +2143,10 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_greetings_post()
         if self.path == "/api/admin/voice-prompts":
             return self._handle_admin_voice_prompts_save()
+        if self.path == "/api/admin/voice-preview":
+            return self._handle_admin_voice_preview()
+        if self.path == "/api/voice/config":
+            return self._handle_voice_config_save()
         if self.path == "/api/admin/call-center/qdrant/search":
             return self._handle_admin_call_center_qdrant_search()
         # Phase 3 — on-demand bot launcher
@@ -5480,6 +5488,155 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             pass  # backup is best-effort; never block a save on it
         path.write_bytes(content.encode("utf-8"))
         self._send_json(200, {"ok": True, "name": name, "mtime": path.stat().st_mtime})
+
+    def _handle_admin_voice_catalog(self) -> None:
+        """GET /api/admin/voice-catalog — return available voices for the voice config panel."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        catalog = self._build_voice_catalog()
+        self._send_json(
+            200,
+            {
+                "voices": catalog,
+                "default_preview_text": "Good evening. How can I help you today?",
+            },
+        )
+
+    def _handle_voice_config_get(self) -> None:
+        """GET /api/voice/config?property_id=<id> — return current saved voice config."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        from urllib.parse import parse_qs
+        from urllib.parse import urlparse as _urlparse2
+
+        qs = parse_qs(_urlparse2(self.path).query)
+        property_id = (qs.get("property_id", [""])[0] or "").strip() or "demo"
+        configs = self._load_voice_configs()
+        entry = configs.get(property_id, {})
+        self._send_json(
+            200,
+            {
+                "property_id": property_id,
+                "current": entry.get("current") if isinstance(entry, dict) else None,
+                "previous": entry.get("previous") if isinstance(entry, dict) else None,
+            },
+        )
+
+    def _handle_admin_voice_preview(self) -> None:
+        """POST /api/admin/voice-preview — synthesize TTS preview for a voice."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        voice_key = (body.get("voice_key") or "").strip()
+        text = (body.get("text") or "").strip()
+        params = body.get("params", {}) if isinstance(body.get("params"), dict) else {}
+
+        if not voice_key or not text:
+            self._send_json(400, {"error": "voice_key and text required"})
+            return
+
+        catalog = {v["voice_key"]: v for v in self._build_voice_catalog()}
+        voice = catalog.get(voice_key)
+        if not voice:
+            self._send_json(404, {"error": "voice not found"})
+            return
+
+        provider = voice.get("provider", "").lower()
+        voice_id = voice_key.split(":", 1)[1] if ":" in voice_key else voice_key
+
+        try:
+            if provider == "google":
+                audio_bytes = _tts_google(text, voice_id, "en")
+            elif provider == "cartesia":
+                audio_bytes = _tts_cartesia(text, voice_id, "en", params=params)
+            elif provider == "elevenlabs":
+                audio_bytes = _tts_elevenlabs(text, voice_id, "en", params=params)
+            else:
+                self._send_json(400, {"error": f"unsupported provider: {provider}"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Content-Length", str(len(audio_bytes)))
+            self.end_headers()
+            self.wfile.write(audio_bytes)
+        except Exception as exc:  # noqa: BLE001
+            self._send_json(500, {"error": f"preview_failed: {exc}"})
+
+    def _handle_voice_config_save(self) -> None:
+        """POST /api/voice/config — save voice + params for a property.
+
+        Accepts both old format (voice_key, params, display_name) and new format
+        (complete tts_config.json structure with _meta, active_voice, parameters, fallback_chain).
+        """
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        property_id = str(body.get("property_id", "")).strip() or "demo"
+
+        # Handle new payload format (with active_voice and parameters)
+        if "active_voice" in body and isinstance(body.get("active_voice"), dict):
+            active_voice = body["active_voice"]
+            voice_key = str(active_voice.get("voice_key", "")).strip()
+            display_name = str(active_voice.get("display_name", "")).strip()
+            provider = str(active_voice.get("provider", "")).strip()
+            model = str(active_voice.get("model", "")).strip()
+            parameters = (
+                body.get("parameters", {}) if isinstance(body.get("parameters"), dict) else {}
+            )
+        else:
+            # Handle old payload format (backward compatibility)
+            voice_key = str(body.get("voice_key", "")).strip()
+            display_name = str(body.get("display_name", "")).strip()
+            provider = body.get("provider", "").strip()
+            model = body.get("model", "").strip()
+            parameters = body.get("params", {}) if isinstance(body.get("params"), dict) else {}
+
+        if not voice_key:
+            self._send_json(422, {"error": "voice_key is required"})
+            return
+
+        catalog = {v["voice_key"]: v for v in self._build_voice_catalog()}
+        selected = catalog.get(voice_key)
+        if not selected:
+            self._send_json(422, {"error": "unknown voice_key"})
+            return
+
+        # Use provided values or fall back to catalog
+        provider = provider or selected.get("provider", "")
+        model = model or selected.get("model", "")
+        display_name = display_name or f"{selected['display_name']} ({selected['provider_label']})"
+
+        now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+        # Build record with all required fields
+        record = {
+            "property_id": property_id,
+            "voice_key": selected["voice_key"],
+            "display_name": display_name,
+            "provider": provider,
+            "model": model,
+            "params": parameters,
+            "updated_at": now,
+            "updated_by": self.headers.get("X-Admin-Actor") or "admin",
+        }
+
+        configs = self._load_voice_configs()
+        prior = configs.get(property_id, {}) if isinstance(configs.get(property_id), dict) else {}
+        configs[property_id] = {"current": record, "previous": prior.get("current")}
+        self._save_voice_configs(configs)
+
+        self._send_json(
+            200,
+            {
+                "property_id": property_id,
+                "voice_key": record["voice_key"],
+                "updated_at": record["updated_at"],
+            },
+        )
 
     def _handle_concierge(self) -> None:
         """POST /api/concierge — synchronous JSON Q&A backed by ConciergePipeline.
