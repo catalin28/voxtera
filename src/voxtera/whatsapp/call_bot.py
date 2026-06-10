@@ -95,6 +95,22 @@ def _call_settings() -> Settings:
     )
 
 
+def _allow_interruptions() -> bool:
+    """Whether the caller can barge in and cut off the bot mid-sentence.
+
+    Default OFF for WhatsApp calls: the WhatsApp/WebRTC leg has no acoustic echo
+    cancellation, so the bot hears its OWN voice through the caller's mic, Silero
+    VAD flags it as "user speaking", and the bot interrupts itself after the first
+    word. Disabling barge-in makes the bot finish each turn, then listen. Re-enable
+    with WHATSAPP_ALLOW_INTERRUPTIONS=true once real echo cancellation exists.
+    """
+    return os.environ.get("WHATSAPP_ALLOW_INTERRUPTIONS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 def _smart_turn_stop_secs(settings: Settings) -> float:
     """SmartTurn hard end-of-turn cap for calls. Higher = more patient with long
     thinking pauses (e.g. "scuba diving … and a spa"), at the cost of a longer
@@ -273,7 +289,10 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     task = PipelineTask(
         Pipeline(processors),
         params=PipelineParams(
-            allow_interruptions=settings.allow_interruptions,
+            # Off by default — the WhatsApp leg has no echo cancellation, so the
+            # bot's own voice (heard through the caller's mic) would otherwise
+            # trigger a false barge-in and cut the bot off after one word.
+            allow_interruptions=_allow_interruptions(),
             audio_in_sample_rate=_AUDIO_IN_RATE,
             audio_out_sample_rate=_AUDIO_OUT_RATE,
             enable_metrics=True,
