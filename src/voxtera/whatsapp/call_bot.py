@@ -24,6 +24,12 @@ Echo / ghost-turn protection (same processors as the main Daily pipeline):
   while the bot is active; with barge-in enabled the guard's RMS gate lets
   genuine near-field speech through.
 
+Barge-in (WHATSAPP_ALLOW_INTERRUPTIONS=true): the caller can talk over the
+bot to cut it off. In this mode user turns start on VAD ONLY (not on interim
+transcriptions, which would resurrect the late-Gladia-interim cutoff), and
+the leakage guard switches from "always silence" to its adaptive RMS gate so
+real speech opens the mic while playback echo stays suppressed.
+
 The answering brain is the SAME ``TravelAgentBrain`` used by the web voice orb and
 WhatsApp text — it forwards each turn to the shared ``/api/concierge`` endpoint, so
 voice calls, web voice, and chat all behave identically (one source of truth).
@@ -74,6 +80,7 @@ from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
+from pipecat.turns.user_start import VADUserTurnStartStrategy
 from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import (
     UserTurnStrategies,
@@ -114,11 +121,13 @@ def _call_settings() -> Settings:
 def _allow_interruptions() -> bool:
     """Whether the caller can barge in and cut off the bot mid-sentence.
 
-    Default OFF for WhatsApp calls: the WhatsApp/WebRTC leg has no acoustic echo
-    cancellation, so the bot hears its OWN voice through the caller's mic, Silero
-    VAD flags it as "user speaking", and the bot interrupts itself after the first
-    word. Disabling barge-in makes the bot finish each turn, then listen. Re-enable
-    with WHATSAPP_ALLOW_INTERRUPTIONS=true once real echo cancellation exists.
+    Default OFF. With WHATSAPP_ALLOW_INTERRUPTIONS=true, barge-in is enabled
+    and protected against self-interruption by three pieces working together:
+    PlaybackLeakageGuard's RMS gate (echo stays silenced, genuine near-field
+    speech opens the mic), VAD-only user-turn-start strategies (late STT
+    interims can't start a turn), and the suppressor passing frames through
+    untouched. Strict mode (default) remains the safest choice for noisy
+    callers/speakerphone.
     """
     return os.environ.get("WHATSAPP_ALLOW_INTERRUPTIONS", "").strip().lower() in (
         "1",
@@ -232,13 +241,25 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
 
     # Conversation context + turn-taking. TravelAgentBrain reads the latest user
     # utterance off the LLMContext the aggregator emits, so the context starts empty.
+    allow_interruptions = _allow_interruptions()
     context = LLMContext([])
     smart_turn = LocalSmartTurnAnalyzerV3(
         cpu_count=settings.smart_turn_cpu_count,
         params=SmartTurnParams(stop_secs=_smart_turn_stop_secs(settings)),
     )
+    if allow_interruptions:
+        # Barge-in mode: start a user turn on VAD ONLY. The default strategy
+        # list also includes TranscriptionUserTurnStartStrategy, which fires on
+        # ANY interim transcription while the bot speaks — including late
+        # Gladia interims from the tail of the previous question — and that
+        # cut the bot off after a word or two. VAD is safe here because the
+        # PlaybackLeakageGuard's RMS gate only lets genuine near-field speech
+        # through while the bot is active, so VAD cannot fire on echo.
+        start_strategies: list = [VADUserTurnStartStrategy()]
+    else:
+        start_strategies = default_user_turn_start_strategies()
     user_turn_strategies = UserTurnStrategies(
-        start=default_user_turn_start_strategies(),
+        start=start_strategies,
         stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=smart_turn)],
     )
     context_aggregator = LLMContextAggregatorPair(
@@ -274,7 +295,6 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     # active), suppressor after STT (drops late VAD/transcription frames),
     # transcript timer between STT and the user aggregator, tracer after the
     # brain, call recorder after transport.output().
-    allow_interruptions = _allow_interruptions()
     processors: list = [transport.input()]
     if raw_recorder is not None:
         processors.append(raw_recorder)
