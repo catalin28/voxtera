@@ -35,6 +35,7 @@ class _FakePipeline:
         session_id: str | None,
         region: str | None,
         brief: bool = False,
+        hotel_id: str | None = None,
     ) -> dict[str, Any]:
         if self._fail:
             raise RuntimeError("boom")
@@ -46,6 +47,7 @@ class _FakePipeline:
             "answer": answer,
             "region": region,
             "brief": brief,
+            "hotel_id": hotel_id,
             "path": "fake",
         }
 
@@ -112,6 +114,16 @@ async def test_concierge_happy_path(client) -> None:
     assert body["session_id"] == "s1"
     assert body["region"] == "Bodrum"
     assert body["answer"] == "fake answer"
+    assert body["hotel_id"] is None  # no property scope unless requested
+
+
+async def test_concierge_forwards_hotel_scope(client) -> None:
+    resp = await client.post(
+        "/api/concierge",
+        json={"utterance": "what time is breakfast?", "hotel_id": "demo"},
+    )
+    assert resp.status == 200
+    assert (await resp.json())["hotel_id"] == "demo"
 
 
 async def test_concierge_requires_utterance(client) -> None:

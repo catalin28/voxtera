@@ -47,6 +47,7 @@ async def build_concierge_deps(http: aiohttp.ClientSession | None = None) -> dic
         _build_anthropic_web_synth,
     )
     from voxtera.call_center.decompose import QueryDecomposer
+    from voxtera.call_center.property_kb import PropertyKBRetriever
     from voxtera.call_center.session import SessionStore
 
     model = llm_model()
@@ -59,6 +60,10 @@ async def build_concierge_deps(http: aiohttp.ClientSession | None = None) -> dic
         "web_synth_fn": _build_anthropic_web_synth(model),
         "converse_fn": _build_anthropic_converse(model),
         "web_query_fn": _build_anthropic_web_query(model),
+        # P1.4: hotel-scoped requests read the property's own guide (per-hotel
+        # SQLite RAG) instead of the Qdrant travel listings. Shared so chunk/
+        # result caches stay warm across requests.
+        "property_kb": PropertyKBRetriever(),
     }
 
 
@@ -97,4 +102,5 @@ def build_pipeline(
         web_synth_fn=deps["web_synth_fn"],
         converse_fn=deps["converse_fn"],
         web_query_fn=deps["web_query_fn"],
+        property_kb=deps.get("property_kb"),
     )

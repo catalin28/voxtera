@@ -44,17 +44,22 @@ KEY_HTTP = "concierge_http_session"
 DEFAULT_PORT = 8300
 
 
-def _parse_request_fields(body: dict[str, Any]) -> tuple[str, str | None, str | None]:
-    """Common request triple: (utterance, region, session_id).
+def _parse_request_fields(
+    body: dict[str, Any],
+) -> tuple[str, str | None, str | None, str | None]:
+    """Common request fields: (utterance, region, session_id, hotel_id).
 
     Preserves empty-string region as an explicit "all regions" signal
     (distinct from None/absent) — the pipeline owns those semantics.
+    ``hotel_id`` scopes the request to ONE property (hotel-concierge mode):
+    KB retrieval reads that hotel's own guide instead of the travel listings.
     """
     utterance = (body.get("utterance") or "").strip()
     raw_region = body.get("region")
     region = raw_region.strip() if isinstance(raw_region, str) else None
     session_id = (body.get("session_id") or "").strip() or None
-    return utterance, region, session_id
+    hotel_id = (body.get("hotel_id") or "").strip() or None
+    return utterance, region, session_id, hotel_id
 
 
 async def _read_json(request: web.Request) -> dict[str, Any] | None:
@@ -85,7 +90,7 @@ async def handle_concierge(request: web.Request) -> web.Response:
     """POST /api/concierge — synchronous JSON Q&A backed by ConciergePipeline.
 
     Request:  {"utterance": str, "region": str, "session_id": str|None,
-               "brief": bool}
+               "brief": bool, "hotel_id": str|None}
     Response: full ConciergePipeline.run() dict.
     """
     from voxtera.call_center.deps import build_pipeline
@@ -93,7 +98,7 @@ async def handle_concierge(request: web.Request) -> web.Response:
     body = await _read_json(request)
     if body is None:
         return web.json_response({"error": "invalid_json"}, status=400)
-    utterance, region, session_id = _parse_request_fields(body)
+    utterance, region, session_id, hotel_id = _parse_request_fields(body)
     if not utterance:
         return web.json_response({"error": "utterance_required"}, status=400)
 
@@ -104,6 +109,7 @@ async def handle_concierge(request: web.Request) -> web.Response:
             session_id=session_id,
             region=region,
             brief=bool(body.get("brief")),
+            hotel_id=hotel_id,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("[concierge] error: {}", exc)
@@ -130,7 +136,7 @@ async def handle_concierge_stream(request: web.Request) -> web.StreamResponse:
     body = await _read_json(request)
     if body is None:
         return web.json_response({"error": "invalid_json"}, status=400)
-    utterance, region, session_id = _parse_request_fields(body)
+    utterance, region, session_id, hotel_id = _parse_request_fields(body)
 
     resp = web.StreamResponse(
         status=200,
@@ -168,6 +174,7 @@ async def handle_concierge_stream(request: web.Request) -> web.StreamResponse:
                 session_id=session_id,
                 region=region,
                 brief=bool(body.get("brief")),
+                hotel_id=hotel_id,
             ),
             timeout=120,
         )
@@ -196,7 +203,7 @@ async def handle_concierge_replay(request: web.Request) -> web.Response:
     body = await _read_json(request)
     if body is None:
         return web.json_response({"error": "invalid_json"}, status=400)
-    utterance, region, session_id = _parse_request_fields(body)
+    utterance, region, session_id, hotel_id = _parse_request_fields(body)
     edited = body.get("decomposition")
     if not utterance or not isinstance(edited, dict):
         return web.json_response({"error": "utterance_and_decomposition_required"}, status=400)
@@ -209,7 +216,9 @@ async def handle_concierge_replay(request: web.Request) -> web.Response:
 
     try:
         pipeline = build_pipeline(request.app[KEY_DEPS], decomposer=_FixedDecomposer())
-        result = await pipeline.run(utterance=utterance, session_id=session_id, region=region)
+        result = await pipeline.run(
+            utterance=utterance, session_id=session_id, region=region, hotel_id=hotel_id
+        )
     except Exception as exc:  # noqa: BLE001
         logger.exception("[concierge-replay] error: {}", exc)
         return web.json_response({"error": str(exc)}, status=500)

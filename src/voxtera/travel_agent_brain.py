@@ -155,7 +155,13 @@ def _resolve_concierge_url() -> str:
 class TravelAgentBrain(FrameProcessor):
     """Answers turns via the shared /api/concierge endpoint, emitting LLM frames."""
 
-    def __init__(self, *, region: str | None = None, session_id: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        region: str | None = None,
+        session_id: str | None = None,
+        hotel_id: str | None = None,
+    ) -> None:
         super().__init__()
         # Region scope is forwarded verbatim to /api/concierge, which owns the
         # ""/None semantics ("" = all regions; a name = scope to it). We default
@@ -165,12 +171,20 @@ class TravelAgentBrain(FrameProcessor):
             self._region = region
         else:
             self._region = os.environ.get("CONCIERGE_REGION", "")
+        # Property scope (P1.4 "one brain"): set → the concierge answers as
+        # THIS hotel's concierge from its own guide (per-hotel SQLite RAG);
+        # unset → cross-hotel travel agent. This is the travel↔hotel demo
+        # switch: same brain, same pipeline, one parameter.
+        self._hotel_id = (
+            hotel_id if hotel_id is not None else os.environ.get("CONCIERGE_HOTEL_ID", "")
+        ).strip() or None
         self._session_id = session_id or os.environ.get("VOXTERA_SESSION_ID") or None
         self._concierge_url = _resolve_concierge_url()
         self._http: aiohttp.ClientSession | None = None
         logger.info(
-            "[travel-agent-brain] initialised (region={!r}, session={}, url={})",
+            "[travel-agent-brain] initialised (region={!r}, hotel={!r}, session={}, url={})",
             self._region,
+            (self._hotel_id or "—"),
             (self._session_id or "—"),
             self._concierge_url,
         )
@@ -189,6 +203,8 @@ class TravelAgentBrain(FrameProcessor):
             "utterance": utterance,
             "region": self._region,
             "session_id": self._session_id,
+            # Property scope: answer as this hotel's concierge (None = travel agent).
+            "hotel_id": self._hotel_id,
             # Voice channel: short, spoken-style answer (travel_agent_voice_render_brief.md).
             "brief": True,
         }

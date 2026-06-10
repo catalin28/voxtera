@@ -833,6 +833,7 @@ class ConciergePipeline:
         web_synth_fn: Any | None = None,
         converse_fn: Any | None = None,
         web_query_fn: Any | None = None,
+        property_kb: Any | None = None,
     ) -> None:
         self._sessions = session_store
         self._classifier = classifier
@@ -857,6 +858,14 @@ class ConciergePipeline:
         # Optional injected resolver (offline tests / custom backends). When
         # None we build the real Elasticsearch-backed resolver per call.
         self._resolver = resolver
+        # P1.4 "one brain": the property KB (per-hotel SQLite guide retriever,
+        # see call_center.property_kb). When a request carries a hotel_id
+        # scope, KB retrieval reads the property's guide instead of the
+        # Qdrant travel listings — same decompose/triage/render machinery.
+        self._property_kb = property_kb
+        # Per-run property scope; set by run() from the request's hotel_id.
+        self._property_hotel_id: str | None = None
+        self._turn_utterance = ""
 
     async def run(
         self,
@@ -865,12 +874,21 @@ class ConciergePipeline:
         session_id: str | None = None,
         region: str | None = None,
         brief: bool = False,
+        hotel_id: str | None = None,
     ) -> dict[str, Any]:
         utterance = (utterance or "").strip()
         # When the user explicitly selects "All regions" the caller sends
         # region="" (empty string).  We distinguish that from region=None
         # (not provided) so we can suppress the decomposer's inferred region.
         self._user_region_override = region
+        # Property scope (P1.4): this concierge IS one hotel. KB retrieval
+        # reads that property's guide (see _run_kb); name resolution and
+        # geography clarifications are moot and collapse to scoped retrieval.
+        self._property_hotel_id = (hotel_id or "").strip() or None
+        # The raw utterance is the best guide-retrieval query (the guide is
+        # ingested as Q&A-ish prose; decomposed requirement keywords lose the
+        # question shape). Stashed for _run_kb's property branch.
+        self._turn_utterance = utterance
         # Voice channel sets brief=True → the render step uses the short,
         # spoken-style prompt (travel_agent_voice_render_brief.md). Read in _render.
         self._brief = brief
@@ -953,6 +971,12 @@ class ConciergePipeline:
             _session_decompose_leg(),
         )
         timings["concurrent_pre_ms"] = _ms(time.perf_counter() - t_concurrent)
+
+        # Property scope: pin the session to the property every turn. The
+        # router then treats the hotel as resolved (scoped follow-ups work)
+        # and as satisfied geography (no "which region?" dead-ends).
+        if self._property_hotel_id:
+            session["active_hotel_id"] = self._property_hotel_id
 
         if verdict.get("escalate"):
             # Localised — decomposition ran concurrently, so the detected
@@ -1060,6 +1084,7 @@ class ConciergePipeline:
         # queries to avoid the extra lookup on the common path.
         if (
             self._compound is not None
+            and self._property_hotel_id is None  # one-property scope: nothing to detect
             and not decomposition.get("hotel_mention")
             and not decomposition.get("hotel_id")
             and (decomposition.get("query_type") or "") in ("scoped", "comparison")
@@ -1138,10 +1163,25 @@ class ConciergePipeline:
         timings["route_ms"] = _ms(time.perf_counter() - t0)
         path = decision.get("path", PATH_BROAD)
 
+        # Property scope: there is exactly one hotel, so resolving a name
+        # mention against the travel portfolio or asking "which region?" are
+        # both dead-ends — collapse them to a scoped guide lookup. (A guest
+        # naming a DIFFERENT hotel still gets a guide-grounded answer/no-match
+        # rather than information about a property we don't represent here.)
+        if self._property_hotel_id and path in (PATH_HOTEL_RESOLVE, PATH_NEEDS_GEOGRAPHY):
+            path = PATH_SCOPED
+            decision = {
+                "path": PATH_SCOPED,
+                "sources": ["property_kb"],
+                "reason": "property_scope",
+                "needs": None,
+            }
+
         # A broad/multi-hotel recommendation means the caller has moved off any
         # specific hotel — drop the stale active_hotel_id so it can't shadow a
         # later scoped follow-up (and so the next turn isn't poisoned by it).
-        if path == PATH_BROAD:
+        # (Not under property scope, where the property IS the session hotel.)
+        if path == PATH_BROAD and not self._property_hotel_id:
             session.pop("active_hotel_id", None)
             session.pop("active_hotel_location", None)
 
@@ -1196,8 +1236,11 @@ class ConciergePipeline:
             # search the RAW utterance directly. Requirement extraction can drop
             # the hotel name or over-narrow; the full sentence keeps everything
             # the caller said, and the vector store often recognises a named
-            # hotel even when the decomposer missed it.
-            if not ((retrieval or {}).get("hotels")):
+            # hotel even when the decomposer missed it. (Skipped under property
+            # scope: the property branch already searched the raw utterance, and
+            # falling back to the Qdrant travel listings would cross the
+            # portfolio boundary.)
+            if not ((retrieval or {}).get("hotels")) and self._property_hotel_id is None:
                 t0 = time.perf_counter()
                 fb = await self._semantic_fallback(utterance, decomposition, session)
                 timings["fallback_ms"] = _ms(time.perf_counter() - t0)
@@ -1487,7 +1530,24 @@ class ConciergePipeline:
         session: dict[str, Any],
         path: str,
     ) -> dict[str, Any]:
-        """Dispatch to CompoundAndDiscovery for scoped / broad Qdrant retrieval."""
+        """Dispatch KB retrieval: property guide (hotel-scoped requests) or
+        CompoundAndDiscovery for scoped / broad Qdrant retrieval."""
+        # Property scope (P1.4): every KB lookup — scoped, broad, the hotel
+        # side of hybrid — reads this property's guide. The raw utterance is
+        # the query (guide chunks match question phrasing better than the
+        # decomposer's requirement keywords).
+        if self._property_hotel_id:
+            if self._property_kb is None:
+                return {
+                    "reason": "no_property_kb_configured",
+                    "hotels": [],
+                    "missing_requirements": [],
+                }
+            return await self._property_kb.retrieve(
+                hotel_id=self._property_hotel_id,
+                query=getattr(self, "_turn_utterance", "") or "",
+                language=decomposition.get("language") or session.get("language"),
+            )
         if self._compound is None:
             return {
                 "reason": "no_retriever_configured",

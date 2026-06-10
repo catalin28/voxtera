@@ -92,7 +92,7 @@ from voxtera.config import Settings, load_settings
 from voxtera.stt import _build_stt
 from voxtera.travel_agent_brain import TravelAgentBrain
 from voxtera.tts import _TTS_BUILDERS
-from voxtera.whatsapp.config import load_whatsapp_settings
+from voxtera.whatsapp.config import load_whatsapp_settings, property_hotel_id
 
 # Audio rates: 16 kHz in (Silero VAD + STT expectation); 24 kHz out matches the
 # TTS providers' native rate — SmallWebRTC resamples to the WebRTC wire rate.
@@ -115,6 +115,28 @@ def _call_settings() -> Settings:
         input_mode="voice",  # a call always has mic audio
         bot_brain="travel_agent",  # answer via ConciergePipeline
         rag_enabled=False,  # travel brain uses /api/concierge, not local RAG
+    )
+
+
+def _greeting_text(hotel_id: str | None) -> str:
+    """Channel greeting — overridable, with per-mode defaults."""
+    explicit = os.environ.get("WHATSAPP_GREETING_TEXT", "").strip()
+    if explicit:
+        return explicit
+    if hotel_id:
+        hotel_name = hotel_id
+        try:
+            from voxtera.actions import load_hotel_config
+
+            hotel_name = load_hotel_config(hotel_id).hotel_name
+        except Exception:  # noqa: BLE001 — greeting must never block a call
+            pass
+        return (
+            f"Hello! You've reached the concierge at {hotel_name}. How can I help you today?"
+        )
+    return (
+        "Hello! You've reached Voxtera, your travel concierge. "
+        "How can I help you plan your trip today?"
     )
 
 
@@ -274,10 +296,16 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
         user_params=LLMUserAggregatorParams(user_turn_strategies=user_turn_strategies),
     )
 
-    # Region comes from the WhatsApp channel config (WHATSAPP_DEFAULT_REGION);
-    # empty → None → the concierge asks the caller which region on the first turn.
+    # Demo switch (P1.4): hotel scope set (WHATSAPP_HOTEL_ID/CONCIERGE_HOTEL_ID)
+    # → answer as that property's concierge from its own guide; unset → travel
+    # agent. Region comes from the WhatsApp channel config
+    # (WHATSAPP_DEFAULT_REGION); empty → None → the concierge asks the caller
+    # which region on the first turn.
+    hotel_scope = property_hotel_id()
     wa_region = load_whatsapp_settings().default_region
-    brain = TravelAgentBrain(region=wa_region or None, session_id=session_id)
+    brain = TravelAgentBrain(
+        region=wa_region or None, session_id=session_id, hotel_id=hotel_scope
+    )
 
     # Optional observability processors (WAV + transcript). Imported lazily and
     # guarded so a recording problem can never stop a call from connecting.
@@ -375,10 +403,7 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     # Greet the caller the moment the WebRTC media connects, so they hear the
     # agent immediately instead of dead air. Queued on connect (not at build)
     # because the audio track isn't live until the peer connection is up.
-    greeting_text = (
-        "Hello! You've reached Voxtera, your travel concierge. "
-        "How can I help you plan your trip today?"
-    )
+    greeting_text = _greeting_text(hotel_scope)
 
     @transport.event_handler("on_client_connected")
     async def _on_client_connected(_transport, _client) -> None:  # noqa: ANN001

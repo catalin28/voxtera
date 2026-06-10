@@ -101,13 +101,20 @@ def extract_text_messages(body: dict[str, Any]) -> list[dict[str, str]]:
 # Concierge wiring (shared with the concierge service)                         #
 # --------------------------------------------------------------------------- #
 async def run_concierge(
-    *, deps: dict[str, Any], utterance: str, session_id: str, region: str | None
+    *,
+    deps: dict[str, Any],
+    utterance: str,
+    session_id: str,
+    region: str | None,
+    hotel_id: str | None = None,
 ) -> dict[str, Any]:
     """Build a per-request pipeline around the shared deps and run one turn."""
     from voxtera.call_center.deps import build_pipeline
 
     pipeline = build_pipeline(deps)
-    return await pipeline.run(utterance=utterance, session_id=session_id, region=region)
+    return await pipeline.run(
+        utterance=utterance, session_id=session_id, region=region, hotel_id=hotel_id
+    )
 
 
 async def _process_message(app: web.Application, msg: dict[str, str]) -> None:
@@ -123,10 +130,15 @@ async def _process_message(app: web.Application, msg: dict[str, str]) -> None:
         logger.debug("mark_read failed for {}: {}", msg["id"], e)
 
     try:
+        from voxtera.whatsapp.config import property_hotel_id
+
         result = await run_concierge(
             deps=deps,
             utterance=msg["text"],
             session_id=wa_id,
+            # Travel↔hotel demo switch: hotel scope → answer from the
+            # property's own guide; unset → travel agent (default).
+            hotel_id=property_hotel_id(),
             region=settings.default_region,
         )
         answer = (result.get("answer") or "").strip() or (
