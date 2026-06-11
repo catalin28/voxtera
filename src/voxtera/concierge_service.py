@@ -77,12 +77,20 @@ async def _read_json(request: web.Request) -> dict[str, Any] | None:
 
 
 async def handle_health(request: web.Request) -> web.Response:
-    """GET /health — liveness for the deploy gate and Caddy checks."""
+    """GET /health — liveness + the ACTIVE demo mode, for the deploy gate
+    and `scripts/demo-mode.sh status`."""
+    from voxtera.whatsapp.config import property_hotel_id
+
+    hotel_id = property_hotel_id()
     return web.json_response(
         {
             "ok": True,
             "service": "concierge",
             "version": os.environ.get("VOXTERA_VERSION", "dev"),
+            # What the WhatsApp channel answers as RIGHT NOW (env as seen by
+            # this process — restart required for changes to take effect).
+            "mode": "hotel" if hotel_id else "travel",
+            "hotel_id": hotel_id,
         }
     )
 
