@@ -1551,13 +1551,15 @@ class ConciergePipeline:
         """Property (hotel-concierge) fast path — ONE render LLM call per turn.
 
         The full travel pipeline spends an LLM round-trip on classify+decompose
-        before the render ever starts. That buys region/hotel extraction and
-        source routing — all meaningless when the bot IS one hotel. This path
-        mirrors the legacy hotel brain's shape (retrieve guide chunks → answer)
-        on the concierge machinery:
+        before the render ever starts. That buys region/hotel extraction,
+        source routing, and an escalation gate — all meaningless when the bot
+        IS one hotel. This path mirrors the legacy hotel brain exactly:
 
-          - escalation classification runs CONCURRENTLY with session load +
-            guide retrieval (it gates the render but adds ~0 wall time),
+          - NO escalation classifier (it cost ~0.6-0.9s on EVERY turn): like
+            the old brain, urgent issues are just tickets — the render LLM
+            holds create_ticket with Complaint/Emergency categories, so
+            "I'm locked out!" produces an urgent staff ticket instead of an
+            unconnected "let me transfer you" line,
           - the render is the only blocking LLM call (persona rules make it
             answer in the guest's language, so skipping the decomposer's
             language detection costs nothing),
@@ -1568,59 +1570,14 @@ class ConciergePipeline:
         """
         pid = self._property_hotel_id
 
-        async def _classify_leg() -> dict[str, Any]:
-            t0 = time.perf_counter()
-            v = await self._classifier.classify(utterance)
-            timings["classify_ms"] = _ms(time.perf_counter() - t0)
-            return v
-
-        async def _session_retrieve_leg() -> tuple[dict[str, Any], dict[str, Any]]:
-            t0 = time.perf_counter()
-            sess = await self._sessions.load(sid)
-            timings["session_load_ms"] = _ms(time.perf_counter() - t0)
-            # Pin the session to the property (scoped follow-ups, hybrid path).
-            sess["active_hotel_id"] = pid
-            t0 = time.perf_counter()
-            retrieval_local = await self._run_kb(
-                {"language": sess.get("language")}, sess, PATH_SCOPED
-            )
-            timings["retrieve_ms"] = _ms(time.perf_counter() - t0)
-            return sess, retrieval_local
-
-        verdict, (session, retrieval) = await asyncio.gather(
-            _classify_leg(), _session_retrieve_leg()
-        )
-
-        # Hard escalations only — a live complaint, medical issue or urgent
-        # situation hands off to a human immediately. Actionable requests
-        # (bookings, orders) do NOT short-circuit: the render LLM holds the
-        # create_ticket tool and runs the gather→confirm→file flow itself
-        # (property_render), exactly like the legacy hotel brain.
-        if verdict.get("escalate") and verdict.get("escalation_type") in (
-            "live_complaint",
-            "medical",
-            "urgency",
-        ):
-            answer = _escalation_answer((session.get("language") or "en").lower())
-            await self._sessions.append_turn(
-                session,
-                utterance=utterance,
-                decomposition=None,
-                reason="escalation_classifier",
-                answer=answer,
-                is_clarification=False,
-            )
-            await self._sessions.save(session)
-            return self._finish(
-                sid=sid,
-                utterance=utterance,
-                path=PATH_ESCALATE,
-                reason="escalation_classifier",
-                escalation=verdict,
-                answer=answer,
-                t_start=t_start,
-                timings=timings,
-            )
+        t0 = time.perf_counter()
+        session = await self._sessions.load(sid)
+        timings["session_load_ms"] = _ms(time.perf_counter() - t0)
+        # Pin the session to the property (scoped follow-ups, hybrid path).
+        session["active_hotel_id"] = pid
+        t0 = time.perf_counter()
+        retrieval = await self._run_kb({"language": session.get("language")}, session, PATH_SCOPED)
+        timings["retrieve_ms"] = _ms(time.perf_counter() - t0)
 
         # Web-offer follow-ups and explicit "search online" requests reuse the
         # standard handlers (the hybrid path keeps the property scope).

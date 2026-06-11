@@ -180,18 +180,32 @@ async def test_property_scope_guide_miss_fails_closed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_property_scope_escalation_still_works() -> None:
-    """The classifier runs concurrently and still gates the fast path."""
+async def test_property_turn_never_calls_classifier() -> None:
+    """No escalation classifier on the property path (legacy parity, −0.6-0.9s
+    per turn). Urgent issues are tickets via the render's create_ticket tool,
+    not an unconnected hand-off line."""
+
+    async def forbidden_classify(_u: str) -> dict[str, Any]:
+        raise AssertionError("classifier must not run on the property fast path")
+
     compound, kb = _FakeCompound(), _FakePropertyKB()
-    p = _build(
+    p = ConciergePipeline(
+        session_store=SessionStore(),
+        classifier=EscalationClassifier(
+            classify_fn=forbidden_classify, cache_get=None, cache_set=None
+        ),
+        decomposer=QueryDecomposer(decompose_fn=_forbidden_decompose()),
+        triage=Triage(),
+        router=SourceRouter(),
         compound=compound,
         property_kb=kb,
-        classify={"type": "live_complaint", "confidence": 0.95, "signal": "locked out"},
     )
     out = await p.run(utterance="I am locked out of my room!", hotel_id=HOTEL)
 
-    assert out["path"] == "escalate"
-    assert "colleague" in out["answer"].lower()
+    # Handled by the (stubbed) render — no escalation short-circuit.
+    assert out["path"] == PATH_SCOPED
+    assert out["reason"] == "property_fast"
+    assert "classify_ms" not in out["timings"]
 
 
 # ---------- One-brain ticket flow (create_ticket tool on the render) ----------

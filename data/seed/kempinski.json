@@ -1,0 +1,151 @@
+[
+  {
+    "hotel_id": "kempinski_ciragan_istanbul",
+    "name": "Çırağan Palace Kempinski Istanbul",
+    "aliases": [
+      "Ciragan Palace Kempinski",
+      "Çırağan Palace",
+      "Ciragan Palace",
+      "Kempinski Istanbul",
+      "Çırağan Sarayı",
+      "Çırağan Palace Hotel"
+    ],
+    "chain": "Kempinski",
+    "city": "Istanbul",
+    "district": "Beşiktaş",
+    "region": "Istanbul",
+    "country": "Türkiye",
+    "price_tier": "ultra_luxury",
+    "coordinates": [41.04461, 29.01662],
+    "activity_tags": [
+      "spa",
+      "hammam",
+      "pool",
+      "fine_dining",
+      "bosphorus_view",
+      "historic",
+      "palace",
+      "meetings_events",
+      "weddings",
+      "mice",
+      "city_break",
+      "cultural",
+      "luxury"
+    ],
+    "beachfront": false,
+    "adults_only": false,
+    "kids_age_min": 0,
+    "kids_age_max": 17,
+    "board_type": "room_only",
+    "star_rating": 5,
+    "hotel_url": "https://www.kempinski.com/en/ciragan-palace",
+    "source_url": "https://www.kempinski.com/en/ciragan-palace",
+    "chunks": [
+      {
+        "category": "overview",
+        "text": "Çırağan Palace Kempinski Istanbul, Boğaz'daki tek gerçek Osmanlı İmparatorluk Sarayı ve lüks 5 yıldızlı oteldir. 317 oda ile şehirde tatil köyü atmosferi sunar. Türkiye'nin En İyi MICE Oteli ödülünü almıştır. Kempinski Hotels, 1897'de Berlin'de kurulan Avrupa'nın en köklü lüks otel grubudur.",
+        "text_en": "Çırağan Palace Kempinski Istanbul is the only authentic Ottoman Imperial Palace and luxury 5-star hotel on the Bosphorus. With 317 rooms, it offers a resort atmosphere within the city. It has been awarded Türkiye's Best MICE Hotel. Kempinski Hotels, founded in Berlin in 1897, is Europe's oldest luxury hotel group."
+      },
+      {
+        "category": "overview",
+        "text": "Kempinski Hotels, 1897'den bu yana Avrupa lüksünü dünya genelinde temsil etmektedir. 35'ten fazla ülkede 75'in üzerinde otel ve tatil köyüyle faaliyet göstermektedir. Her mülk, Avrupalı zarafeti yerel kültürle harmanlayan benzersiz bir deneyim sunmaktadır. Marka sloganı: 'Keşfedilecek destinasyonlar, hatırlanacak yolculuklar.'",
+        "text_en": "Kempinski Hotels has represented European luxury worldwide since 1897, operating 75+ hotels and resorts in 35+ countries. Each property blends European elegance with authentic local culture. Brand tagline: 'Destinations to discover, journeys to remember.'"
+      },
+      {
+        "category": "atmosphere",
+        "text": "Çırağan Sarayı, 'Boğaz'ın Büyük Hanımı' olarak bilinmektedir. Osmanlı İmparatorluğu'nun yönetim merkezi olan bu tarihi sarayda konaklayarak Sultan gibi yaşama deneyimi sunulmaktadır. Osmanlı mimarisi ve modern lüks arasındaki eşsiz harmoni, oteli İstanbul'un en ikonik adreslerinden biri yapmaktadır.",
+        "text_en": "Çırağan Palace is known as 'The Grande Dame of the Bosphorus.' Guests can live like a Sultan in this historic palace that once served as the Ottoman Imperial court. The unique harmony between Ottoman architecture and modern luxury makes it one of Istanbul's most iconic addresses."
+      },
+      {
+        "category": "atmosphere",
+        "text": "Kempinski'nin her mülkü, 'Kırmızılı Kadın' adı verilen misafir ilişkileri büyükelçisine ev sahipliği yapmaktadır. Kırmızı üniformasıyla tanınan bu özel kişi, misafirlerin her isteğini sıcaklık, karizmatik bir tavır ve özen göstererek karşılamaktadır. Berlin'den Bangkok'a, dünyanın her köşesindeki Kempinski otelinde bir Kırmızılı Kadın sizi karşılamak için hazır beklemektedir.",
+        "text_en": "Every Kempinski property features the 'Lady in Red' — a dedicated guest relations ambassador in her distinctive red uniform, ready to take care of every guest's wishes with warmth, charisma, and attention to detail, from Berlin to Bangkok."
+      },
+      {
+        "category": "location",
+        "text": "Çırağan Palace Kempinski Istanbul, Beşiktaş ilçesinde, Boğaz'ın Avrupa yakasında yer almaktadır. Adres: Çırağan Caddesi 32, 34349 Beşiktaş, İstanbul, Türkiye. Koordinatlar: 41.04461° K, 29.01662° D.",
+        "text_en": "Çırağan Palace Kempinski Istanbul is located in the Beşiktaş district on the European shore of the Bosphorus. Address: Çırağan Caddesi 32, 34349 Beşiktaş, Istanbul, Türkiye. Coordinates: 41.04461° N, 29.01662° E."
+      },
+      {
+        "category": "location",
+        "text": "Otele yakın önemli noktalar: Yıldız Parkı (bitişik, bazı odalar parka bakmaktadır), Ortaköy Camii (yürüme mesafesinde), Dolmabahçe Sarayı (yaklaşık 1,5 km), Taksim Meydanı (yaklaşık 5 km), Kapalıçarşı (yaklaşık 8 km), Topkapı Sarayı (yaklaşık 10 km), Ayasofya (yaklaşık 10 km). Telefon: +90 212 326 4646.",
+        "text_en": "Nearby landmarks: Yıldız Park (adjacent, some rooms overlook it), Ortaköy Mosque (walking distance), Dolmabahçe Palace (~1.5 km), Taksim Square (~5 km), Grand Bazaar (~8 km), Topkapı Palace (~10 km), Hagia Sophia (~10 km). Phone: +90 212 326 4646."
+      },
+      {
+        "category": "rooms",
+        "text": "Çırağan Palace Kempinski Istanbul, toplam 317 odaya sahiptir. Oda kategorileri şunlardır: Standart Odalar (Yıldız Odası: 32 m², Çırağan Boğaz Manzaralı Oda: 34 m², Lilium Garden: 55 m²), Deluxe Odalar (Deluxe Çırağan Boğaz Manzaralı Oda: 66 m²), Grand Deluxe Odalar (Grand Deluxe Çırağan Boğaz Manzaralı Oda: 50 m²), Süitler ve Saray Süitleri.",
+        "text_en": "Çırağan Palace Kempinski Istanbul has 317 rooms in total. Room categories: Standard Rooms (Yıldız Room: 32 m², Çırağan Bosphorus View Room: 34 m², Lilium Garden: 55 m²), Deluxe Rooms (Deluxe Çırağan Bosphorus View Room: 66 m²), Grand Deluxe Rooms (Grand Deluxe Çırağan Bosphorus View Room: 50 m²), Suites and Palace Suites."
+      },
+      {
+        "category": "rooms",
+        "text": "Yıldız Odası (32 m², 2 misafir): Tarihi Yıldız Parkı'na bakan lüks oda. Çırağan Boğaz Manzaralı Oda (34 m², 3 misafir): 45 derece Boğaz manzarası sunan, Osmanlı zarafetini yansıtan yenilenmiş oda. Lilium Garden (55 m², 3 misafir): Bahçeye bakan huzurlu oda. Grand Deluxe Çırağan Boğaz Manzaralı Oda (50 m², 3 misafir): Panoramik Boğaz manzarasıyla çevrili lüks oda. Deluxe Çırağan Boğaz Manzaralı Oda (66 m², 4 misafir): Doğrudan Boğaz manzaralı geniş oda.",
+        "text_en": "Yıldız Room (32 m², 2 guests): Overlooks historic Yıldız Park. Çırağan Bosphorus View Room (34 m², 3 guests): Reflects Ottoman grace with a 45-degree Bosphorus view. Lilium Garden (55 m², 3 guests): Serene garden-view room. Grand Deluxe Çırağan Bosphorus View Room (50 m², 3 guests): Panoramic Bosphorus views. Deluxe Çırağan Bosphorus View Room (66 m², 4 guests): Direct Bosphorus view, spacious layout."
+      },
+      {
+        "category": "rooms",
+        "text": "Orijinal Osmanlı Saray binasındaki Saray Süitleri, en prestijli konaklama seçeneğini sunmaktadır. Tarihi sarayın ruhunu yaşatan bu süitler, tam 'Sultan gibi yaşama' deneyimi sağlamaktadır. Süitler ve Saray Süitleri için rezervasyon: +90 212 326 4646 veya reservation.ciragan@kempinski.com",
+        "text_en": "Palace Suites in the original Ottoman Imperial Palace building offer the most prestigious accommodation. These suites embody the full 'live like a Sultan' experience within the historic palace. Reservations for Suites and Palace Suites: +90 212 326 4646 or reservation.ciragan@kempinski.com"
+      },
+      {
+        "category": "food_beverage",
+        "text": "Çırağan Palace Kempinski Istanbul'da beş restoran ve bar bulunmaktadır: Tuğra Restoran (Osmanlı/Türk mutfağı, saray binasında, Boğaz manzaralı), Ruya İstanbul (çağdaş Türk mutfağı), Gazebo (rahat ortamda Boğaz kıyısı yemekleri), Bellini (İtalyan fine dining), Le Fumoir (kokteyl bar ve lounge).",
+        "text_en": "Çırağan Palace Kempinski Istanbul has five restaurants and bars: Tuğra Restaurant (Ottoman/Turkish fine dining in the palace building with Bosphorus views), Ruya İstanbul (contemporary Turkish cuisine), Gazebo (casual Bosphorus waterfront dining), Bellini (Italian fine dining), Le Fumoir (cocktail bar and lounge)."
+      },
+      {
+        "category": "food_beverage",
+        "text": "Tuğra Restoran, Osmanlı imparatorunun imzasından (tuğra) adını almaktadır. İstanbul'un en ikonik restoran ortamlarından birinde, tarihi saray binasında Boğaz manzarasıyla eşsiz bir yemek deneyimi sunar. Le Fumoir, İstanbul sosyal hayatının özünü yansıtan atmosferiyle kokteyl, içecek ve puro tutkunlarının buluşma noktasıdır. Masa rezervasyonu: +90 212 326 4646.",
+        "text_en": "Tuğra Restaurant, named after the Sultan's imperial signature, offers a unique dining experience in the historic palace with Bosphorus views — one of Istanbul's most iconic restaurant settings. Le Fumoir captures the essence of Istanbul social life for cocktail and cigar enthusiasts. Table reservations: +90 212 326 4646."
+      },
+      {
+        "category": "wellness",
+        "text": "Sanitas Spa, Çırağan Palace Kempinski Istanbul'un bünyesindeki lüks spa merkezidir. Geleneksel Osmanlı hamamı ritüelleri, masajlar, vücut ve yüz bakımları ile rahatlama tesisleri sunulmaktadır. Sauna ve buhar odası mevcuttur. Otelinizde geçirdiğiniz yoğun günlerin ardından en canlandırıcı hizmeti sunmak için Sanitas Spa hizmetinizdedir.",
+        "text_en": "Sanitas Spa is the luxury spa center within Çırağan Palace Kempinski Istanbul. It offers traditional Ottoman hammam rituals, massages, body and facial treatments, and relaxation facilities including sauna and steam room — the most regenerating service to refresh after exhausting days."
+      },
+      {
+        "category": "wellness",
+        "text": "Sonsuzluk Havuzu: Çırağan Palace Kempinski Istanbul'un ısıtmalı açık hava sonsuzluk havuzu, nefes kesen Boğaz manzarası sunar. Boğaz'ın büyüleyici manzarasına dalarken günü tam bir huzur içinde geçirebilirsiniz. Sanitas Spa Merkezi: +90 212 326 4646.",
+        "text_en": "Infinity Pool: Çırağan Palace's heated outdoor infinity pool offers breathtaking Bosphorus panoramic views. Dive into mesmerizing views of the Bosphorus and experience a day of pure bliss. Sanitas Spa contact: +90 212 326 4646."
+      },
+      {
+        "category": "amenities",
+        "text": "Çırağan Palace Kempinski Istanbul'un sunduğu tesisler: 317 lüks oda ve süit, 5 restoran ve bar (Tuğra, Ruya İstanbul, Gazebo, Bellini, Le Fumoir), Sanitas Spa (hamam, masajlar, tedaviler), ısıtmalı açık hava sonsuzluk havuzu (Boğaz manzaralı), son teknoloji ekipmanla donatılmış 15 etkinlik ve toplantı salonu, Çırağan Sarayı Catering hizmeti, 7/24 oda servisi, concierge hizmetleri, vale park.",
+        "text_en": "Çırağan Palace Kempinski Istanbul facilities: 317 luxury rooms and suites, 5 restaurants and bars (Tuğra, Ruya İstanbul, Gazebo, Bellini, Le Fumoir), Sanitas Spa (hammam, massages, treatments), heated outdoor infinity pool with Bosphorus views, 15 event/meeting venues with state-of-the-art technology, Çırağan Palace Catering service, 24/7 room service, concierge services, valet parking."
+      },
+      {
+        "category": "activities",
+        "text": "Çırağan Palace Kempinski İstanbul çevresindeki aktiviteler: Boğaz turu tekne gezileri, Yıldız Parkı'nda yürüyüş, Ortaköy ve Beşiktaş'ı keşfetme, İstanbul'un tarihi yarımadası gezisi (Topkapı, Ayasofya, Kapalıçarşı), Dolmabahçe Sarayı ziyareti, adalar turu, alışveriş turları (Nişantaşı, İstinye Park, Istiklal Caddesi).",
+        "text_en": "Activities around Çırağan Palace Kempinski Istanbul: Bosphorus boat tours, walking in Yıldız Park, exploring Ortaköy and Beşiktaş, historical peninsula tour (Topkapı, Hagia Sophia, Grand Bazaar), Dolmabahçe Palace visit, Princes' Islands tour, shopping tours (Nişantaşı, İstinye Park, İstiklal Avenue)."
+      },
+      {
+        "category": "activities",
+        "text": "Sultan'ın Yemeği: Sarayda özel temali bir yemek deneyimi. Çırağan Palace Kempinski'de özel aktiviteler ve etkinlikler için concierge ekibiyle iletişime geçin. İstanbul Boğazı manzarasında Gazebo'da kahvaltı veya Le Fumoir'da akşam kokteyli deneyimlerini kaçırmayın.",
+        "text_en": "Sultan's Dinner: An exclusive themed dinner experience in the palace. Contact the concierge team for special activities and events at Çırağan Palace Kempinski. Don't miss breakfast at Gazebo with Bosphorus views or evening cocktails at Le Fumoir."
+      },
+      {
+        "category": "packages",
+        "text": "Şu anda sunulan teklifler — Anı Yakala kampanyası: Anında Keşfet (Advance Booking): Erken rezervasyonlarda %25'e kadar tasarruf ve özel deneyimlere erken erişim. Yolculuğunu Uzat (Long Stay): Konaklamanızı uzatın, %25'e kadar tasarruf edin. 'Hikayeniz daha fazla bölümü hak ediyor.' Benzersiz Lüks (Suite Offer): Süit deneyimi için özel paket ve yerel aktiviteler dahil.",
+        "text_en": "Current offers — Seize The Moment campaign: Plan to Discover (Advance Booking): Save up to 25% with early booking and early access to curated experiences. Extend Your Journey (Long Stay): Extend your stay for up to 25% savings. 'Your story deserves more chapters.' Bespoke Indulgence (Suite Offer): Exclusive suite package with curated local encounters and tailored benefits."
+      },
+      {
+        "category": "packages",
+        "text": "KEMPINSKI DISCOVERY Sadakat Programı: Üyelik ücretsizdir. Katmanlar: Gümüş (üyelikte), Altın (2 konaklama veya 1.000 USD harcama), Platin (10 gece veya 5.000 USD), Titanyum (30 gece veya 15.000 USD). DISCOVERY Doları (D$) kazanın ve 50'den fazla markadan 950'den fazla otelde kullanın. Üyelik: kempinski.com/en/loyalty/join-now",
+        "text_en": "KEMPINSKI DISCOVERY Loyalty Programme: Free to join. Tiers: Silver (on joining), Gold (2 stays or USD 1,000 spend), Platinum (10 nights or USD 5,000), Titanium (30 nights or USD 15,000). Earn DISCOVERY Dollars (D$) and spend at 950+ hotels across 50+ brands. Join: kempinski.com/en/loyalty/join-now"
+      },
+      {
+        "category": "policies",
+        "text": "Çırağan Palace Kempinski Istanbul — temel politikalar: En iyi oran garantisi — doğrudan kempinski.com üzerinden rezervasyon yapanlara en iyi oran garantisi verilmektedir. Fiyat Eşleştirme Taahhüdü: Daha uygun bir fiyat bulunursa Kempinski eşleştirir. Rezervasyon: +90 212 326 4646 veya reservation.ciragan@kempinski.com",
+        "text_en": "Çırağan Palace Kempinski Istanbul — key policies: Best Rate Guarantee — guests booking directly at kempinski.com receive the best rate guarantee. Price Match Promise: if a lower rate is found elsewhere, Kempinski will match it. Reservations: +90 212 326 4646 or reservation.ciragan@kempinski.com"
+      },
+      {
+        "category": "accessibility",
+        "text": "Ulaşım: Otel Beşiktaş ilçesinde, Boğaz kıyısında yer almaktadır. İstanbul Havalimanı'ndan (IST) yaklaşık 45-60 dakika uzaklıktadır. Sabiha Gökçen Havalimanı'ndan (SAW) yaklaşık 60-75 dakika. Toplu taşıma: Beşiktaş vapur iskelesi yürüme mesafesinde. İstanbul trafik yoğunluğunu göz önünde bulundurarak seyahat planlaması yapılması tavsiye edilir.",
+        "text_en": "Getting there: The hotel is in the Beşiktaş district on the Bosphorus. Approximately 45-60 minutes from Istanbul Airport (IST) and 60-75 minutes from Sabiha Gökçen Airport (SAW). Public transport: Beşiktaş ferry terminal is within walking distance. Allow extra time for Istanbul traffic when planning travel."
+      },
+      {
+        "category": "children",
+        "text": "Çırağan Palace Kempinski Istanbul ailelere de kapılarını açmaktadır. Tüm yaş grupları için konaklama seçenekleri mevcuttur. Şehrin kültürel zenginliklerine ve tarihi mekânlarına ailece yapılacak geziler için ideal bir üs konumundadır. Concierge ekibi, çocuklar için özel aktiviteler ve şehir turları düzenlemekte yardımcı olmaktadır.",
+        "text_en": "Çırağan Palace Kempinski Istanbul welcomes families with accommodation for all ages. It serves as an ideal base for family trips to the city's cultural riches and historic sites. The concierge team assists with special activities for children and city tours."
+      }
+    ]
+  }
+]
