@@ -2093,6 +2093,22 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         # which aggressively disk-caches) never serve a stale version. JS/CSS
         # assets are unversioned so they get the same treatment.
         stripped = self.path.split("?")[0]
+        # Voice-config panel pretty URLs (restored from 09c6402 — lost in the
+        # voice-config merge): /admin/voice/ and /admin/properties/<id>/voice
+        # redirect to the static panel page with the property preselected.
+        if stripped.startswith("/admin/properties/") and stripped.endswith("/voice"):
+            parts = [p for p in stripped.split("/") if p]
+            if len(parts) == 4 and parts[0] == "admin" and parts[1] == "properties":
+                property_id = urllib.parse.quote(parts[2], safe="")
+                self.send_response(302)
+                self.send_header("Location", f"/admin/voice-config.html?property_id={property_id}")
+                self.end_headers()
+                return None
+        if stripped in ("/admin/voice/", "/admin/voice"):
+            self.send_response(302)
+            self.send_header("Location", "/admin/voice-config.html?property_id=demo")
+            self.end_headers()
+            return None
         # Root URL → redirect to voxtera.html (landing page).
         if stripped in ("/", "/index.html"):
             self.send_response(302)
