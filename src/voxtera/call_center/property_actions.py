@@ -35,19 +35,32 @@ from typing import Any
 
 from loguru import logger
 
-_EXTRACT_PROMPT = """You turn ONE hotel-guest request into a staff ticket.
+_EXTRACT_PROMPT = """You prepare a hotel-staff ticket from ONE guest request.
 
 Guest's request (verbatim): {utterance}
 
-Recent conversation (may add context like a room number):
+Recent conversation (may contain details the guest already gave — room
+number, time, party size; never re-ask for something present here):
 {transcript}
+
+A ticket is READY only when staff could actually act on it:
+- a restaurant/spa/activity reservation needs at least a date or time and a
+  party size (room number helps but is optional);
+- an in-room issue (maintenance, housekeeping, room service) needs the room
+  number;
+- a complaint or a lost item is ready as long as the problem is clear.
 
 Return ONLY a JSON object, no prose:
 {{
   "category": one of [{categories}],
   "summary": "one-sentence summary of the request, written in {official_language}",
   "room_number": "the room number if mentioned anywhere, else 'unknown'",
-  "language_detected": "the guest's language as a short label, e.g. 'English'"
+  "language_detected": "the guest's language as a short label, e.g. 'English'",
+  "ready": true or false,
+  "question": "if not ready: ONE short spoken question in the GUEST's language \
+asking for ALL missing details at once, else null",
+  "confirm": "if ready: ONE short spoken confirmation in the GUEST's language — \
+restate the request in a few words and ask whether to send it to the team, else null"
 }}"""
 
 
@@ -108,7 +121,7 @@ class PropertyTicketer:
     # Ticket creation                                                     #
     # ------------------------------------------------------------------ #
 
-    async def file_from_turn(
+    async def assess(
         self,
         *,
         hotel_id: str,
@@ -116,29 +129,54 @@ class PropertyTicketer:
         transcript: str,
         language: str | None,
     ) -> dict[str, Any] | None:
-        """Create + deliver a ticket for one actionable guest turn.
+        """Assess one actionable turn: ticket fields + what's still missing.
 
-        Returns ``{"session_id", "category"}`` on success, None on any
-        failure (caller falls back to the plain escalation answer).
+        Mirrors the legacy tool prompt's flow: collect the details staff need
+        (room number for in-room issues, time + party size for reservations),
+        then ALWAYS confirm before filing.
+
+        Returns None when the ticket layer is unavailable, else::
+
+            {"ready": bool,
+             "question": str | None,   # not ready: ask for ALL missing info
+             "confirm":  str | None,   # ready: "shall I send it?" line
+             "fields": {"category", "summary", "room_number",
+                        "language_detected"}}   # JSON-safe (Redis session)
         """
         runtime = self._runtime(hotel_id)
         if runtime is None:
             return None
-
-        from voxtera.actions.ticket import Ticket
-
-        fields = await self._extract_fields(
+        return await self._extract_fields(
             utterance=utterance,
             transcript=transcript,
             language=language,
             hotel_config=runtime.hotel_config,
         )
+
+    async def file(
+        self,
+        *,
+        hotel_id: str,
+        fields: dict[str, Any],
+        original_quote: str,
+    ) -> dict[str, Any] | None:
+        """Deliver a confirmed ticket. None on any failure."""
+        runtime = self._runtime(hotel_id)
+        if runtime is None:
+            return None
+
+        from voxtera.actions.ticket import Category, Ticket
+
+        try:
+            category = Category(fields.get("category") or Category.OTHER.value)
+        except ValueError:
+            category = Category.OTHER
         ticket = Ticket(
-            category=fields["category"],
-            summary=fields["summary"],
-            room_number=fields["room_number"],
-            original_quote=utterance[:1000],
-            language_detected=fields["language_detected"],
+            category=category,
+            summary=(fields.get("summary") or original_quote)[:500],
+            room_number=(fields.get("room_number") or "unknown")[:64],
+            original_quote=original_quote[:1000],
+            language_detected=(fields.get("language_detected") or "unknown")[:64],
         )
         try:
             ok = await runtime.sink.send(ticket)
@@ -164,20 +202,28 @@ class PropertyTicketer:
         language: str | None,
         hotel_config: Any,
     ) -> dict[str, Any]:
-        """Fill the ticket fields the old LLM tool call used to produce.
+        """One small Anthropic call fills fields + readiness + the next line.
 
-        One small Anthropic call; deterministic fallback (category OTHER or
-        the hotel's first allowed category, raw utterance as summary) when
-        the extraction fails — a clumsy ticket beats a silent drop.
+        Deterministic fallback when the extraction fails: treat the request
+        as ready with the raw utterance as summary and a generic confirm
+        question — a clumsy ticket flow beats a silent drop.
         """
         from voxtera.actions.ticket import Category
 
         allowed = tuple(hotel_config.allowed_categories) or (Category.OTHER,)
+        fallback_category = Category.OTHER if Category.OTHER in allowed else allowed[0]
         fallback = {
-            "category": Category.OTHER if Category.OTHER in allowed else allowed[0],
-            "summary": utterance[:500],
-            "room_number": "unknown",
-            "language_detected": language or "unknown",
+            "ready": True,
+            "question": None,
+            "confirm": (
+                "I'll pass this request to our team — shall I send it now?"
+            ),
+            "fields": {
+                "category": fallback_category.value,
+                "summary": utterance[:500],
+                "room_number": "unknown",
+                "language_detected": language or "unknown",
+            },
         }
         try:
             from voxtera.call_center.clients import anthropic_client
@@ -197,18 +243,37 @@ class PropertyTicketer:
             raw = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
             start, end = raw.find("{"), raw.rfind("}")
             data = json.loads(raw[start : end + 1])
-            category = Category(str(data.get("category", "")).strip())
+            try:
+                category = Category(str(data.get("category", "")).strip())
+            except ValueError:
+                category = fallback_category
             if category not in allowed:
-                category = fallback["category"]
+                category = fallback_category
+            ready = bool(data.get("ready"))
+            question = str(data.get("question") or "").strip() or None
+            confirm = str(data.get("confirm") or "").strip() or None
+            if not ready and question is None:
+                # Model said "not ready" without a question — degrade to ready
+                # with the generic confirm rather than dead-ending the guest.
+                ready, confirm = True, fallback["confirm"]
+            if ready and confirm is None:
+                confirm = fallback["confirm"]
             return {
-                "category": category,
-                "summary": str(data.get("summary") or "").strip()[:500] or fallback["summary"],
-                "room_number": str(data.get("room_number") or "unknown").strip()[:64] or "unknown",
-                "language_detected": str(data.get("language_detected") or "").strip()[:64]
-                or fallback["language_detected"],
+                "ready": ready,
+                "question": None if ready else question,
+                "confirm": confirm if ready else None,
+                "fields": {
+                    "category": category.value,
+                    "summary": str(data.get("summary") or "").strip()[:500]
+                    or fallback["fields"]["summary"],
+                    "room_number": str(data.get("room_number") or "unknown").strip()[:64]
+                    or "unknown",
+                    "language_detected": str(data.get("language_detected") or "").strip()[:64]
+                    or fallback["fields"]["language_detected"],
+                },
             }
         except Exception as e:  # noqa: BLE001
-            logger.warning("[property-actions] field extraction failed ({}) — using fallback", e)
+            logger.warning("[property-actions] ticket assessment failed ({}) — using fallback", e)
             return fallback
 
 

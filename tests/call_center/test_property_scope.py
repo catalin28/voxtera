@@ -198,44 +198,140 @@ async def test_property_scope_escalation_still_works() -> None:
 
 
 class _FakeTicketer:
-    def __init__(self, *, result: dict | None):
-        self._result = result
-        self.calls: list[dict] = []
+    """Scriptable assess/file pair mirroring PropertyTicketer's contract."""
 
-    async def file_from_turn(self, **kwargs) -> dict | None:
-        self.calls.append(kwargs)
-        return self._result
+    def __init__(self, *, assessments: list[dict | None], file_result: dict | None):
+        self._assessments = list(assessments)
+        self._file_result = file_result
+        self.assess_calls: list[dict] = []
+        self.file_calls: list[dict] = []
+
+    async def assess(self, **kwargs) -> dict | None:
+        self.assess_calls.append(kwargs)
+        return self._assessments.pop(0) if self._assessments else None
+
+    async def file(self, **kwargs) -> dict | None:
+        self.file_calls.append(kwargs)
+        return self._file_result
+
+
+def _ready_assessment(confirm: str = "Shall I send it to the team?") -> dict:
+    return {
+        "ready": True,
+        "question": None,
+        "confirm": confirm,
+        "fields": {
+            "category": "Reservation",
+            "summary": "Massage ce soir",
+            "room_number": "412",
+            "language_detected": "English",
+        },
+    }
+
+
+def _not_ready_assessment(question: str = "For what time, and for how many people?") -> dict:
+    return {
+        "ready": False,
+        "question": question,
+        "confirm": None,
+        "fields": {
+            "category": "Restaurant",
+            "summary": "Reservation La Petite Arras",
+            "room_number": "unknown",
+            "language_detected": "English",
+        },
+    }
 
 
 _ESCALATE = {"type": "booking", "confidence": 0.9, "signal": "book a massage"}
 
 
 @pytest.mark.asyncio
-async def test_actionable_turn_files_telegram_ticket() -> None:
-    """Escalated hotel-mode turns create a ticket and confirm it to the guest."""
+async def test_ticket_flow_gathers_info_then_confirms_then_files() -> None:
+    """The restored legacy flow: ask for missing details → confirm → file."""
     compound, kb = _FakeCompound(), _FakePropertyKB()
-    ticketer = _FakeTicketer(result={"session_id": "vox-1", "category": "Reservation"})
+    ticketer = _FakeTicketer(
+        assessments=[_not_ready_assessment(), _ready_assessment()],
+        file_result={"session_id": "vox-1", "category": "Restaurant"},
+    )
     p = _build(compound=compound, property_kb=kb, classify=_ESCALATE)
     p._property_ticketer = ticketer
-    out = await p.run(
-        utterance="Can you book me a massage for tonight?", session_id="tk-1", hotel_id=HOTEL
-    )
 
+    # Turn 1: actionable but incomplete → the bot ASKS, files nothing.
+    out = await p.run(
+        utterance="I want to do a reservation at La Petite Arras.",
+        session_id="tk-flow",
+        hotel_id=HOTEL,
+    )
+    assert out["reason"] == "ticket_info"
+    assert "how many people" in out["answer"].lower()
+    assert ticketer.file_calls == []
+
+    # Turn 2: guest supplies details → the bot CONFIRMS, still files nothing.
+    out = await p.run(
+        utterance="Tonight at eight, for two people.", session_id="tk-flow", hotel_id=HOTEL
+    )
+    assert out["reason"] == "ticket_confirm"
+    assert "shall i send" in out["answer"].lower()
+    assert ticketer.file_calls == []
+
+    # Turn 3: the yes → NOW it files and confirms to the guest.
+    out = await p.run(utterance="Yes please!", session_id="tk-flow", hotel_id=HOTEL)
     assert out["reason"] == "property_ticket"
-    assert out["escalation"]["ticket"] == {"session_id": "vox-1", "category": "Reservation"}
-    assert "team" in out["answer"].lower()  # confirms staff were notified
-    assert ticketer.calls[0]["hotel_id"] == HOTEL
-    assert "massage" in ticketer.calls[0]["utterance"]
-    assert "ticket_ms" in out["timings"]
+    assert out["escalation"]["ticket"]["session_id"] == "vox-1"
+    assert "team" in out["answer"].lower()
+    (filed,) = ticketer.file_calls
+    assert filed["fields"]["category"] == "Reservation"  # latest assessed fields
+    assert filed["original_quote"].startswith("I want to do a reservation")
 
 
 @pytest.mark.asyncio
-async def test_ticket_failure_falls_back_to_handoff_line() -> None:
-    """If delivery fails, the bot must NOT claim staff were notified."""
+async def test_ticket_flow_ready_immediately_still_confirms_first() -> None:
+    """Complete requests skip the info round but NEVER skip confirmation."""
     compound, kb = _FakeCompound(), _FakePropertyKB()
+    ticketer = _FakeTicketer(
+        assessments=[_ready_assessment()],
+        file_result={"session_id": "vox-2", "category": "Reservation"},
+    )
     p = _build(compound=compound, property_kb=kb, classify=_ESCALATE)
-    p._property_ticketer = _FakeTicketer(result=None)
-    out = await p.run(utterance="Can you book me a massage?", hotel_id=HOTEL)
+    p._property_ticketer = ticketer
+    out = await p.run(
+        utterance="Book me a massage tonight at 7, room 412.",
+        session_id="tk-conf",
+        hotel_id=HOTEL,
+    )
+    assert out["reason"] == "ticket_confirm"
+    assert ticketer.file_calls == []
+
+    out = await p.run(utterance="yes", session_id="tk-conf", hotel_id=HOTEL)
+    assert out["reason"] == "property_ticket"
+    assert len(ticketer.file_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_ticket_flow_refusal_cancels_draft() -> None:
+    """A 'no' at the confirmation stage drops the draft, files nothing."""
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    ticketer = _FakeTicketer(assessments=[_ready_assessment()], file_result=None)
+    p = _build(compound=compound, property_kb=kb, classify=_ESCALATE)
+    p._property_ticketer = ticketer
+    await p.run(utterance="Book me a massage at 7.", session_id="tk-no", hotel_id=HOTEL)
+    out = await p.run(utterance="No, never mind.", session_id="tk-no", hotel_id=HOTEL)
+
+    assert out["reason"] == "ticket_cancelled"
+    assert ticketer.file_calls == []
+    assert "anything else" in out["answer"].lower()
+
+
+@pytest.mark.asyncio
+async def test_ticket_delivery_failure_falls_back_to_handoff_line() -> None:
+    """If delivery fails after the yes, the bot must NOT claim staff know."""
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    ticketer = _FakeTicketer(assessments=[_ready_assessment()], file_result=None)
+    p = _build(compound=compound, property_kb=kb, classify=_ESCALATE)
+    p._property_ticketer = ticketer
+    await p.run(utterance="Book me a massage at 7.", session_id="tk-fail", hotel_id=HOTEL)
+    out = await p.run(utterance="yes", session_id="tk-fail", hotel_id=HOTEL)
 
     assert out["reason"] == "escalation_classifier"
     assert out["escalation"]["ticket"] is None
@@ -278,20 +374,27 @@ async def test_ticketer_field_extraction_fallback(monkeypatch) -> None:
     ticketer = PropertyTicketer()
     ticketer._runtimes["demo"] = _FakeRuntime()  # skip Telegram bootstrap
 
-    async def _boom(**_kw):
-        raise RuntimeError("anthropic down")
-
     monkeypatch.setattr(
         "voxtera.call_center.clients.anthropic_client",
         lambda: (_ for _ in ()).throw(RuntimeError("anthropic down")),
     )
-    out = await ticketer.file_from_turn(
+    assessment = await ticketer.assess(
         hotel_id="demo",
         utterance="Can you book me a massage for 7pm? Room 412.",
         transcript="User: hi",
         language="en",
     )
-    assert out is not None and out["category"] in ("Other", "Reservation")
+    # Fallback: treated as ready with the raw utterance + generic confirm.
+    assert assessment is not None and assessment["ready"] is True
+    assert "send it" in assessment["confirm"].lower()
+    assert assessment["fields"]["category"] in ("Other", "Reservation")
+
+    out = await ticketer.file(
+        hotel_id="demo",
+        fields=assessment["fields"],
+        original_quote="Can you book me a massage for 7pm? Room 412.",
+    )
+    assert out is not None
     (ticket,) = sent
     assert ticket.original_quote.startswith("Can you book me a massage")
     assert ticket.summary  # fallback summary = raw utterance
