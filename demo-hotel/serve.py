@@ -2084,6 +2084,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_audit_session_detail(filename)
         if self.path.startswith("/api/rag/chunks"):
             return self._handle_rag_chunks()
+        if self.path.startswith("/api/rag/search"):
+            return self._handle_rag_search()
         if self.path.startswith("/api/admin/concierge-logs"):
             return self._handle_concierge_logs()
         if self.path.startswith("/api/trace/sessions/") and self.path.endswith("/events"):
@@ -4541,6 +4543,119 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                 "hotels": hotels,
                 "docs": docs,
                 "languages": languages_list,
+            },
+        )
+
+    def _handle_rag_search(self):
+        """GET /api/rag/search?q=...&hotel_id=...&top_k=...&min_score=... — semantic search."""
+        import os
+        import time
+        from urllib.parse import parse_qs, urlparse
+
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        query = (params.get("q") or [""])[0].strip()
+        hotel_id = (params.get("hotel_id") or [None])[0]
+        top_k = min(int((params.get("top_k") or ["10"])[0]), 50)
+        min_score = float((params.get("min_score") or ["0.15"])[0])
+
+        if not query:
+            self._send_json(400, {"error": "q is required"})
+            return
+
+        default_db = str(Path.home() / ".voxtera" / "voxtera.db")
+        db_path = Path(os.environ.get("VOXTERA_DB_PATH", default_db))
+        if not db_path.exists():
+            self._send_json(200, {"results": [], "total": 0, "query": query, "embed_ms": 0})
+            return
+
+        import sqlite3
+
+        import numpy as np
+
+        # Embed the query using the same model the voice bot uses.
+        try:
+            from voxtera.rag.embeddings import PREFIX_QUERY, embed_sync
+
+            t0 = time.monotonic()
+            vecs = embed_sync([query], prefix=PREFIX_QUERY)
+            embed_ms = round((time.monotonic() - t0) * 1000)
+        except Exception as exc:
+            self._send_json(500, {"error": f"Embedding failed: {exc}"})
+            return
+
+        if not vecs:
+            self._send_json(500, {"error": "Embedding returned no vectors"})
+            return
+
+        query_vec = np.array(vecs[0], dtype=np.float32)
+        norm = np.linalg.norm(query_vec)
+        if norm == 0:
+            self._send_json(200, {"results": [], "total": 0, "query": query, "embed_ms": embed_ms})
+            return
+        query_vec /= norm
+
+        # Load candidate chunks from SQLite (exclude embedding BLOB already fetched).
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        if hotel_id:
+            rows = conn.execute(
+                "SELECT id, hotel_id, doc_id, chunk_index, language, category, text, embedding "
+                "FROM chunks WHERE hotel_id = ?",
+                (hotel_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, hotel_id, doc_id, chunk_index, language, category, text, embedding "
+                "FROM chunks"
+            ).fetchall()
+        conn.close()
+
+        if not rows:
+            self._send_json(200, {"results": [], "total": 0, "query": query, "embed_ms": embed_ms})
+            return
+
+        # Build matrix and cosine-score in one shot.
+        texts_meta = []
+        embeddings = []
+        for row in rows:
+            id_, h_id, doc_id, chunk_idx, language, category, text, blob = row
+            vec = np.frombuffer(blob, dtype=np.float32)
+            embeddings.append(vec)
+            texts_meta.append(
+                {
+                    "id": id_,
+                    "hotel_id": h_id,
+                    "doc_id": doc_id,
+                    "chunk_index": chunk_idx,
+                    "language": language,
+                    "category": category,
+                    "text": text,
+                }
+            )
+
+        matrix = np.array(embeddings, dtype=np.float32)
+        norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1.0, norms)
+        matrix /= norms
+        scores = (matrix @ query_vec).tolist()
+
+        # Sort by score descending, filter by min_score, cap at top_k.
+        ranked = sorted(
+            [(s, m) for s, m in zip(scores, texts_meta, strict=False) if s >= min_score],
+            key=lambda x: x[0],
+            reverse=True,
+        )[:top_k]
+
+        results = [{**m, "score": round(float(s), 4)} for s, m in ranked]
+
+        self._send_json(
+            200,
+            {
+                "results": results,
+                "total": len(results),
+                "query": query,
+                "embed_ms": embed_ms,
+                "candidates_searched": len(rows),
             },
         )
 

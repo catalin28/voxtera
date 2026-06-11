@@ -21,7 +21,8 @@ body {
   padding: 12px 20px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
+  flex-shrink: 0;
 }
 .header h1 { font-size: 18px; font-weight: 600; color: #fff; }
 .header .badge {
@@ -32,30 +33,188 @@ body {
   border-radius: 10px;
   font-weight: 500;
 }
-
-/* Filters bar */
-.filters {
-  padding: 12px 20px;
-  border-bottom: 1px solid #2a2b35;
-  background: #13141b;
+.header-right {
+  margin-left: auto;
   display: flex;
   gap: 12px;
   align-items: center;
+}
+.header-right a {
+  color: #c4b5fd;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+.header-right a:hover { color: #ddd6fe; }
+
+/* ── Semantic Search ── */
+.search-panel {
+  background: #13141b;
+  border-bottom: 1px solid #2a2b35;
+  padding: 14px 20px;
+  flex-shrink: 0;
+}
+.search-panel label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b5cf6;
+  display: block;
+  margin-bottom: 8px;
+}
+.search-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
   flex-wrap: wrap;
+}
+.search-row input[type="text"] {
+  flex: 1 1 300px;
+  background: #1f2028;
+  border: 1px solid #3a3b45;
+  color: #e4e4e7;
+  padding: 9px 13px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.search-row input[type="text"]:focus {
+  outline: none;
+  border-color: #8b5cf6;
+}
+.search-row select {
+  background: #1f2028;
+  border: 1px solid #3a3b45;
+  color: #e4e4e7;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  min-width: 160px;
+}
+.search-row input[type="number"] {
+  width: 70px;
+  background: #1f2028;
+  border: 1px solid #3a3b45;
+  color: #e4e4e7;
+  padding: 9px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  text-align: center;
+}
+.search-row button {
+  background: #8b5cf6;
+  color: #fff;
+  border: none;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.search-row button:hover { background: #7c3aed; }
+.search-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+.search-row button.btn-clear { background: #374151; }
+.search-row button.btn-clear:hover { background: #4b5563; }
+
+.search-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6b7280;
+  min-height: 16px;
+}
+
+/* Search results */
+.search-results {
+  background: #11131a;
+  border: 1px solid #232530;
+  border-radius: 10px;
+  margin-top: 10px;
+  overflow: hidden;
+  display: none;
+}
+.search-result-item {
+  border-bottom: 1px solid #1e202b;
+  padding: 12px 14px;
+}
+.search-result-item:last-child { border-bottom: none; }
+.result-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.score-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.score-badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-family: monospace;
+  white-space: nowrap;
+}
+.score-bar {
+  width: 60px;
+  height: 5px;
+  background: #232530;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.score-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+.result-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d1d5db;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 8px 10px;
+  background: #0f1117;
+  border-radius: 6px;
+  border: 1px solid #1f2028;
+  max-height: 160px;
+  overflow-y: auto;
+  cursor: pointer;
+}
+.result-text.expanded { max-height: none; }
+.empty-search {
+  padding: 24px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* ── Browse filters ── */
+.filters {
+  padding: 10px 20px;
+  border-bottom: 1px solid #2a2b35;
+  background: #13141b;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
 }
 .filters label {
   font-size: 12px;
   color: #9ca3af;
 }
-.filters select, .filters input {
+.filters select {
   background: #1f2028;
   border: 1px solid #3a3b45;
   color: #e4e4e7;
   padding: 6px 10px;
   border-radius: 6px;
   font-size: 13px;
+  min-width: 130px;
 }
-.filters select { min-width: 140px; }
 .filters button {
   background: #8b5cf6;
   color: #fff;
@@ -69,15 +228,24 @@ body {
 .filters button:hover { background: #7c3aed; }
 .filters .btn-clear { background: #374151; }
 .filters .btn-clear:hover { background: #4b5563; }
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+  padding-right: 4px;
+}
 
 /* Stats bar */
 .stats {
-  padding: 8px 20px;
+  padding: 6px 20px;
   font-size: 12px;
   color: #6b7280;
   border-bottom: 1px solid #2a2b35;
   display: flex;
   gap: 20px;
+  flex-shrink: 0;
 }
 .stats .stat-value { color: #e4e4e7; font-weight: 500; }
 
@@ -85,7 +253,7 @@ body {
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 20px;
+  padding: 14px 20px;
 }
 
 /* Chunk cards */
@@ -93,30 +261,28 @@ body {
   background: #1a1b23;
   border: 1px solid #2a2b35;
   border-radius: 10px;
-  padding: 14px 16px;
-  margin-bottom: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
   transition: border-color 0.15s;
 }
-.chunk-card:hover {
-  border-color: #8b5cf6;
-}
+.chunk-card:hover { border-color: #8b5cf6; }
 .chunk-meta {
   display: flex;
-  gap: 12px;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-bottom: 7px;
   flex-wrap: wrap;
 }
 .chunk-meta .tag {
   font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 6px;
+  padding: 2px 7px;
+  border-radius: 5px;
   font-weight: 500;
 }
 .tag-hotel { background: #1e3a5f; color: #93c5fd; }
-.tag-doc { background: #1c2e1c; color: #86efac; }
-.tag-lang { background: #3b2e1a; color: #fbbf24; }
-.tag-cat { background: #2e1a3b; color: #c084fc; }
-.tag-idx { background: #374151; color: #9ca3af; }
+.tag-doc   { background: #1c2e1c; color: #86efac; }
+.tag-lang  { background: #3b2e1a; color: #fbbf24; }
+.tag-cat   { background: #2e1a3b; color: #c084fc; }
+.tag-idx   { background: #374151; color: #9ca3af; }
 
 .chunk-text {
   font-size: 13px;
@@ -124,16 +290,15 @@ body {
   color: #d1d5db;
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 200px;
+  max-height: 180px;
   overflow-y: auto;
-  padding: 10px 12px;
+  padding: 9px 11px;
   background: #0f1117;
   border-radius: 6px;
   border: 1px solid #1f2028;
 }
-
 .chunk-footer {
-  margin-top: 6px;
+  margin-top: 5px;
   font-size: 11px;
   color: #4b5563;
 }
@@ -144,7 +309,8 @@ body {
   justify-content: center;
   align-items: center;
   gap: 8px;
-  padding: 16px;
+  padding: 14px;
+  flex-shrink: 0;
 }
 .pagination button {
   background: #1f2028;
@@ -178,28 +344,51 @@ body {
 </head>
 <body>
 
+<!-- Header -->
 <div class="header">
   <h1>Vector Store</h1>
   <span class="badge" id="total-badge">0 chunks</span>
+  <div class="header-right">
+    <a href="/admin/index.html">← Admin</a>
+  </div>
 </div>
 
+<!-- Semantic Search -->
+<div class="search-panel">
+  <label>🔍 Semantic Search</label>
+  <div class="search-row">
+    <input type="text" id="search-q" placeholder="e.g. airport transfer, pool hours, halal dining…" autocomplete="off" />
+    <select id="search-hotel"><option value="">All hotels</option></select>
+    <input type="number" id="search-topk" value="8" min="1" max="50" title="Top-K results" />
+    <button id="btn-search">Search</button>
+    <button id="btn-search-clear" class="btn-clear">Clear</button>
+  </div>
+  <div class="search-meta" id="search-meta"></div>
+  <div class="search-results" id="search-results"></div>
+</div>
+
+<!-- Browse Filters -->
 <div class="filters">
+  <span class="section-label">Browse</span>
   <label>Hotel</label>
   <select id="filter-hotel"><option value="">All hotels</option></select>
-  <label>Document</label>
-  <select id="filter-doc"><option value="">All documents</option></select>
-  <label>Language</label>
-  <select id="filter-lang"><option value="">All languages</option></select>
+  <label>Doc</label>
+  <select id="filter-doc"><option value="">All docs</option></select>
+  <label>Lang</label>
+  <select id="filter-lang"><option value="">All</option></select>
   <button id="btn-filter">Filter</button>
   <button id="btn-clear" class="btn-clear">Clear</button>
 </div>
 
+<!-- Stats -->
 <div class="stats" id="stats"></div>
 
+<!-- Chunk list -->
 <div class="content" id="content">
   <div class="loading">Loading vector store…</div>
 </div>
 
+<!-- Pagination -->
 <div class="pagination" id="pagination" style="display:none;">
   <button id="btn-prev">← Prev</button>
   <span class="page-info" id="page-info"></span>
@@ -207,60 +396,74 @@ body {
 </div>
 
 <script>
-const contentEl = document.getElementById('content');
-const statsEl = document.getElementById('stats');
-const paginationEl = document.getElementById('pagination');
-const totalBadge = document.getElementById('total-badge');
-const filterHotel = document.getElementById('filter-hotel');
-const filterDoc = document.getElementById('filter-doc');
-const filterLang = document.getElementById('filter-lang');
-const pageInfo = document.getElementById('page-info');
-const btnPrev = document.getElementById('btn-prev');
-const btnNext = document.getElementById('btn-next');
+const contentEl     = document.getElementById('content');
+const statsEl       = document.getElementById('stats');
+const paginationEl  = document.getElementById('pagination');
+const totalBadge    = document.getElementById('total-badge');
+const filterHotel   = document.getElementById('filter-hotel');
+const filterDoc     = document.getElementById('filter-doc');
+const filterLang    = document.getElementById('filter-lang');
+const pageInfo      = document.getElementById('page-info');
+const btnPrev       = document.getElementById('btn-prev');
+const btnNext       = document.getElementById('btn-next');
+const searchHotel   = document.getElementById('search-hotel');
+const searchMeta    = document.getElementById('search-meta');
+const searchResults = document.getElementById('search-results');
 
 let currentPage = 1;
-const perPage = 50;
+const perPage   = 50;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s ?? '';
+  return d.innerHTML;
+}
+
+function tagHtml(text, cls) {
+  return text ? `<span class="tag ${cls}">${esc(text)}</span>` : '';
+}
+
+// ── Browse ────────────────────────────────────────────────────────────────────
 
 async function loadChunks() {
   const params = new URLSearchParams();
   if (filterHotel.value) params.set('hotel_id', filterHotel.value);
-  if (filterDoc.value) params.set('doc_id', filterDoc.value);
-  if (filterLang.value) params.set('language', filterLang.value);
-  params.set('page', currentPage);
+  if (filterDoc.value)   params.set('doc_id',   filterDoc.value);
+  if (filterLang.value)  params.set('language',  filterLang.value);
+  params.set('page',     currentPage);
   params.set('per_page', perPage);
 
   contentEl.innerHTML = '<div class="loading">Loading…</div>';
 
   try {
-    const res = await fetch('/api/rag/chunks?' + params.toString());
+    const res  = await fetch('/api/rag/chunks?' + params.toString());
     const data = await res.json();
     render(data);
-  } catch (e) {
-    contentEl.innerHTML = '<div class="loading">Error loading vector store</div>';
+  } catch {
+    contentEl.innerHTML = '<div class="loading">Error loading vector store.</div>';
   }
 }
 
 function render(data) {
-  // Update badge
   totalBadge.textContent = data.total + ' chunk' + (data.total !== 1 ? 's' : '');
 
-  // Update filter dropdowns (preserve selection)
-  updateSelect(filterHotel, data.hotels, filterHotel.value);
-  updateSelect(filterDoc, data.docs, filterDoc.value);
-  updateSelect(filterLang, data.languages, filterLang.value);
+  updateSelect(filterHotel, data.hotels,    filterHotel.value, 'All hotels');
+  updateSelect(filterDoc,   data.docs,      filterDoc.value,   'All docs');
+  updateSelect(filterLang,  data.languages, filterLang.value,  'All');
+  syncSearchHotels(data.hotels);
 
-  // Stats
   statsEl.innerHTML = `
     <span>Total: <span class="stat-value">${data.total}</span></span>
     <span>Hotels: <span class="stat-value">${data.hotels.length}</span></span>
-    <span>Documents: <span class="stat-value">${data.docs.length}</span></span>
+    <span>Docs: <span class="stat-value">${data.docs.length}</span></span>
     <span>Languages: <span class="stat-value">${data.languages.join(', ') || '—'}</span></span>
     <span>Page: <span class="stat-value">${data.page} / ${data.pages || 1}</span></span>
   `;
 
-  // Chunks
-  if (data.chunks.length === 0) {
-    contentEl.innerHTML = '<div class="empty">No chunks found. The vector store is empty or no results match your filters.</div>';
+  if (!data.chunks.length) {
+    contentEl.innerHTML = '<div class="empty">No chunks match the current filters.</div>';
     paginationEl.style.display = 'none';
     return;
   }
@@ -271,19 +474,18 @@ function render(data) {
     card.className = 'chunk-card';
     card.innerHTML = `
       <div class="chunk-meta">
-        <span class="tag tag-hotel">${esc(c.hotel_id)}</span>
-        <span class="tag tag-doc">${esc(c.doc_id)}</span>
-        <span class="tag tag-lang">${esc(c.language)}</span>
-        ${c.category ? `<span class="tag tag-cat">${esc(c.category)}</span>` : ''}
+        ${tagHtml(c.hotel_id,  'tag-hotel')}
+        ${tagHtml(c.doc_id,    'tag-doc')}
+        ${tagHtml(c.language,  'tag-lang')}
+        ${tagHtml(c.category,  'tag-cat')}
         <span class="tag tag-idx">chunk #${c.chunk_index}</span>
       </div>
       <div class="chunk-text">${esc(c.text)}</div>
-      <div class="chunk-footer">ID: ${c.id} · Updated: ${c.updated_at || '—'}</div>
+      <div class="chunk-footer">ID: ${c.id} · ${c.updated_at || '—'}</div>
     `;
     contentEl.appendChild(card);
   });
 
-  // Pagination
   if (data.pages > 1) {
     paginationEl.style.display = 'flex';
     pageInfo.textContent = `Page ${data.page} of ${data.pages}`;
@@ -294,8 +496,7 @@ function render(data) {
   }
 }
 
-function updateSelect(select, options, currentVal) {
-  const allLabel = select.options[0].textContent;
+function updateSelect(select, options, currentVal, allLabel) {
   select.innerHTML = `<option value="">${allLabel}</option>`;
   options.forEach(opt => {
     const o = document.createElement('option');
@@ -306,25 +507,109 @@ function updateSelect(select, options, currentVal) {
   });
 }
 
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s || '';
-  return d.innerHTML;
+function syncSearchHotels(hotels) {
+  const prev = searchHotel.value;
+  searchHotel.innerHTML = '<option value="">All hotels</option>';
+  hotels.forEach(h => {
+    const o = document.createElement('option');
+    o.value = h;
+    o.textContent = h;
+    if (h === prev) o.selected = true;
+    searchHotel.appendChild(o);
+  });
 }
 
-// Events
+// ── Semantic Search ───────────────────────────────────────────────────────────
+
+async function doSearch() {
+  const q     = document.getElementById('search-q').value.trim();
+  const hotel = searchHotel.value;
+  const topK  = parseInt(document.getElementById('search-topk').value) || 8;
+  if (!q) return;
+
+  const btn        = document.getElementById('btn-search');
+  btn.disabled     = true;
+  btn.textContent  = 'Searching…';
+  searchMeta.textContent = '';
+  searchResults.innerHTML = '';
+  searchResults.style.display = 'none';
+
+  try {
+    const params = new URLSearchParams({ q, top_k: topK });
+    if (hotel) params.set('hotel_id', hotel);
+    const res  = await fetch('/api/rag/search?' + params.toString());
+    const data = await res.json();
+
+    if (data.error) {
+      searchMeta.textContent = `Error: ${data.error}`;
+      return;
+    }
+
+    searchMeta.innerHTML =
+      `<strong>${data.total}</strong> result${data.total !== 1 ? 's' : ''} ` +
+      `from <strong>${data.candidates_searched}</strong> chunks &mdash; ` +
+      `embed <strong>${data.embed_ms}ms</strong>`;
+
+    searchResults.style.display = 'block';
+
+    if (!data.results.length) {
+      searchResults.innerHTML = '<div class="empty-search">No chunks matched above the similarity threshold.</div>';
+      return;
+    }
+
+    searchResults.innerHTML = data.results.map(r => {
+      const pct   = Math.round(r.score * 100);
+      const color = r.score >= 0.6 ? '#10b981' : r.score >= 0.4 ? '#f59e0b' : '#6b7280';
+      return `
+        <div class="search-result-item">
+          <div class="result-header">
+            <div class="score-bar-wrap">
+              <span class="score-badge" style="background:${color}22; color:${color}">${pct}%</span>
+              <div class="score-bar"><div class="score-bar-fill" style="width:${pct}%; background:${color}"></div></div>
+            </div>
+            ${tagHtml(r.hotel_id, 'tag-hotel')}
+            ${tagHtml(r.doc_id,   'tag-doc')}
+            ${tagHtml(r.language, 'tag-lang')}
+            ${tagHtml(r.category, 'tag-cat')}
+            <span class="tag tag-idx">#${r.chunk_index}</span>
+          </div>
+          <div class="result-text" onclick="this.classList.toggle('expanded')" title="Click to expand / collapse">${esc(r.text)}</div>
+        </div>`;
+    }).join('');
+
+  } catch (err) {
+    searchMeta.textContent = `Request failed: ${err.message}`;
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Search';
+  }
+}
+
+function clearSearch() {
+  document.getElementById('search-q').value = '';
+  searchMeta.textContent  = '';
+  searchResults.style.display = 'none';
+  searchResults.innerHTML = '';
+}
+
+// ── Wire up events ────────────────────────────────────────────────────────────
+
+document.getElementById('btn-search').addEventListener('click', doSearch);
+document.getElementById('btn-search-clear').addEventListener('click', clearSearch);
+document.getElementById('search-q').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
 document.getElementById('btn-filter').addEventListener('click', () => { currentPage = 1; loadChunks(); });
 document.getElementById('btn-clear').addEventListener('click', () => {
   filterHotel.value = '';
-  filterDoc.value = '';
-  filterLang.value = '';
+  filterDoc.value   = '';
+  filterLang.value  = '';
   currentPage = 1;
   loadChunks();
 });
 btnPrev.addEventListener('click', () => { currentPage--; loadChunks(); });
 btnNext.addEventListener('click', () => { currentPage++; loadChunks(); });
-
-// Auto-reload docs when hotel changes
 filterHotel.addEventListener('change', () => { currentPage = 1; loadChunks(); });
 
 // Initial load
