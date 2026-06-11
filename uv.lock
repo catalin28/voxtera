@@ -3519,6 +3519,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "redis" },
     { name = "sentence-transformers" },
+    { name = "soundfile" },
     { name = "tiktoken" },
     { name = "torch" },
 ]
@@ -3547,6 +3548,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "redis", specifier = ">=5.0" },
     { name = "sentence-transformers", specifier = ">=3.0" },
+    { name = "soundfile", specifier = ">=0.12" },
     { name = "tiktoken", specifier = ">=0.7" },
     { name = "torch", specifier = ">=2.0" },
 ]

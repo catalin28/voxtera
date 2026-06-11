@@ -59,6 +59,7 @@ from __future__ import annotations
 import dataclasses
 import os
 import uuid
+from pathlib import Path
 
 from loguru import logger
 from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
@@ -131,9 +132,7 @@ def _greeting_text(hotel_id: str | None) -> str:
             hotel_name = load_hotel_config(hotel_id).hotel_name
         except Exception:  # noqa: BLE001 — greeting must never block a call
             pass
-        return (
-            f"Hello! You've reached the concierge at {hotel_name}. How can I help you today?"
-        )
+        return f"Hello! You've reached the concierge at {hotel_name}. How can I help you today?"
     return (
         "Hello! You've reached Voxtera, your travel concierge. "
         "How can I help you plan your trip today?"
@@ -172,6 +171,73 @@ def _smart_turn_stop_secs(settings: Settings) -> float:
     return settings.smart_turn_stop_secs
 
 
+def _ambience_mixer():
+    """Optional lobby room-tone mixer for the call's output audio.
+
+    LOBBY_AMBIENCE_ENABLED=true mixes a faint, seamless room tone under (and
+    between) the bot's speech, so silences feel like a real place instead of
+    a dead line. Volume via LOBBY_AMBIENCE_VOLUME (default 0.06 — barely
+    audible on purpose: the WhatsApp leg has no echo cancellation, so loud
+    ambience would feed the caller's mic). File via LOBBY_AMBIENCE_FILE
+    (mono 16-bit WAV at the output rate; see scripts/generate_ambience.py).
+    """
+    enabled = os.environ.get("LOBBY_AMBIENCE_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    if not enabled:
+        return None
+    default_file = Path(__file__).resolve().parents[3] / "assets" / "audio" / "lobby_tone.wav"
+    sound_file = os.environ.get("LOBBY_AMBIENCE_FILE", "").strip() or str(default_file)
+    try:
+        volume = float(os.environ.get("LOBBY_AMBIENCE_VOLUME", "0.06"))
+    except ValueError:
+        volume = 0.06
+    try:
+        from pipecat.audio.mixers.soundfile_mixer import SoundfileMixer
+
+        mixer = SoundfileMixer(
+            sound_files={"lobby": sound_file},
+            default_sound="lobby",
+            volume=volume,
+            loop=True,
+        )
+        logger.info("[whatsapp-call] lobby ambience on (volume={}, file={})", volume, sound_file)
+        return mixer
+    except Exception as e:  # noqa: BLE001 — ambience must never block a call
+        logger.warning("[whatsapp-call] ambience unavailable: {}", e)
+        return None
+
+
+def _build_filler_player():
+    """Optional FillerPlayer for this call (FILLERS_ENABLED, default on).
+
+    Clips live in FILLER_DIR (default assets/fillers/<lang>/*.wav, rendered
+    with the bot's own voice by scripts/generate_fillers.py). Returns None
+    when disabled or no clips are loadable — the call runs without fillers.
+    """
+    enabled = os.environ.get("FILLERS_ENABLED", "true").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+    if not enabled:
+        return None
+    try:
+        delay = float(os.environ.get("FILLER_DELAY_SECS", "1.2"))
+    except ValueError:
+        delay = 1.2
+    try:
+        from voxtera.fillers import DEFAULT_FILLER_DIR, FillerPlayer, load_filler_clips
+
+        clips_dir = os.environ.get("FILLER_DIR", "").strip() or DEFAULT_FILLER_DIR
+        clips = load_filler_clips(clips_dir, sample_rate=_AUDIO_OUT_RATE)
+        if not clips:
+            logger.warning("[whatsapp-call] no filler clips in {} — fillers off", clips_dir)
+            return None
+        return FillerPlayer(clips, sample_rate=_AUDIO_OUT_RATE, delay_secs=delay)
+    except Exception as e:  # noqa: BLE001 — fillers must never block a call
+        logger.warning("[whatsapp-call] fillers unavailable: {}", e)
+        return None
+
+
 def _build_transport(connection: SmallWebRTCConnection) -> SmallWebRTCTransport:
     return SmallWebRTCTransport(
         webrtc_connection=connection,
@@ -183,6 +249,7 @@ def _build_transport(connection: SmallWebRTCConnection) -> SmallWebRTCTransport:
             audio_out_enabled=True,
             audio_out_sample_rate=_AUDIO_OUT_RATE,
             audio_out_channels=1,
+            audio_out_mixer=_ambience_mixer(),
         ),
     )
 
@@ -303,9 +370,7 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     # which region on the first turn.
     hotel_scope = property_hotel_id()
     wa_region = load_whatsapp_settings().default_region
-    brain = TravelAgentBrain(
-        region=wa_region or None, session_id=session_id, hotel_id=hotel_scope
-    )
+    brain = TravelAgentBrain(region=wa_region or None, session_id=session_id, hotel_id=hotel_scope)
 
     # Optional observability processors (WAV + transcript). Imported lazily and
     # guarded so a recording problem can never stop a call from connecting.
@@ -364,6 +429,12 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     if tracer is not None:
         processors.append(tracer)
     processors.append(tts)
+    # Voice fillers: a short "mm, one moment" in the bot's own voice when the
+    # answer hasn't started within FILLER_DELAY_SECS. Placed after TTS so it
+    # sees (and yields to) real speech; VAD frames reach it downstream too.
+    filler_player = _build_filler_player()
+    if filler_player is not None:
+        processors.append(filler_player)
     processors.append(transport.output())
     if call_recorder is not None:
         processors.append(call_recorder)
