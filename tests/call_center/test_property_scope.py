@@ -194,6 +194,109 @@ async def test_property_scope_escalation_still_works() -> None:
     assert "colleague" in out["answer"].lower()
 
 
+# ---------- Telegram ticket creation (legacy create_ticket restored) ----------
+
+
+class _FakeTicketer:
+    def __init__(self, *, result: dict | None):
+        self._result = result
+        self.calls: list[dict] = []
+
+    async def file_from_turn(self, **kwargs) -> dict | None:
+        self.calls.append(kwargs)
+        return self._result
+
+
+_ESCALATE = {"type": "booking", "confidence": 0.9, "signal": "book a massage"}
+
+
+@pytest.mark.asyncio
+async def test_actionable_turn_files_telegram_ticket() -> None:
+    """Escalated hotel-mode turns create a ticket and confirm it to the guest."""
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    ticketer = _FakeTicketer(result={"session_id": "vox-1", "category": "Reservation"})
+    p = _build(compound=compound, property_kb=kb, classify=_ESCALATE)
+    p._property_ticketer = ticketer
+    out = await p.run(
+        utterance="Can you book me a massage for tonight?", session_id="tk-1", hotel_id=HOTEL
+    )
+
+    assert out["reason"] == "property_ticket"
+    assert out["escalation"]["ticket"] == {"session_id": "vox-1", "category": "Reservation"}
+    assert "team" in out["answer"].lower()  # confirms staff were notified
+    assert ticketer.calls[0]["hotel_id"] == HOTEL
+    assert "massage" in ticketer.calls[0]["utterance"]
+    assert "ticket_ms" in out["timings"]
+
+
+@pytest.mark.asyncio
+async def test_ticket_failure_falls_back_to_handoff_line() -> None:
+    """If delivery fails, the bot must NOT claim staff were notified."""
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    p = _build(compound=compound, property_kb=kb, classify=_ESCALATE)
+    p._property_ticketer = _FakeTicketer(result=None)
+    out = await p.run(utterance="Can you book me a massage?", hotel_id=HOTEL)
+
+    assert out["reason"] == "escalation_classifier"
+    assert out["escalation"]["ticket"] is None
+    assert "colleague" in out["answer"].lower()
+
+
+@pytest.mark.asyncio
+async def test_no_ticketer_keeps_old_escalation_behaviour() -> None:
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    p = _build(compound=compound, property_kb=kb, classify=_ESCALATE)
+    out = await p.run(utterance="Can you book me a massage?", hotel_id=HOTEL)
+    assert out["reason"] == "escalation_classifier"
+    assert "colleague" in out["answer"].lower()
+
+
+@pytest.mark.asyncio
+async def test_ticketer_field_extraction_fallback(monkeypatch) -> None:
+    """LLM extraction failure still files a usable ticket (fallback fields)."""
+    from voxtera.actions.hotel_config import HotelConfig
+    from voxtera.actions.ticket import Category
+    from voxtera.call_center.property_actions import PropertyTicketer
+
+    sent: list = []
+
+    class _FakeSink:
+        async def send(self, ticket) -> bool:  # noqa: ANN001
+            sent.append(ticket)
+            return True
+
+    class _FakeRuntime:
+        hotel_config = HotelConfig(
+            hotel_id="demo",
+            hotel_name="Grand Hôtel Lumière",
+            official_language="French",
+            telegram_channel_id="-100",
+            allowed_categories=(Category.RESERVATION, Category.OTHER),
+        )
+        sink = _FakeSink()
+
+    ticketer = PropertyTicketer()
+    ticketer._runtimes["demo"] = _FakeRuntime()  # skip Telegram bootstrap
+
+    async def _boom(**_kw):
+        raise RuntimeError("anthropic down")
+
+    monkeypatch.setattr(
+        "voxtera.call_center.clients.anthropic_client",
+        lambda: (_ for _ in ()).throw(RuntimeError("anthropic down")),
+    )
+    out = await ticketer.file_from_turn(
+        hotel_id="demo",
+        utterance="Can you book me a massage for 7pm? Room 412.",
+        transcript="User: hi",
+        language="en",
+    )
+    assert out is not None and out["category"] in ("Other", "Reservation")
+    (ticket,) = sent
+    assert ticket.original_quote.startswith("Can you book me a massage")
+    assert ticket.summary  # fallback summary = raw utterance
+
+
 @pytest.mark.asyncio
 async def test_no_scope_keeps_travel_agent_behaviour() -> None:
     """hotel_id absent → the property KB is never consulted."""

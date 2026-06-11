@@ -63,13 +63,13 @@ the spa. Thank you so much, you've been wonderful!
 the window if you can when you check in at Le Mirador; the city lights at
 night are really something. A lovely first evening ahead.
 
-## Caveats found while scripting
+## Notes
 
-- **Avoid asking the bot to MAKE a reservation** ("can you book…", "make a
-  reservation for me") — booking is an action the concierge can't perform
-  yet, so the escalation classifier hands off to "a colleague". Phrase the
-  close as the guest handling it ("I'll mention it at the desk"). Action
-  support is the remaining P1.4 work (port create_ticket etc. into the
-  concierge).
+- **Booking requests now create a Telegram ticket** (restored 2026-06-11):
+  "Can you book me a 90-minute massage at 7? I'm in room 412" → ticket lands
+  in the hotel's Telegram channel (category + room extracted) and the bot
+  answers "I've passed your request to our team — they'll confirm shortly."
+  Consider USING this as the closing beat of the sample — it's the wow
+  moment (show the Telegram ping on screen next to the audio player).
 - Keep guest turns to one or two sentences — matches the spoken brief render
   and keeps the sample tight (~90 seconds total).

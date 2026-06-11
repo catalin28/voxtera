@@ -844,6 +844,7 @@ class ConciergePipeline:
         converse_fn: Any | None = None,
         web_query_fn: Any | None = None,
         property_kb: Any | None = None,
+        property_ticketer: Any | None = None,
     ) -> None:
         self._sessions = session_store
         self._classifier = classifier
@@ -873,6 +874,9 @@ class ConciergePipeline:
         # scope, KB retrieval reads the property's guide instead of the
         # Qdrant travel listings — same decompose/triage/render machinery.
         self._property_kb = property_kb
+        # Telegram ticket creation for actionable hotel-mode turns — the port
+        # of the legacy create_ticket tool (see call_center.property_actions).
+        self._property_ticketer = property_ticketer
         # Per-run property scope; set by run() from the request's hotel_id.
         self._property_hotel_id: str | None = None
         self._turn_utterance = ""
@@ -1581,13 +1585,46 @@ class ConciergePipeline:
         )
 
         if verdict.get("escalate"):
-            answer = _escalation_answer((session.get("language") or "en").lower())
+            # Actionable request → file a Telegram ticket for the hotel's
+            # staff (the legacy create_ticket behaviour) and confirm it to
+            # the guest. Falls back to the plain hand-off line when the
+            # ticket layer is unavailable or delivery fails — the bot must
+            # never claim staff were notified when they weren't.
+            lang = (session.get("language") or "en").lower()
+            ticket = None
+            if self._property_ticketer is not None:
+                t0 = time.perf_counter()
+                try:
+                    ticket = await self._property_ticketer.file_from_turn(
+                        hotel_id=pid,
+                        utterance=utterance,
+                        transcript=build_transcript(session.get("history")),
+                        language=session.get("language"),
+                    )
+                except Exception as e:  # noqa: BLE001 — never break the turn
+                    logger.warning("[property-actions] ticketer failed: {}", e)
+                timings["ticket_ms"] = _ms(time.perf_counter() - t0)
+            if ticket:
+                from voxtera.call_center.property_actions import ticket_filed_answer
+
+                answer = ticket_filed_answer(lang, ticket["category"])
+            else:
+                answer = _escalation_answer(lang)
+            await self._sessions.append_turn(
+                session,
+                utterance=utterance,
+                decomposition=None,
+                reason="property_ticket" if ticket else "escalation_classifier",
+                answer=answer,
+                is_clarification=False,
+            )
+            await self._sessions.save(session)
             return self._finish(
                 sid=sid,
                 utterance=utterance,
                 path=PATH_ESCALATE,
-                reason="escalation_classifier",
-                escalation=verdict,
+                reason="property_ticket" if ticket else "escalation_classifier",
+                escalation={**verdict, "ticket": ticket},
                 answer=answer,
                 t_start=t_start,
                 timings=timings,

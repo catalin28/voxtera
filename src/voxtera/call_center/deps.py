@@ -47,6 +47,7 @@ async def build_concierge_deps(http: aiohttp.ClientSession | None = None) -> dic
         _build_anthropic_web_synth,
     )
     from voxtera.call_center.decompose import QueryDecomposer
+    from voxtera.call_center.property_actions import PropertyTicketer
     from voxtera.call_center.property_kb import PropertyKBRetriever
     from voxtera.call_center.session import SessionStore
 
@@ -64,6 +65,10 @@ async def build_concierge_deps(http: aiohttp.ClientSession | None = None) -> dic
         # SQLite RAG) instead of the Qdrant travel listings. Shared so chunk/
         # result caches stay warm across requests.
         "property_kb": PropertyKBRetriever(),
+        # Telegram ticket creation for actionable hotel-mode turns (the port
+        # of the legacy create_ticket tool). Lazy: builds the Telegram runtime
+        # on first escalation; harmless when TELEGRAM_BOT_TOKEN is unset.
+        "property_ticketer": PropertyTicketer(),
     }
 
 
@@ -103,4 +108,5 @@ def build_pipeline(
         converse_fn=deps["converse_fn"],
         web_query_fn=deps["web_query_fn"],
         property_kb=deps.get("property_kb"),
+        property_ticketer=deps.get("property_ticketer"),
     )
