@@ -77,6 +77,7 @@ def build_pipeline(
     *,
     render_fn: Any | None = None,
     decomposer: Any | None = None,
+    render_delta: Any | None = None,
 ):
     """Wire a per-request ConciergePipeline around the shared deps.
 
@@ -86,6 +87,9 @@ def build_pipeline(
             teeing renderer that also pushes deltas to the client).
         decomposer: Override the decomposer (the /replay debug endpoint passes
             a fixed one that returns an operator-edited decomposition).
+        render_delta: Async callback receiving answer text deltas from the
+            PROPERTY render (which manages its own tool-capable LLM call and
+            therefore can't go through render_fn).
     """
     from voxtera.call_center.compound import CompoundAndDiscovery
     from voxtera.call_center.pipeline import ConciergePipeline
@@ -109,4 +113,5 @@ def build_pipeline(
         web_query_fn=deps["web_query_fn"],
         property_kb=deps.get("property_kb"),
         property_ticketer=deps.get("property_ticketer"),
+        render_delta=render_delta,
     )

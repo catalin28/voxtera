@@ -19,7 +19,7 @@ import pytest
 from voxtera.call_center.classifier import EscalationClassifier
 from voxtera.call_center.decompose import QueryDecomposer
 from voxtera.call_center.pipeline import ConciergePipeline
-from voxtera.call_center.router import PATH_BROAD, PATH_SCOPED, SourceRouter
+from voxtera.call_center.router import PATH_SCOPED, SourceRouter
 from voxtera.call_center.session import SessionStore
 from voxtera.call_center.triage import Triage
 
@@ -194,294 +194,271 @@ async def test_property_scope_escalation_still_works() -> None:
     assert "colleague" in out["answer"].lower()
 
 
-# ---------- Telegram ticket creation (legacy create_ticket restored) ----------
+# ---------- One-brain ticket flow (create_ticket tool on the render) ----------
 
 
-class _FakeTicketer:
-    """Scriptable assess/file pair mirroring PropertyTicketer's contract."""
+@pytest.fixture(autouse=True)
+def _stub_property_render(monkeypatch):
+    """Offline stand-in for the tool-capable property render.
 
-    def __init__(self, *, assessments: list[dict | None], file_result: dict | None):
-        self._assessments = list(assessments)
+    Mimics the plain-render fallback ("Top matches: <names>.") so the
+    retrieval-behaviour tests above keep their assertions; individual tests
+    re-patch it to script ticket outcomes.
+    """
+
+    async def fake(*, payload, hotel_id, ticketer, model, on_delta=None, client=None):
+        names = ", ".join(
+            (h.get("payload") or {}).get("hotel_name", h.get("hotel_id"))
+            for h in (payload.get("retrieval") or {}).get("hotels", [])[:3]
+        )
+        answer = f"Top matches: {names}." if names else "I don't have that to hand."
+        if on_delta is not None:
+            await on_delta(answer)
+        return {"answer": answer, "ticket": None}
+
+    monkeypatch.setattr("voxtera.call_center.property_render.render_property_turn", fake)
+
+
+@pytest.mark.asyncio
+async def test_booking_request_goes_to_render_not_escalation(monkeypatch) -> None:
+    """A 'booking' classifier verdict no longer short-circuits — the render
+    LLM (which holds create_ticket) owns the whole flow."""
+
+    async def fake_render(**_kw):
+        return {
+            "answer": "For what time, and how many people will be dining?",
+            "ticket": None,
+        }
+
+    monkeypatch.setattr("voxtera.call_center.property_render.render_property_turn", fake_render)
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    p = _build(
+        compound=compound,
+        property_kb=kb,
+        classify={"type": "booking", "confidence": 0.9, "signal": "book a table"},
+    )
+    out = await p.run(utterance="I want to book a table at La Petite Arras.", hotel_id=HOTEL)
+
+    assert out["path"] == PATH_SCOPED  # not escalate
+    assert out["reason"] == "property_fast"
+    assert "how many people" in out["answer"]
+
+
+@pytest.mark.asyncio
+async def test_render_filed_ticket_lands_in_result(monkeypatch) -> None:
+    async def fake_render(**_kw):
+        return {
+            "answer": "Done — the Restaurant team has been notified.",
+            "ticket": {"session_id": "vox-9", "category": "Restaurant"},
+        }
+
+    monkeypatch.setattr("voxtera.call_center.property_render.render_property_turn", fake_render)
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    p = _build(compound=compound, property_kb=kb)
+    out = await p.run(utterance="Yes, send it.", session_id="tk-1", hotel_id=HOTEL)
+
+    assert out["reason"] == "property_ticket"
+    assert out["escalation"]["ticket"]["session_id"] == "vox-9"
+    assert "notified" in out["answer"]
+
+
+@pytest.mark.asyncio
+async def test_render_failure_falls_back_to_plain_render(monkeypatch) -> None:
+    async def broken_render(**_kw):
+        raise RuntimeError("anthropic down")
+
+    monkeypatch.setattr("voxtera.call_center.property_render.render_property_turn", broken_render)
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    p = _build(compound=compound, property_kb=kb)
+    out = await p.run(utterance="What time is breakfast?", hotel_id=HOTEL)
+
+    # Plain render fallback (render_fn=None → deterministic names line).
+    assert out["reason"] == "property_fast"
+    assert "Casa Dell Arte" in out["answer"]
+
+
+# ---------- render_property_turn unit tests (fake Anthropic client) ----------
+
+
+from types import SimpleNamespace  # noqa: E402
+
+from voxtera.call_center.property_render import (  # noqa: E402
+    render_property_turn as _real_render_property_turn,
+)
+
+
+class _FakeStream:
+    def __init__(self, deltas, final):
+        self._deltas, self._final = deltas, final
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    @property
+    def text_stream(self):
+        async def gen():
+            for d in self._deltas:
+                yield d
+
+        return gen()
+
+    async def get_final_message(self):
+        return self._final
+
+
+class _FakeAnthropic:
+    """messages.stream(**kwargs) fed from a scripted list of rounds."""
+
+    def __init__(self, rounds):
+        self._rounds = list(rounds)
+        self.calls: list[dict] = []
+        self.messages = self
+
+    def stream(self, **kwargs):
+        self.calls.append(kwargs)
+        deltas, final = self._rounds.pop(0)
+        return _FakeStream(deltas, final)
+
+
+def _hotel_config():
+    from voxtera.actions.hotel_config import HotelConfig
+    from voxtera.actions.ticket import Category
+
+    return HotelConfig(
+        hotel_id="demo",
+        hotel_name="Grand Hôtel Lumière",
+        official_language="French",
+        telegram_channel_id="-100",
+        allowed_categories=(Category.RESERVATION, Category.RESTAURANT, Category.OTHER),
+    )
+
+
+class _FakeRuntimeTicketer:
+    def __init__(self, *, file_result):
         self._file_result = file_result
-        self.assess_calls: list[dict] = []
         self.file_calls: list[dict] = []
+        self._rt = SimpleNamespace(hotel_config=_hotel_config())
 
-    async def assess(self, **kwargs) -> dict | None:
-        self.assess_calls.append(kwargs)
-        return self._assessments.pop(0) if self._assessments else None
+    def runtime(self, _hotel_id):
+        return self._rt
 
-    async def file(self, **kwargs) -> dict | None:
+    async def file(self, **kwargs):
         self.file_calls.append(kwargs)
         return self._file_result
 
 
-def _ready_assessment(confirm: str = "Shall I send it to the team?") -> dict:
+def _payload(utterance="Book a table at 8 for two, room 412."):
     return {
-        "ready": True,
-        "question": None,
-        "confirm": confirm,
-        "fields": {
-            "category": "Reservation",
-            "summary": "Massage ce soir",
-            "room_number": "412",
-            "language_detected": "English",
-        },
+        "utterance": utterance,
+        "region": None,
+        "decomposition": {"language": "en"},
+        "retrieval": {"hotels": []},
+        "transcript": "",
+        "brief": True,
     }
 
 
-def _not_ready_assessment(question: str = "For what time, and for how many people?") -> dict:
-    return {
-        "ready": False,
-        "question": question,
-        "confirm": None,
-        "fields": {
-            "category": "Restaurant",
-            "summary": "Reservation La Petite Arras",
-            "room_number": "unknown",
-            "language_detected": "English",
-        },
-    }
-
-
-_ESCALATE = {"type": "booking", "confidence": 0.9, "signal": "book a massage"}
+_TOOL_ARGS = {
+    "category": "Restaurant",
+    "summary": "Table pour deux à 20h, chambre 412",
+    "room_number": "412",
+    "original_quote": "Book a table at 8 for two, room 412.",
+    "language_detected": "English",
+}
 
 
 @pytest.mark.asyncio
-async def test_ticket_flow_gathers_info_then_confirms_then_files() -> None:
-    """The restored legacy flow: ask for missing details → confirm → file."""
-    compound, kb = _FakeCompound(), _FakePropertyKB()
-    ticketer = _FakeTicketer(
-        assessments=[_not_ready_assessment(), _ready_assessment()],
-        file_result={"session_id": "vox-1", "category": "Restaurant"},
-    )
-    p = _build(compound=compound, property_kb=kb, classify=_ESCALATE)
-    p._property_ticketer = ticketer
-
-    # Turn 1: actionable but incomplete → the bot ASKS, files nothing.
-    out = await p.run(
-        utterance="I want to do a reservation at La Petite Arras.",
-        session_id="tk-flow",
-        hotel_id=HOTEL,
-    )
-    assert out["reason"] == "ticket_info"
-    assert "how many people" in out["answer"].lower()
-    assert ticketer.file_calls == []
-
-    # Turn 2: guest supplies details → the bot CONFIRMS, still files nothing.
-    out = await p.run(
-        utterance="Tonight at eight, for two people.", session_id="tk-flow", hotel_id=HOTEL
-    )
-    assert out["reason"] == "ticket_confirm"
-    assert "shall i send" in out["answer"].lower()
-    assert ticketer.file_calls == []
-
-    # Turn 3: the yes → NOW it files and confirms to the guest.
-    out = await p.run(utterance="Yes please!", session_id="tk-flow", hotel_id=HOTEL)
-    assert out["reason"] == "property_ticket"
-    assert out["escalation"]["ticket"]["session_id"] == "vox-1"
-    assert "team" in out["answer"].lower()
-    (filed,) = ticketer.file_calls
-    assert filed["fields"]["category"] == "Reservation"  # latest assessed fields
-    assert filed["original_quote"].startswith("I want to do a reservation")
-
-
-@pytest.mark.asyncio
-async def test_ticket_flow_ready_immediately_still_confirms_first() -> None:
-    """Complete requests skip the info round but NEVER skip confirmation."""
-    compound, kb = _FakeCompound(), _FakePropertyKB()
-    ticketer = _FakeTicketer(
-        assessments=[_ready_assessment()],
-        file_result={"session_id": "vox-2", "category": "Reservation"},
-    )
-    p = _build(compound=compound, property_kb=kb, classify=_ESCALATE)
-    p._property_ticketer = ticketer
-    out = await p.run(
-        utterance="Book me a massage tonight at 7, room 412.",
-        session_id="tk-conf",
-        hotel_id=HOTEL,
-    )
-    assert out["reason"] == "ticket_confirm"
-    assert ticketer.file_calls == []
-
-    out = await p.run(utterance="yes", session_id="tk-conf", hotel_id=HOTEL)
-    assert out["reason"] == "property_ticket"
-    assert len(ticketer.file_calls) == 1
-
-
-@pytest.mark.asyncio
-async def test_ticket_flow_refusal_cancels_draft() -> None:
-    """A 'no' at the confirmation stage drops the draft, files nothing."""
-    compound, kb = _FakeCompound(), _FakePropertyKB()
-    ticketer = _FakeTicketer(assessments=[_ready_assessment()], file_result=None)
-    p = _build(compound=compound, property_kb=kb, classify=_ESCALATE)
-    p._property_ticketer = ticketer
-    await p.run(utterance="Book me a massage at 7.", session_id="tk-no", hotel_id=HOTEL)
-    out = await p.run(utterance="No, never mind.", session_id="tk-no", hotel_id=HOTEL)
-
-    assert out["reason"] == "ticket_cancelled"
-    assert ticketer.file_calls == []
-    assert "anything else" in out["answer"].lower()
-
-
-@pytest.mark.asyncio
-async def test_ticket_delivery_failure_falls_back_to_handoff_line() -> None:
-    """If delivery fails after the yes, the bot must NOT claim staff know."""
-    compound, kb = _FakeCompound(), _FakePropertyKB()
-    ticketer = _FakeTicketer(assessments=[_ready_assessment()], file_result=None)
-    p = _build(compound=compound, property_kb=kb, classify=_ESCALATE)
-    p._property_ticketer = ticketer
-    await p.run(utterance="Book me a massage at 7.", session_id="tk-fail", hotel_id=HOTEL)
-    out = await p.run(utterance="yes", session_id="tk-fail", hotel_id=HOTEL)
-
-    assert out["reason"] == "escalation_classifier"
-    assert out["escalation"]["ticket"] is None
-    assert "colleague" in out["answer"].lower()
-
-
-@pytest.mark.asyncio
-async def test_no_ticketer_keeps_old_escalation_behaviour() -> None:
-    compound, kb = _FakeCompound(), _FakePropertyKB()
-    p = _build(compound=compound, property_kb=kb, classify=_ESCALATE)
-    out = await p.run(utterance="Can you book me a massage?", hotel_id=HOTEL)
-    assert out["reason"] == "escalation_classifier"
-    assert "colleague" in out["answer"].lower()
-
-
-@pytest.mark.asyncio
-async def test_ticketer_field_extraction_fallback(monkeypatch) -> None:
-    """LLM extraction failure still files a usable ticket (fallback fields)."""
-    from voxtera.actions.hotel_config import HotelConfig
-    from voxtera.actions.ticket import Category
-    from voxtera.call_center.property_actions import PropertyTicketer
-
-    sent: list = []
-
-    class _FakeSink:
-        async def send(self, ticket) -> bool:  # noqa: ANN001
-            sent.append(ticket)
-            return True
-
-    class _FakeRuntime:
-        hotel_config = HotelConfig(
-            hotel_id="demo",
-            hotel_name="Grand Hôtel Lumière",
-            official_language="French",
-            telegram_channel_id="-100",
-            allowed_categories=(Category.RESERVATION, Category.OTHER),
-        )
-        sink = _FakeSink()
-
-    ticketer = PropertyTicketer()
-    ticketer._runtimes["demo"] = _FakeRuntime()  # skip Telegram bootstrap
-
-    monkeypatch.setattr(
-        "voxtera.call_center.clients.anthropic_client",
-        lambda: (_ for _ in ()).throw(RuntimeError("anthropic down")),
-    )
-    assessment = await ticketer.assess(
-        hotel_id="demo",
-        utterance="Can you book me a massage for 7pm? Room 412.",
-        transcript="User: hi",
-        language="en",
-    )
-    # Fallback: treated as ready with the raw utterance + generic confirm.
-    assert assessment is not None and assessment["ready"] is True
-    assert "send it" in assessment["confirm"].lower()
-    assert assessment["fields"]["category"] in ("Other", "Reservation")
-
-    out = await ticketer.file(
-        hotel_id="demo",
-        fields=assessment["fields"],
-        original_quote="Can you book me a massage for 7pm? Room 412.",
-    )
-    assert out is not None
-    (ticket,) = sent
-    assert ticket.original_quote.startswith("Can you book me a massage")
-    assert ticket.summary  # fallback summary = raw utterance
-
-
-@pytest.mark.asyncio
-async def test_no_scope_keeps_travel_agent_behaviour() -> None:
-    """hotel_id absent → the property KB is never consulted."""
-    compound, kb = _FakeCompound(), _FakePropertyKB()
-    decomp = {
-        "query_type": "broad",
-        "intent": "recommendation",
-        "region": "antalya",
-        "requirements": ["spa"],
-        "language": "en",
-    }
-    p = _build(decompose=decomp, compound=compound, property_kb=kb)
-    out = await p.run(utterance="Find me a spa hotel in Antalya")
-
-    assert kb.calls == []
-    assert len(compound.calls) >= 1
-    assert out["path"] == PATH_BROAD
-
-
-@pytest.mark.asyncio
-async def test_property_scope_pins_session_hotel() -> None:
-    """The session is pinned to the property so follow-ups stay scoped."""
-    compound, kb = _FakeCompound(), _FakePropertyKB()
-    store = SessionStore()
-    p = ConciergePipeline(
-        session_store=store,
-        classifier=EscalationClassifier(
-            classify_fn=_scripted_classify({"type": "none", "confidence": 0.1, "signal": None}),
-            cache_get=None,
-            cache_set=None,
-        ),
-        decomposer=QueryDecomposer(decompose_fn=_forbidden_decompose()),
-        triage=Triage(),
-        router=SourceRouter(),
-        compound=compound,
-        property_kb=kb,
-    )
-    out = await p.run(utterance="What time is breakfast?", session_id="s-1", hotel_id=HOTEL)
-    sess = await store.load(out["session_id"])
-    assert sess.get("active_hotel_id") == HOTEL
-    # Transcript memory works without decompose: the turn was appended.
-    assert [t.get("utterance") for t in sess.get("history") or []] == ["What time is breakfast?"]
-
-
-# ---------- PropertyKBRetriever shaping (inner retriever mocked) ----------
-
-
-@pytest.mark.asyncio
-async def test_property_kb_retriever_shapes_chunks(monkeypatch, tmp_path) -> None:
-    from voxtera.call_center.property_kb import PropertyKBRetriever
-    from voxtera.rag.retriever import RetrievedChunk, Retriever
-
-    async def fake_retrieve(self, *, hotel_id: str, query: str, language=None):  # noqa: ANN001
-        return [
-            RetrievedChunk(
-                text="Breakfast 07:00-10:30.", score=0.91, doc_id="d1", category="dining"
-            ),
-            RetrievedChunk(text="Pool opens at 08:00.", score=0.55, doc_id="d2", category="dining"),
+async def test_render_tool_loop_files_and_confirms() -> None:
+    tool_use = SimpleNamespace(type="tool_use", id="tu1", input=dict(_TOOL_ARGS))
+    client = _FakeAnthropic(
+        [
+            (["One moment. "], SimpleNamespace(stop_reason="tool_use", content=[tool_use])),
+            (["Done — the team is notified."], SimpleNamespace(stop_reason="end_turn", content=[])),
         ]
+    )
+    ticketer = _FakeRuntimeTicketer(file_result={"session_id": "vox-7", "category": "Restaurant"})
+    deltas: list[str] = []
 
-    monkeypatch.setattr(Retriever, "retrieve", fake_retrieve)
-    kb = PropertyKBRetriever(db_path=tmp_path / "guide.db")
-    out = await kb.retrieve(hotel_id="demo", query="when is breakfast?")
+    async def on_delta(d):
+        deltas.append(d)
 
-    assert out["source"] == "property_kb"
-    assert out["top_score"] == pytest.approx(0.91)
-    (hotel,) = out["hotels"]
-    assert hotel["hotel_id"] == "demo"
-    # Duplicate categories both kept, under disambiguated labels.
-    assert set(hotel["evidence"]) == {"dining", "dining_2"}
-    assert hotel["evidence"]["dining"]["text"].startswith("Breakfast")
+    out = await _real_render_property_turn(
+        payload=_payload(),
+        hotel_id="demo",
+        ticketer=ticketer,
+        model="m",
+        on_delta=on_delta,
+        client=client,
+    )
+    assert out["ticket"] == {"session_id": "vox-7", "category": "Restaurant"}
+    assert out["answer"].startswith("One moment.")
+    assert out["answer"].endswith("notified.")
+    assert "".join(deltas).startswith("One moment. ")
+    # Round 1 advertised the tool; round 2 carried tool_result + tool_choice none.
+    assert client.calls[0]["tools"][0]["name"] == "create_ticket"
+    assert client.calls[1]["tool_choice"] == {"type": "none"}
+    assert client.calls[1]["messages"][-1]["content"][0]["type"] == "tool_result"
+    # System prompt carries the legacy confirmation rules.
+    assert "confirmation rule" in client.calls[0]["system"][0]["text"]
+    (filed,) = ticketer.file_calls
+    assert filed["fields"]["room_number"] == "412"
 
 
 @pytest.mark.asyncio
-async def test_property_kb_retriever_empty_guide(monkeypatch, tmp_path) -> None:
-    from voxtera.call_center.property_kb import PropertyKBRetriever
-    from voxtera.rag.retriever import Retriever
+async def test_render_invalid_tool_args_get_rejected_payload() -> None:
+    bad = dict(_TOOL_ARGS)
+    bad.pop("room_number")
+    tool_use = SimpleNamespace(type="tool_use", id="tu1", input=bad)
+    client = _FakeAnthropic(
+        [
+            ([""], SimpleNamespace(stop_reason="tool_use", content=[tool_use])),
+            (
+                ["Could you give me your room number?"],
+                SimpleNamespace(stop_reason="end_turn", content=[]),
+            ),
+        ]
+    )
+    ticketer = _FakeRuntimeTicketer(file_result=None)
+    out = await _real_render_property_turn(
+        payload=_payload(), hotel_id="demo", ticketer=ticketer, model="m", client=client
+    )
+    assert out["ticket"] is None
+    assert ticketer.file_calls == []  # validation rejected before delivery
+    result_json = client.calls[1]["messages"][-1]["content"][0]["content"]
+    assert "rejected" in result_json and "room_number" in result_json
 
-    async def fake_retrieve(self, *, hotel_id: str, query: str, language=None):  # noqa: ANN001
-        return []
 
-    monkeypatch.setattr(Retriever, "retrieve", fake_retrieve)
-    kb = PropertyKBRetriever(db_path=tmp_path / "guide.db")
-    out = await kb.retrieve(hotel_id="demo", query="anything")
-    assert out["hotels"] == [] and out["top_score"] == 0.0
+@pytest.mark.asyncio
+async def test_render_without_ticket_layer_has_no_tool_and_no_promises_rule() -> None:
+    client = _FakeAnthropic(
+        [
+            (
+                ["The front desk can arrange that for you."],
+                SimpleNamespace(stop_reason="end_turn", content=[]),
+            )
+        ]
+    )
+    out = await _real_render_property_turn(
+        payload=_payload(), hotel_id="demo", ticketer=None, model="m", client=client
+    )
+    assert out["ticket"] is None
+    assert "tools" not in client.calls[0]
+    assert "You CANNOT perform actions" in client.calls[0]["system"][0]["text"]
+
+
+def test_validate_ticket_args_rules() -> None:
+    from voxtera.call_center.property_render import _validate_ticket_args
+
+    cfg = _hotel_config()
+    fields = _validate_ticket_args(dict(_TOOL_ARGS), cfg)
+    assert fields["category"] == "Restaurant"
+
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="room_number"):
+        _validate_ticket_args({**_TOOL_ARGS, "room_number": "  "}, cfg)
+    with _pytest.raises(ValueError, match="category"):
+        _validate_ticket_args({**_TOOL_ARGS, "category": "Maintenance"}, cfg)  # not allowed here

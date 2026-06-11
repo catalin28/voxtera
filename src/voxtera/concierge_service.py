@@ -175,8 +175,14 @@ async def handle_concierge_stream(request: web.Request) -> web.StreamResponse:
             await push({"type": "text", "chunk": delta})
         return "".join(parts).strip()
 
+    async def _push_delta(chunk: str) -> None:
+        if chunk:
+            await push({"type": "text", "chunk": chunk})
+
     try:
-        pipeline = build_pipeline(request.app[KEY_DEPS], render_fn=_teeing_render)
+        pipeline = build_pipeline(
+            request.app[KEY_DEPS], render_fn=_teeing_render, render_delta=_push_delta
+        )
         result = await asyncio.wait_for(
             pipeline.run(
                 utterance=utterance,

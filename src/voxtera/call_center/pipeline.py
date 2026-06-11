@@ -848,6 +848,7 @@ class ConciergePipeline:
         web_query_fn: Any | None = None,
         property_kb: Any | None = None,
         property_ticketer: Any | None = None,
+        render_delta: Any | None = None,
     ) -> None:
         self._sessions = session_store
         self._classifier = classifier
@@ -880,6 +881,9 @@ class ConciergePipeline:
         # Telegram ticket creation for actionable hotel-mode turns — the port
         # of the legacy create_ticket tool (see call_center.property_actions).
         self._property_ticketer = property_ticketer
+        # Streamed-answer callback (async fn(str)) for the property render —
+        # the /api/concierge/stream endpoint passes its NDJSON pusher here.
+        self._render_delta = render_delta
         # Per-run property scope; set by run() from the request's hotel_id.
         self._property_hotel_id: str | None = None
         self._turn_utterance = ""
@@ -1587,29 +1591,33 @@ class ConciergePipeline:
             _classify_leg(), _session_retrieve_leg()
         )
 
-        # Ticket flow in progress (we asked for missing details or for the
-        # final go-ahead last turn) — this turn is the guest's reply, which
-        # rarely re-triggers the classifier. Handle it before anything else.
-        if session.get("pending_ticket") and self._property_ticketer is not None:
-            return await self._continue_ticket_flow(
-                sid=sid,
+        # Hard escalations only — a live complaint, medical issue or urgent
+        # situation hands off to a human immediately. Actionable requests
+        # (bookings, orders) do NOT short-circuit: the render LLM holds the
+        # create_ticket tool and runs the gather→confirm→file flow itself
+        # (property_render), exactly like the legacy hotel brain.
+        if verdict.get("escalate") and verdict.get("escalation_type") in (
+            "live_complaint",
+            "medical",
+            "urgency",
+        ):
+            answer = _escalation_answer((session.get("language") or "en").lower())
+            await self._sessions.append_turn(
+                session,
                 utterance=utterance,
-                session=session,
-                t_start=t_start,
-                timings=timings,
+                decomposition=None,
+                reason="escalation_classifier",
+                answer=answer,
+                is_clarification=False,
             )
-
-        if verdict.get("escalate"):
-            # Actionable request → the legacy create_ticket flow, restored:
-            # collect missing details, CONFIRM, then file to Telegram. Falls
-            # back to the plain hand-off line when the ticket layer is
-            # unavailable — the bot never claims staff were notified when
-            # they weren't.
-            return await self._start_ticket_flow(
+            await self._sessions.save(session)
+            return self._finish(
                 sid=sid,
                 utterance=utterance,
-                session=session,
-                verdict=verdict,
+                path=PATH_ESCALATE,
+                reason="escalation_classifier",
+                escalation=verdict,
+                answer=answer,
                 t_start=t_start,
                 timings=timings,
             )
@@ -1652,13 +1660,37 @@ class ConciergePipeline:
         # Minimal synthetic decomposition: the render formats language/type
         # from it; persona rules handle the actual reply language.
         decomposition = {"query_type": "scoped", "language": session.get("language")}
-        answer = await self._render(utterance, decomposition, retrieval, session)
+        payload = {
+            "utterance": utterance,
+            "region": None,
+            "decomposition": decomposition,
+            "retrieval": retrieval or {},
+            "transcript": build_transcript(session.get("history")),
+            "brief": getattr(self, "_brief", False),
+        }
+        ticket = None
+        try:
+            from voxtera.call_center.deps import llm_model
+            from voxtera.call_center.property_render import render_property_turn
+
+            rendered = await render_property_turn(
+                payload=payload,
+                hotel_id=pid,
+                ticketer=self._property_ticketer,
+                model=llm_model(),
+                on_delta=self._render_delta,
+            )
+            answer = rendered["answer"] or "Sorry, I had trouble forming a reply."
+            ticket = rendered["ticket"]
+        except Exception as e:  # noqa: BLE001 — degrade to the plain render
+            logger.warning("[property-render] failed ({}) — falling back to plain render", e)
+            answer = await self._render(utterance, decomposition, retrieval, session)
 
         await self._sessions.append_turn(
             session,
             utterance=utterance,
             decomposition=None,
-            reason="property_fast",
+            reason="property_ticket" if ticket else "property_fast",
             answer=answer,
             is_clarification=False,
         )
@@ -1667,7 +1699,7 @@ class ConciergePipeline:
             sid=sid,
             utterance=utterance,
             path=PATH_SCOPED,
-            reason="property_fast",
+            reason="property_ticket" if ticket else "property_fast",
             decomposition=decomposition,
             router={
                 "path": PATH_SCOPED,
@@ -1676,219 +1708,11 @@ class ConciergePipeline:
                 "needs": None,
             },
             retrieval=retrieval,
+            escalation={"ticket": ticket} if ticket else None,
             answer=answer,
             t_start=t_start,
             timings=timings,
         )
-
-    # ------------------------------------------------------------------ #
-    # Property ticket flow (legacy create_ticket, restored)               #
-    # ------------------------------------------------------------------ #
-
-    async def _start_ticket_flow(
-        self,
-        *,
-        sid: str,
-        utterance: str,
-        session: dict[str, Any],
-        verdict: dict[str, Any],
-        t_start: float,
-        timings: dict[str, float],
-    ) -> dict[str, Any]:
-        """First actionable turn: assess → ask for missing info or confirm."""
-        lang = (session.get("language") or "en").lower()
-        assessment = None
-        if self._property_ticketer is not None:
-            t0 = time.perf_counter()
-            try:
-                assessment = await self._property_ticketer.assess(
-                    hotel_id=self._property_hotel_id,
-                    utterance=utterance,
-                    transcript=build_transcript(session.get("history")),
-                    language=session.get("language"),
-                )
-            except Exception as e:  # noqa: BLE001 — never break the turn
-                logger.warning("[property-actions] assess failed: {}", e)
-            timings["ticket_ms"] = _ms(time.perf_counter() - t0)
-
-        if assessment is None:
-            # Ticket layer unavailable → the plain hand-off, as before.
-            answer = _escalation_answer(lang)
-            await self._save_ticket_turn(session, utterance, "escalation_classifier", answer)
-            return self._finish(
-                sid=sid,
-                utterance=utterance,
-                path=PATH_ESCALATE,
-                reason="escalation_classifier",
-                escalation={**verdict, "ticket": None},
-                answer=answer,
-                t_start=t_start,
-                timings=timings,
-            )
-
-        stage = "confirm" if assessment["ready"] else "info"
-        answer = assessment["confirm"] if assessment["ready"] else assessment["question"]
-        session["pending_ticket"] = {
-            "original": utterance,
-            "stage": stage,
-            "fields": assessment["fields"],
-            "attempts": 1,
-        }
-        await self._save_ticket_turn(session, utterance, f"ticket_{stage}", answer)
-        return self._finish(
-            sid=sid,
-            utterance=utterance,
-            path=PATH_ESCALATE,
-            reason=f"ticket_{stage}",
-            escalation={**verdict, "ticket": None},
-            answer=answer,
-            t_start=t_start,
-            timings=timings,
-        )
-
-    async def _continue_ticket_flow(
-        self,
-        *,
-        sid: str,
-        utterance: str,
-        session: dict[str, Any],
-        t_start: float,
-        timings: dict[str, float],
-    ) -> dict[str, Any]:
-        """Follow-up turn of the ticket flow: more info, a yes, or a no."""
-        lang = (session.get("language") or "en").lower()
-        pending = dict(session.get("pending_ticket") or {})
-        original = pending.get("original") or utterance
-        attempts = int(pending.get("attempts") or 1)
-
-        def _ack_cancel() -> str:
-            return (
-                "Tabii, başka bir konuda yardımcı olabilir miyim?"
-                if lang == "tr"
-                else "No problem. Is there anything else I can help with?"
-            )
-
-        # Guest backs out at any stage → drop the draft, stay available.
-        if _is_refusal(utterance):
-            session.pop("pending_ticket", None)
-            answer = _ack_cancel()
-            await self._save_ticket_turn(session, utterance, "ticket_cancelled", answer)
-            return self._finish(
-                sid=sid,
-                utterance=utterance,
-                path="clarify",
-                reason="ticket_cancelled",
-                answer=answer,
-                t_start=t_start,
-                timings=timings,
-            )
-
-        # Confirmation stage + a yes → file it.
-        if pending.get("stage") == "confirm" and _is_affirmation(utterance):
-            t0 = time.perf_counter()
-            ticket = None
-            try:
-                ticket = await self._property_ticketer.file(
-                    hotel_id=self._property_hotel_id,
-                    fields=pending.get("fields") or {},
-                    original_quote=original,
-                )
-            except Exception as e:  # noqa: BLE001
-                logger.warning("[property-actions] file failed: {}", e)
-            timings["ticket_ms"] = _ms(time.perf_counter() - t0)
-            session.pop("pending_ticket", None)
-            if ticket:
-                from voxtera.call_center.property_actions import ticket_filed_answer
-
-                answer = ticket_filed_answer(lang, ticket["category"])
-            else:
-                answer = _escalation_answer(lang)  # delivery failed → honest hand-off
-            reason = "property_ticket" if ticket else "escalation_classifier"
-            await self._save_ticket_turn(session, utterance, reason, answer)
-            return self._finish(
-                sid=sid,
-                utterance=utterance,
-                path=PATH_ESCALATE,
-                reason=reason,
-                escalation={"escalate": True, "ticket": ticket},
-                answer=answer,
-                t_start=t_start,
-                timings=timings,
-            )
-
-        # Anything else is treated as new/changed details → re-assess with
-        # the original request plus everything said since (the transcript
-        # carries it). Capped so the guest is never stuck in a loop.
-        t0 = time.perf_counter()
-        assessment = None
-        try:
-            assessment = await self._property_ticketer.assess(
-                hotel_id=self._property_hotel_id,
-                utterance=f"{original}\nAdditional details from the guest: {utterance}",
-                transcript=build_transcript(session.get("history")),
-                language=session.get("language"),
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.warning("[property-actions] re-assess failed: {}", e)
-        timings["ticket_ms"] = _ms(time.perf_counter() - t0)
-
-        if assessment is None:
-            session.pop("pending_ticket", None)
-            answer = _escalation_answer(lang)
-            await self._save_ticket_turn(session, utterance, "escalation_classifier", answer)
-            return self._finish(
-                sid=sid,
-                utterance=utterance,
-                path=PATH_ESCALATE,
-                reason="escalation_classifier",
-                escalation={"escalate": True, "ticket": None},
-                answer=answer,
-                t_start=t_start,
-                timings=timings,
-            )
-
-        # After 3 gathering rounds, stop asking — confirm with what we have.
-        force_confirm = attempts >= 3
-        ready = assessment["ready"] or force_confirm
-        stage = "confirm" if ready else "info"
-        if ready:
-            answer = (
-                assessment["confirm"]
-                or "I'll pass this request to our team — shall I send it now?"
-            )
-        else:
-            answer = assessment["question"]
-        session["pending_ticket"] = {
-            "original": original,
-            "stage": stage,
-            "fields": assessment["fields"],
-            "attempts": attempts + 1,
-        }
-        await self._save_ticket_turn(session, utterance, f"ticket_{stage}", answer)
-        return self._finish(
-            sid=sid,
-            utterance=utterance,
-            path=PATH_ESCALATE,
-            reason=f"ticket_{stage}",
-            escalation={"escalate": True, "ticket": None},
-            answer=answer,
-            t_start=t_start,
-            timings=timings,
-        )
-
-    async def _save_ticket_turn(
-        self, session: dict[str, Any], utterance: str, reason: str, answer: str
-    ) -> None:
-        """Append + persist one ticket-flow turn (memory for the transcript)."""
-        await self._sessions.append_turn(
-            session,
-            utterance=utterance,
-            decomposition=None,
-            reason=reason,
-            answer=answer,
-            is_clarification=False,
-        )
-        await self._sessions.save(session)
 
     async def _run_kb(
         self,

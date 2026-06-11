@@ -64,7 +64,7 @@ def stub_concierge(monkeypatch):
 
     state: dict[str, Any] = {"fail": False}
 
-    def fake_build_pipeline(deps, *, render_fn=None, decomposer=None):  # noqa: ANN001
+    def fake_build_pipeline(deps, *, render_fn=None, decomposer=None, render_delta=None):  # noqa: ANN001
         assert deps is fake_deps  # the request used the app's warm deps
         state["decomposer"] = decomposer
         return _FakePipeline(render_fn=render_fn, fail=state["fail"])
