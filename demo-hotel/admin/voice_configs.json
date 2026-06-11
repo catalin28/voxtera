@@ -1,0 +1,21 @@
+{
+  "demo": {
+    "current": {
+      "property_id": "demo",
+      "voice_key": "elevenlabs:K7W7zLWeGoxU9YqWoB7A",
+      "display_name": "Rachel - Social Media Narrator (ElevenLabs)",
+      "provider": "elevenlabs",
+      "model": "eleven_flash_v2_5",
+      "params": {
+        "stability": 0.71,
+        "similarity_boost": 0.75,
+        "style": 0,
+        "use_speaker_boost": true,
+        "speed": 1
+      },
+      "updated_at": "2026-06-10T22:36:45.336365Z",
+      "updated_by": "admin"
+    },
+    "previous": null
+  }
+}
