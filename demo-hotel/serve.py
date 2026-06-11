@@ -709,23 +709,77 @@ class SessionStore:
                     }
                 )
             else:
-                # Orphan ndjson with no accumulator (left from a previous launcher
-                # process that crashed before finalize). Mark as such.
-                sessions.append(
-                    {
-                        "session_id": session_id,
-                        "started_at": None,
-                        "ended_at": None,
-                        "turn_count": None,
-                        "event_count": None,
-                        "providers": None,
-                        "transcript_first": None,
-                        "transcript_last": None,
-                        "orphan": True,
-                    }
-                )
+                # Orphan ndjson with no accumulator. This is the NORMAL end
+                # state for WhatsApp sessions: only Daily bot sessions get
+                # finalize()d (via the subprocess reap), so a WA session loses
+                # its in-memory accumulator on every serve.py restart and used
+                # to vanish from this list (no started_at → sorted to the
+                # bottom, undated). Self-heal: rebuild the meta from the
+                # ndjson on disk and write the sidecar so it's permanent.
+                meta = self._rebuild_meta_from_ndjson(session_id, ndjson_file)
+                if meta is not None:
+                    sessions.append(meta)
         sessions.sort(key=lambda s: s.get("started_at") or 0, reverse=True)
         return sessions
+
+    def _rebuild_meta_from_ndjson(self, session_id: str, ndjson_file: Path) -> dict | None:
+        """Reconstruct + persist a session's meta from its event file.
+
+        Mirrors the accumulation in :meth:`append`. Returns None for an
+        unreadable or empty file. Best-effort: the sidecar write may fail
+        (read-only disk) — the synthesized meta is still returned so the
+        session shows up this time.
+        """
+        started_at = ended_at = None
+        turn_ids: set[str] = set()
+        providers = None
+        transcript_first = transcript_last = None
+        event_count = 0
+        try:
+            with open(ndjson_file, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        ev = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    event_count += 1
+                    ts = ev.get("ts_ms")
+                    if ts:
+                        if started_at is None:
+                            started_at = ts
+                        ended_at = ts
+                    if ev.get("turn_id"):
+                        turn_ids.add(ev["turn_id"])
+                    data = ev.get("data") or {}
+                    if data.get("event") == "session_providers":
+                        providers = {k: v for k, v in data.items() if k != "event"}
+                    if data.get("event") == "transcript":
+                        text = (data.get("text") or "").strip()
+                        if text:
+                            if transcript_first is None:
+                                transcript_first = text
+                            transcript_last = text
+        except OSError:
+            return None
+        if event_count == 0:
+            return None
+        meta = {
+            "session_id": session_id,
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "turn_count": len(turn_ids),
+            "event_count": event_count,
+            "providers": providers,
+            "transcript_first": transcript_first,
+            "transcript_last": transcript_last,
+        }
+        # Best-effort persist; listing still works this round and retries next time.
+        with contextlib.suppress(OSError):
+            self._meta_path(session_id).write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        return meta
 
     def read_events(self, session_id: str) -> list[dict] | None:
         """Return the full event list for a session, or None if not found.
