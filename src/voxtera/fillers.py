@@ -140,17 +140,21 @@ class FillerPlayer(FrameProcessor):
             self._fired_this_turn = False
             self._arm()
         elif isinstance(frame, VADUserStartedSpeakingFrame | InterruptionFrame):
-            # Guest is talking (or barged in) — a filler now would talk over them.
-            self._disarm()
+            # Guest is talking (or barged in) — stop everything, including a
+            # clip mid-play (the interruption also clears the transport queue).
+            self._disarm(stop_playback=True)
         elif isinstance(frame, TTSStartedFrame | TTSAudioRawFrame | BotStartedSpeakingFrame):
-            # Real speech is here (or imminent) — never layer a filler on it.
-            self._disarm()
+            # Real speech arrived. Cancel a PENDING filler — but if a clip is
+            # already playing, let it FINISH: the answer queues right behind
+            # it, whereas truncating mid-syllable leaves a weird half-sound
+            # ("Mm—") that callers can't identify.
+            self._disarm(stop_playback=False)
         elif isinstance(frame, TranscriptionFrame):
             lang = str(getattr(frame, "language", "") or "").strip().lower()
             if lang:
                 self._language = lang.split("-")[0]
         elif isinstance(frame, EndFrame | CancelFrame):
-            self._disarm()
+            self._disarm(stop_playback=True)
         elif isinstance(frame, StartFrame):
             pass
 
@@ -161,16 +165,16 @@ class FillerPlayer(FrameProcessor):
     # ------------------------------------------------------------------ #
 
     def _arm(self) -> None:
-        self._disarm()
+        self._disarm(stop_playback=True)
         if not self._clips or self._fired_this_turn:
             return
         self._timer = asyncio.create_task(self._fire_after_delay())
 
-    def _disarm(self) -> None:
+    def _disarm(self, *, stop_playback: bool) -> None:
         if self._timer is not None:
             self._timer.cancel()
             self._timer = None
-        if self._playing is not None:
+        if stop_playback and self._playing is not None:
             self._playing.cancel()
             self._playing = None
 

@@ -79,6 +79,26 @@ async def test_no_filler_when_guest_resumes_speaking() -> None:
 
 
 @pytest.mark.asyncio
+async def test_started_filler_finishes_when_answer_arrives_mid_clip() -> None:
+    """Real speech arriving DURING the clip must not truncate it — a cut
+    half-syllable ('Mm—') is an unidentifiable blip to the caller."""
+    player = FillerPlayer(_clips(n_chunks_en=10), sample_rate=SR, delay_secs=0.05)
+    real = TTSAudioRawFrame(audio=b"\x09\x00" * (CHUNK // 2), sample_rate=SR, num_channels=1)
+    down, _ = await run_test(
+        player,
+        frames_to_send=[
+            VADUserStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.08),  # filler fired, clip mid-play (10 paced chunks)
+            real,  # the answer's audio arrives now
+            SleepFrame(sleep=0.4),
+        ],
+    )
+    audio = _filler_audio(down)
+    # Whole 10-chunk clip + the real frame, nothing truncated.
+    assert len(audio) == 10 * CHUNK + len(real.audio)
+
+
+@pytest.mark.asyncio
 async def test_filler_fires_at_most_once_per_turn() -> None:
     player = FillerPlayer(_clips(), sample_rate=SR, delay_secs=0.05)
     down, _ = await run_test(
