@@ -56,17 +56,19 @@ The WebRTC media path can only be exercised on a publicly reachable host
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import os
 import uuid
 from pathlib import Path
 
+import aiohttp
 from loguru import logger
 from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import TTSSpeakFrame
+from pipecat.frames.frames import Frame, TTSSpeakFrame, TextFrame, TranscriptionFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -76,6 +78,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
 )
 from pipecat.processors.audio.vad_processor import VADProcessor
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
@@ -112,6 +115,118 @@ _TRACE_LABEL = "whatsapp"
 _TRACE_CHANNEL = "wa"
 # serve.py (the UI/dashboard) runs on the same droplet on :8080.
 _LAUNCHER_URL = os.environ.get("VOXTERA_LAUNCHER_URL", "http://127.0.0.1:8080/api/bot-event")
+
+
+class VoiceOfferProcessor(FrameProcessor):
+    """Strip [OFFER:<id>] tags from LLM output bound for TTS, and deliver
+    images/tour links to the caller's WhatsApp chat when they say yes.
+
+    Placed between brain and TTS in the pipeline.
+
+    Brain emits ``LLMFullResponseStartFrame`` → N×``LLMTextFrame`` → ``LLMFullResponseEndFrame``.
+    The [OFFER:<id>] tag can be split across chunk boundaries, so we buffer all
+    ``LLMTextFrame`` chunks and process the joined text at ``LLMFullResponseEndFrame``,
+    then re-emit one clean ``LLMTextFrame`` before the end frame.
+
+    ``TranscriptionFrame`` (caller speech) flows downstream past brain unchanged;
+    we inspect it for multilingual affirmatives and, when a pending offer is set,
+    fire an async WhatsApp send without blocking the voice turn.
+    """
+
+    def __init__(self, *, caller_wa_id: str | None, settings: WhatsAppSettings) -> None:
+        super().__init__()
+        self._caller_wa_id = caller_wa_id
+        self._settings = settings
+        self._buffer: list[str] = []   # accumulates LLMTextFrame chunks per turn
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if direction == FrameDirection.DOWNSTREAM:
+            from pipecat.frames.frames import (
+                LLMFullResponseEndFrame,
+                LLMFullResponseStartFrame,
+                LLMTextFrame,
+            )
+
+            if isinstance(frame, LLMFullResponseStartFrame):
+                # New LLM turn — reset buffer and pass the start frame through.
+                self._buffer = []
+                await self.push_frame(frame, direction)
+                return
+
+            if isinstance(frame, LLMTextFrame):
+                # Buffer the chunk; suppress from downstream until turn is complete.
+                self._buffer.append(frame.text)
+                return  # do NOT push yet
+
+            if isinstance(frame, LLMFullResponseEndFrame):
+                # Join all chunks, strip [OFFER:<id>], emit clean text + end frame.
+                full_text = "".join(self._buffer)
+                self._buffer = []
+
+                from voxtera.whatsapp.image_catalog import (
+                    clear_pending_offer,
+                    extract_offer_tag,
+                    set_pending_offer,
+                )
+
+                clean, offered_id = extract_offer_tag(full_text)
+                if offered_id and self._caller_wa_id:
+                    set_pending_offer(self._caller_wa_id, offered_id)
+                    logger.info(
+                        "[voice-offer] offer stored: {} → {}", self._caller_wa_id, offered_id
+                    )
+                elif clean.strip() and self._caller_wa_id:
+                    clear_pending_offer(self._caller_wa_id)
+
+                if clean.strip():
+                    await self.push_frame(LLMTextFrame(text=clean), direction)
+                await self.push_frame(frame, direction)  # LLMFullResponseEndFrame
+                return
+
+            if isinstance(frame, TranscriptionFrame) and self._caller_wa_id:
+                from voxtera.whatsapp.image_catalog import is_affirmative, pop_pending_offer
+
+                pending_id = pop_pending_offer(self._caller_wa_id)
+                if pending_id and is_affirmative(frame.text):
+                    logger.info(
+                        "[voice-offer] affirmative '{}' → delivering {}",
+                        frame.text.strip(),
+                        pending_id,
+                    )
+                    asyncio.create_task(self._deliver(pending_id))
+                # pending_id already popped — cleared whether matched or not.
+
+        await self.push_frame(frame, direction)
+
+    async def _deliver(self, image_id: str) -> None:
+        """Upload (once) and send the image or tour link to the caller's chat."""
+        from voxtera.whatsapp.client import WhatsAppClient
+        from voxtera.whatsapp.image_catalog import get_tour_url, resolve_media_id
+
+        if not self._caller_wa_id:
+            return
+        try:
+            tour_url = get_tour_url(image_id)
+            async with aiohttp.ClientSession() as http:
+                client = WhatsAppClient(settings=self._settings, session=http)
+                if tour_url:
+                    await client.send_text(to=self._caller_wa_id, body=tour_url)
+                    logger.info(
+                        "[voice-offer] tour link sent: {} → {}", image_id, self._caller_wa_id
+                    )
+                else:
+                    media_id = await resolve_media_id(image_id, settings=self._settings)
+                    if media_id:
+                        await client.send_image(to=self._caller_wa_id, media_id=media_id)
+                        logger.info(
+                            "[voice-offer] image sent: {} → {}", image_id, self._caller_wa_id
+                        )
+                    else:
+                        logger.warning("[voice-offer] no media_id for {}", image_id)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[voice-offer] delivery failed for {}: {}", image_id, e)
 
 
 def _call_settings() -> Settings:
@@ -528,6 +643,9 @@ async def run_call_bot(
     processors.append(brain)
     if tracer is not None:
         processors.append(tracer)
+    # Strip [OFFER:<id>] from TTS text and send images/links on voice affirmatives.
+    # Always added — handles None caller_wa_id gracefully (tag still stripped).
+    processors.append(VoiceOfferProcessor(caller_wa_id=caller_wa_id, settings=settings))
     processors.append(tts)
     # Voice fillers: a short "mm, one moment" in the bot's own voice when the
     # answer hasn't started within FILLER_DELAY_SECS. Placed after TTS so it
