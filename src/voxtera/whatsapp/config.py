@@ -18,12 +18,25 @@ Optional:
     WHATSAPP_GRAPH_VERSION         Graph API version (default: v25.0)
     WHATSAPP_DEFAULT_REGION        seed region for the discovery concierge;
                                    empty/unset means "ask the guest first"
+    WHATSAPP_HANDSHAKE_IMAGE       absolute path to the image sent to the
+                                   guest's chat when a voice call connects
+                                   (the "visual handshake"). Defaults to
+                                   assets/images/grand_lumiere_whatsapp.jpg
+                                   relative to the repo root. Set to an empty
+                                   string to disable the feature entirely.
+    WHATSAPP_HANDSHAKE_CAPTION     optional caption shown below the handshake
+                                   image (default: empty — clean, no text).
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
+
+# Repo root — two levels up from this file (src/voxtera/whatsapp/config.py).
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_DEFAULT_HANDSHAKE_IMAGE = _REPO_ROOT / "assets" / "images" / "grand_lumiere_whatsapp.jpg"
 
 DEFAULT_GRAPH_VERSION = "v25.0"
 
@@ -74,6 +87,34 @@ def property_hotel_id() -> str | None:
     return (
         os.environ.get("WHATSAPP_HOTEL_ID") or os.environ.get("CONCIERGE_HOTEL_ID") or ""
     ).strip() or None
+
+
+def handshake_image_path() -> Path | None:
+    """Return the path of the visual-handshake image, or None if disabled.
+
+    Resolution order:
+      1. WHATSAPP_HANDSHAKE_IMAGE env var (absolute path or empty to disable)
+      2. Default: assets/images/grand_lumiere_whatsapp.jpg in the repo root.
+
+    Returns None when the feature is explicitly disabled (env var = "") or the
+    resolved path does not exist (so the call pipeline never blocks on a
+    missing file).
+    """
+    raw = os.environ.get("WHATSAPP_HANDSHAKE_IMAGE", None)
+    if raw is not None:
+        if not raw.strip():
+            return None  # explicitly disabled
+        path = Path(raw.strip())
+    else:
+        path = _DEFAULT_HANDSHAKE_IMAGE
+    if not path.exists():
+        return None
+    return path
+
+
+def handshake_caption() -> str:
+    """Optional caption for the visual-handshake image (default: empty)."""
+    return os.environ.get("WHATSAPP_HANDSHAKE_CAPTION", "").strip()
 
 
 def load_whatsapp_settings() -> WhatsAppSettings:

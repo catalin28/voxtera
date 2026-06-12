@@ -93,7 +93,13 @@ from voxtera.config import Settings, load_settings
 from voxtera.stt import _build_stt
 from voxtera.travel_agent_brain import TravelAgentBrain
 from voxtera.tts import _TTS_BUILDERS
-from voxtera.whatsapp.config import load_whatsapp_settings, property_hotel_id
+from voxtera.whatsapp.config import (
+    WhatsAppSettings,
+    handshake_caption,
+    handshake_image_path,
+    load_whatsapp_settings,
+    property_hotel_id,
+)
 
 # Audio rates: 16 kHz in (Silero VAD + STT expectation); 24 kHz out matches the
 # TTS providers' native rate — SmallWebRTC resamples to the WebRTC wire rate.
@@ -324,6 +330,43 @@ async def _finalize_call_record(context: CallContext) -> None:
         logger.debug("[whatsapp-call] call_record.finalize failed: {}", e)
 
 
+# Process-level cache for the handshake media_id so we upload the image once
+# and reuse the id for every subsequent call. Meta keeps uploaded media for 30
+# days; a server restart re-uploads (acceptable for demo/prod scale).
+_HANDSHAKE_MEDIA_ID: str | None = None
+
+
+async def _ensure_handshake_media_id(settings: WhatsAppSettings) -> str | None:
+    """Upload the visual-handshake image if not already cached; return its id.
+
+    Returns None when the feature is disabled (WHATSAPP_HANDSHAKE_IMAGE="") or
+    when the upload fails — callers treat None as "skip the image send".
+    """
+    global _HANDSHAKE_MEDIA_ID  # noqa: PLW0603
+
+    if _HANDSHAKE_MEDIA_ID:
+        return _HANDSHAKE_MEDIA_ID
+
+    img_path = handshake_image_path()
+    if img_path is None:
+        logger.debug("[whatsapp-call] visual handshake disabled or image not found")
+        return None
+
+    import aiohttp as _aiohttp
+    from voxtera.whatsapp.client import WhatsAppClient as _WAClient
+
+    try:
+        async with _aiohttp.ClientSession() as _http:
+            _wa = _WAClient(settings=settings, session=_http)
+            _HANDSHAKE_MEDIA_ID = await _wa.upload_media(img_path)
+        logger.info("[whatsapp-call] handshake image uploaded → media_id={}", _HANDSHAKE_MEDIA_ID)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[whatsapp-call] handshake image upload failed (feature disabled): {}", e)
+        return None
+
+    return _HANDSHAKE_MEDIA_ID
+
+
 async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     """Run a Pipecat voice pipeline for one WhatsApp call. Returns on hang-up.
 
@@ -504,14 +547,69 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
             logger.error("[whatsapp-call] trace forwarder start failed: {}", e)
             trace_forwarder = None
 
+    # Visual handshake: upload the hotel image once before the call connects so
+    # the media_id is ready to send the instant the WebRTC peer connects. Upload
+    # is best-effort — a failure logs a warning but never blocks the call.
+    #
+    # Why upload here instead of at server startup?  The WhatsAppClient (and its
+    # aiohttp session) is created per-call via the Pipecat WhatsAppClient in
+    # webhook.py, so we don't have a single long-lived client to pre-warm at boot.
+    # Uploading at call-setup time costs ~200 ms on the first call; subsequent
+    # calls using the same media_id (cached in _HANDSHAKE_MEDIA_ID) pay nothing.
+    wa_settings = load_whatsapp_settings()
+    _handshake_media_id = await _ensure_handshake_media_id(wa_settings)
+
     # Greet the caller the moment the WebRTC media connects, so they hear the
     # agent immediately instead of dead air. Queued on connect (not at build)
     # because the audio track isn't live until the peer connection is up.
     greeting_text = _greeting_text(hotel_scope)
 
+    # The caller's wa_id is not available inside run_call_bot directly — it
+    # lives on the SmallWebRTCConnection as the peer identifier set by Pipecat's
+    # WhatsApp client during SDP negotiation. We extract it from the connection's
+    # metadata if available, otherwise fall back to a no-op for the image send.
+    caller_wa_id: str | None = getattr(connection, "peer_id", None) or getattr(
+        connection, "wa_id", None
+    )
+
     @transport.event_handler("on_client_connected")
     async def _on_client_connected(_transport, _client) -> None:  # noqa: ANN001
         logger.info("[whatsapp-call] client connected (session={})", session_id)
+
+        # --- Visual Handshake -------------------------------------------------
+        # Send the hotel image into the guest's WhatsApp chat the instant the
+        # voice call connects. The image appears in the text thread while the
+        # voice greeting plays — the lobby literally materialises on screen.
+        # Runs as a fire-and-forget task so it never delays the voice greeting.
+        if _handshake_media_id and caller_wa_id:
+            import asyncio
+            import aiohttp as _aiohttp
+            from voxtera.whatsapp.client import WhatsAppClient as _WAClient
+
+            async def _send_handshake_image() -> None:
+                try:
+                    async with _aiohttp.ClientSession() as _http:
+                        _wa = _WAClient(settings=wa_settings, session=_http)
+                        await _wa.send_image(
+                            to=caller_wa_id,
+                            media_id=_handshake_media_id,
+                            caption=handshake_caption(),
+                        )
+                    logger.info(
+                        "[whatsapp-call] visual handshake sent to {} (session={})",
+                        caller_wa_id,
+                        session_id,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "[whatsapp-call] visual handshake failed for {}: {}",
+                        caller_wa_id,
+                        exc,
+                    )
+
+            asyncio.create_task(_send_handshake_image())
+        # ----------------------------------------------------------------------
+
         # Activate the lazy Gladia STT session. The _LazyConnectGladiaSTTService
         # skips its own connect and waits for an explicit lazy_connect() (normally
         # the STTRouter's job in the Daily pipeline). Without a router here, we
