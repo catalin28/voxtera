@@ -625,7 +625,8 @@ async def run_call_bot(
     # agent. Region comes from the WhatsApp channel config
     # (WHATSAPP_DEFAULT_REGION); empty → None → the concierge asks the caller
     # which region on the first turn.
-    wa_region = load_whatsapp_settings().default_region
+    wa_settings = load_whatsapp_settings()
+    wa_region = wa_settings.default_region
     brain = TravelAgentBrain(
         region=wa_region or None,
         session_id=session_id,
@@ -690,14 +691,14 @@ async def run_call_bot(
     # Affirmative "yes" → send the pending photo offer. MUST be before the
     # user aggregator (which consumes TranscriptionFrame); swallows the "yes"
     # so it never becomes a concierge turn.
-    processors.append(VoiceAffirmativeDetector(caller_wa_id=caller_wa_id, settings=settings))
+    processors.append(VoiceAffirmativeDetector(caller_wa_id=caller_wa_id, settings=wa_settings))
     processors.append(context_aggregator.user())
     processors.append(brain)
     if tracer is not None:
         processors.append(tracer)
     # Strip [OFFER:<id>] from TTS text and send images/links on voice affirmatives.
     # Always added — handles None caller_wa_id gracefully (tag still stripped).
-    processors.append(VoiceOfferProcessor(caller_wa_id=caller_wa_id, settings=settings))
+    processors.append(VoiceOfferProcessor(caller_wa_id=caller_wa_id, settings=wa_settings))
     processors.append(tts)
     # Voice fillers: a short "mm, one moment" in the bot's own voice when the
     # answer hasn't started within FILLER_DELAY_SECS. Placed after TTS so it
@@ -750,7 +751,6 @@ async def run_call_bot(
     # webhook.py, so we don't have a single long-lived client to pre-warm at boot.
     # Uploading at call-setup time costs ~200 ms on the first call; subsequent
     # calls using the same media_id (cached in _HANDSHAKE_MEDIA_ID) pay nothing.
-    wa_settings = load_whatsapp_settings()
     _handshake_media_id = await _ensure_handshake_media_id(wa_settings)
 
     # Greet the caller the moment the WebRTC media connects, so they hear the
