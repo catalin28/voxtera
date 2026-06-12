@@ -171,17 +171,23 @@ def _smart_turn_stop_secs(settings: Settings) -> float:
     return settings.smart_turn_stop_secs
 
 
-def _ambience_mixer():
+def _ambience_mixer(hotel_scope: str | None):
     """Optional lobby room-tone mixer for the call's output audio.
 
-    LOBBY_AMBIENCE_ENABLED=true mixes a faint, seamless room tone under (and
-    between) the bot's speech, so silences feel like a real place instead of
-    a dead line. Volume via LOBBY_AMBIENCE_VOLUME (default 0.06 — barely
-    audible on purpose: the WhatsApp leg has no echo cancellation, so loud
-    ambience would feed the caller's mic). File via LOBBY_AMBIENCE_FILE
-    (mono 16-bit WAV at the output rate; see scripts/generate_ambience.py).
+    Mixes a faint, seamless room tone under (and between) the bot's speech,
+    so silences feel like a real place instead of a dead line. MODE-AWARE
+    default: ON for the hotel concierge (it answers from a lobby — the
+    ambience itself masks the short thinking gaps), OFF for the travel
+    agent (which uses spoken fillers instead). LOBBY_AMBIENCE_ENABLED
+    overrides either way.
+
+    Volume via LOBBY_AMBIENCE_VOLUME (default 0.06 — barely audible on
+    purpose: the WhatsApp leg has no echo cancellation, so loud ambience
+    would feed the caller's mic). File via LOBBY_AMBIENCE_FILE (mono 16-bit
+    WAV at the output rate; see scripts/generate_ambience.py).
     """
-    enabled = os.environ.get("LOBBY_AMBIENCE_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    override = os.environ.get("LOBBY_AMBIENCE_ENABLED", "").strip().lower()
+    enabled = override in ("1", "true", "yes") if override else bool(hotel_scope)
     if not enabled:
         return None
     default_file = Path(__file__).resolve().parents[3] / "assets" / "audio" / "lobby_tone.wav"
@@ -213,15 +219,15 @@ def _build_filler_player(hotel_scope: str | None):
     with the bot's own voice by scripts/generate_fillers.py). Returns None
     when disabled or no clips are loadable — the call runs without fillers.
 
-    The trigger delay is mode-aware: hotel turns are fast (~1.5-2.5s), so the
-    filler only steps in on genuine spikes (2.0s); the travel agent's fuller
-    pipeline warrants the earlier 1.2s. FILLER_DELAY_SECS overrides both.
+    MODE-AWARE default: ON for the travel agent (fuller pipeline, 1.2s
+    trigger), OFF for the hotel concierge — its turns are fast and the lobby
+    ambience masks the short gaps more naturally than a spoken aside. When
+    explicitly enabled for hotel mode, the trigger waits 2.0s so only
+    genuine spikes get a filler. FILLERS_ENABLED / FILLER_DELAY_SECS
+    override the defaults.
     """
-    enabled = os.environ.get("FILLERS_ENABLED", "true").strip().lower() not in (
-        "0",
-        "false",
-        "no",
-    )
+    override = os.environ.get("FILLERS_ENABLED", "").strip().lower()
+    enabled = override not in ("0", "false", "no") if override else not hotel_scope
     if not enabled:
         return None
     default_delay = 2.0 if hotel_scope else 1.2
@@ -243,7 +249,9 @@ def _build_filler_player(hotel_scope: str | None):
         return None
 
 
-def _build_transport(connection: SmallWebRTCConnection) -> SmallWebRTCTransport:
+def _build_transport(
+    connection: SmallWebRTCConnection, hotel_scope: str | None
+) -> SmallWebRTCTransport:
     return SmallWebRTCTransport(
         webrtc_connection=connection,
         params=TransportParams(
@@ -254,7 +262,7 @@ def _build_transport(connection: SmallWebRTCConnection) -> SmallWebRTCTransport:
             audio_out_enabled=True,
             audio_out_sample_rate=_AUDIO_OUT_RATE,
             audio_out_channels=1,
-            audio_out_mixer=_ambience_mixer(),
+            audio_out_mixer=_ambience_mixer(hotel_scope),
         ),
     )
 
@@ -323,7 +331,10 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
         record_enabled = False
         logger.error("[whatsapp-call] call_record init failed (recording off): {}", e)
 
-    transport = _build_transport(connection)
+    # The demo mode decides the soundscape (ambience vs fillers), so the
+    # scope is resolved before the transport is built.
+    hotel_scope = property_hotel_id()
+    transport = _build_transport(connection, hotel_scope)
 
     # STT (single provider, as in local mode). needs_vad is False for Deepgram
     # (built-in VAD); otherwise we add a Silero VAD processor.
@@ -373,7 +384,6 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     # agent. Region comes from the WhatsApp channel config
     # (WHATSAPP_DEFAULT_REGION); empty → None → the concierge asks the caller
     # which region on the first turn.
-    hotel_scope = property_hotel_id()
     wa_region = load_whatsapp_settings().default_region
     brain = TravelAgentBrain(region=wa_region or None, session_id=session_id, hotel_id=hotel_scope)
 
