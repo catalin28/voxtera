@@ -38,6 +38,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import wave
 from collections import deque
 from datetime import UTC, datetime
 from pathlib import Path
@@ -292,6 +293,87 @@ def _validate_greetings_json(content: str) -> str | None:
 _CONCIERGE_SERVICE_URL = os.environ.get(
     "VOXTERA_CONCIERGE_SERVICE_URL", "http://127.0.0.1:8300"
 ).rstrip("/")
+
+# ── Voice-filler upload support ──────────────────────────────────────────────
+# Uploaded clips are normalised to the call transport's output format so the
+# concierge's clip loader never has to resample at call time.
+_FILLER_SAMPLE_RATE = 24000
+
+
+def _filler_transcode_to_call_format(raw: bytes) -> bytes:
+    """Decode an uploaded audio file to mono 16-bit PCM at 24 kHz.
+
+    WAV is handled in-process (numpy mono-mix + linear resample); anything
+    else (mp3, m4a, ogg…) goes through ffmpeg when it's installed. Raises on
+    undecodable input — the caller reports the message to the admin page.
+    """
+    import io
+    import shutil
+    import tempfile
+    import wave as _wave
+
+    import numpy as np
+
+    def _resample_mono(samples: "np.ndarray", rate: int) -> bytes:
+        if samples.ndim == 2:  # (frames, channels) → mono mix
+            samples = samples.mean(axis=1)
+        samples = samples.astype(np.float32)
+        if rate != _FILLER_SAMPLE_RATE and len(samples) > 1:
+            duration = len(samples) / rate
+            n_out = int(duration * _FILLER_SAMPLE_RATE)
+            x_out = np.linspace(0, len(samples) - 1, n_out)
+            samples = np.interp(x_out, np.arange(len(samples)), samples)
+        return np.clip(samples, -32768, 32767).astype(np.int16).tobytes()
+
+    try:
+        with _wave.open(io.BytesIO(raw), "rb") as w:
+            channels, width, rate = w.getnchannels(), w.getsampwidth(), w.getframerate()
+            frames = w.readframes(w.getnframes())
+        if width != 2:
+            raise ValueError(f"only 16-bit WAV supported in-process (got {8 * width}-bit)")
+        samples = np.frombuffer(frames, dtype=np.int16)
+        if channels > 1:
+            samples = samples.reshape(-1, channels)
+        return _resample_mono(samples, rate)
+    except _wave.Error:
+        pass  # not a WAV — fall through to ffmpeg
+
+    if not shutil.which("ffmpeg"):
+        raise ValueError("not a WAV file and ffmpeg is not installed on the server")
+    with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as src:
+        src.write(raw)
+        src_path = src.name
+    dst_path = src_path + ".wav"
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-y",
+                "-i",
+                src_path,
+                "-ac",
+                "1",
+                "-ar",
+                str(_FILLER_SAMPLE_RATE),
+                "-sample_fmt",
+                "s16",
+                dst_path,
+            ],
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+        with _wave.open(dst_path, "rb") as w:
+            return w.readframes(w.getnframes())
+    except subprocess.CalledProcessError as exc:
+        raise ValueError(exc.stderr.decode("utf-8", "replace")[:200] or "ffmpeg failed") from exc
+    finally:
+        for p in (src_path, dst_path):
+            with contextlib.suppress(OSError):
+                os.unlink(p)
+
 
 # Saved voice configs for the admin voice panel (per-property TTS choice).
 _VOICE_CONFIGS_PATH: Path = Path(__file__).resolve().parent / "admin" / "voice_configs.json"
@@ -2097,6 +2179,10 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_greetings_get()
         if self.path == "/api/admin/voice-prompts":
             return self._handle_admin_voice_prompts_list()
+        if self.path == "/api/admin/fillers":
+            return self._handle_fillers_get()
+        if self.path.startswith("/api/admin/fillers/audio"):
+            return self._handle_fillers_audio()
         if self.path == "/api/admin/voice-catalog":
             return self._handle_admin_voice_catalog()
         if self.path == "/api/voice/config" or self.path.startswith("/api/voice/config?"):
@@ -2227,6 +2313,12 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             return self._handle_admin_greetings_post()
         if self.path == "/api/admin/voice-prompts":
             return self._handle_admin_voice_prompts_save()
+        if self.path == "/api/admin/fillers":
+            return self._handle_fillers_save()
+        if self.path == "/api/admin/fillers/upload":
+            return self._handle_fillers_upload()
+        if self.path == "/api/admin/fillers/delete":
+            return self._handle_fillers_delete()
         if self.path == "/api/admin/voice-preview":
             return self._handle_admin_voice_preview()
         if self.path == "/api/voice/config":
@@ -5905,6 +5997,207 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         if not provided or provided != _ADMIN_TOKEN:
             self._send_json(401, {"error": "unauthorized"})
             return
+        self._send_json(200, {"ok": True})
+
+    # ── Voice fillers admin (assets/fillers + fillers.json) ──────────────
+    # The concierge service re-reads fillers.json at every call start, so
+    # saves here apply to the NEXT call with no restart.
+
+    def _fillers_dir(self) -> Path:
+        return (Path(__file__).resolve().parent.parent / "assets" / "fillers").resolve()
+
+    def _fillers_safe_path(self, rel: str) -> Path | None:
+        """Resolve a dir-relative clip path, refusing traversal escapes."""
+        base = self._fillers_dir()
+        try:
+            candidate = (base / rel).resolve()
+        except OSError:
+            return None
+        if not str(candidate).startswith(str(base) + os.sep):
+            return None
+        return candidate
+
+    def _fillers_read_config(self) -> dict:
+        config_path = self._fillers_dir() / "fillers.json"
+        try:
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            if isinstance(data.get("modes"), dict):
+                return data
+        except (OSError, json.JSONDecodeError):
+            pass
+        return {
+            "modes": {
+                "hotel": {"enabled": False, "delay_secs": 2.0, "clips": []},
+                "travel": {"enabled": True, "delay_secs": 1.2, "clips": []},
+            }
+        }
+
+    def _handle_fillers_get(self) -> None:
+        """GET /api/admin/fillers — config + every clip on disk (with duration)."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        base = self._fillers_dir()
+        clips = []
+        if base.is_dir():
+            for lang_dir in sorted(p for p in base.iterdir() if p.is_dir()):
+                for wav_path in sorted(lang_dir.glob("*.wav")):
+                    seconds = None
+                    try:
+                        with wave.open(str(wav_path), "rb") as w:
+                            if w.getframerate():
+                                seconds = round(w.getnframes() / w.getframerate(), 2)
+                    except (OSError, wave.Error):
+                        pass
+                    clips.append(
+                        {
+                            "path": f"{lang_dir.name}/{wav_path.name}",
+                            "language": lang_dir.name,
+                            "seconds": seconds,
+                            "bytes": wav_path.stat().st_size,
+                        }
+                    )
+        self._send_json(200, {"config": self._fillers_read_config(), "clips": clips})
+
+    def _handle_fillers_save(self) -> None:
+        """POST /api/admin/fillers — persist the per-mode selection/settings."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        modes_in = body.get("modes")
+        if not isinstance(modes_in, dict):
+            self._send_json(400, {"error": "modes_object_required"})
+            return
+        modes_out: dict = {}
+        for mode in ("hotel", "travel"):
+            m = modes_in.get(mode) or {}
+            try:
+                delay = max(0.3, min(10.0, float(m.get("delay_secs", 1.2))))
+            except (TypeError, ValueError):
+                self._send_json(400, {"error": f"bad_delay_secs_for_{mode}"})
+                return
+            clips = m.get("clips")
+            if not isinstance(clips, list) or not all(isinstance(c, str) for c in clips):
+                self._send_json(400, {"error": f"bad_clips_for_{mode}"})
+                return
+            # Silently drop selections whose file vanished — keeps the config
+            # consistent after deletes.
+            resolved = {c: self._fillers_safe_path(c) for c in clips}
+            clips = [c for c, p in resolved.items() if p is not None and p.is_file()]
+            modes_out[mode] = {
+                "enabled": bool(m.get("enabled")),
+                "delay_secs": delay,
+                "clips": clips,
+            }
+        config_path = self._fillers_dir() / "fillers.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps({"modes": modes_out}, indent=2) + "\n", encoding="utf-8")
+        self._send_json(200, {"ok": True, "modes": modes_out})
+
+    def _handle_fillers_audio(self) -> None:
+        """GET /api/admin/fillers/audio?file=en/01.wav[&token=] — preview playback.
+
+        Accepts ?token= like the call-audio endpoint (<audio> elements can't
+        set headers).
+        """
+        from urllib.parse import parse_qs, urlparse
+
+        provided = self.headers.get("X-Admin-Token", "")
+        qs = parse_qs(urlparse(self.path).query)
+        if not provided:
+            provided = (qs.get("token") or [""])[0]
+        if not _ADMIN_TOKEN or provided != _ADMIN_TOKEN:
+            self._send_json(401, {"error": "unauthorized"})
+            return
+        rel = (qs.get("file") or [""])[0]
+        path = self._fillers_safe_path(rel) if rel else None
+        if path is None or not path.is_file() or path.suffix != ".wav":
+            self._send_json(404, {"error": "clip_not_found"})
+            return
+        data = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/wav")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _handle_fillers_upload(self) -> None:
+        """POST /api/admin/fillers/upload — add a clip to the library.
+
+        Request: {"language": "en", "name": "warm-greeting", "data_b64": "..."}
+        Accepts WAV directly; anything else (mp3, m4a, …) is converted with
+        ffmpeg when available. Output is normalised to the call format
+        (mono 16-bit 24 kHz) so the loader never has to resample.
+        """
+        import base64
+        import re as _re
+
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        language = str(body.get("language") or "").strip().lower()
+        name = str(body.get("name") or "").strip().lower()
+        if not _re.fullmatch(r"[a-z]{2,8}", language):
+            self._send_json(400, {"error": "language_must_be_a_short_code"})
+            return
+        name = _re.sub(r"[^a-z0-9_-]+", "-", name).strip("-") or "clip"
+        try:
+            raw = base64.b64decode(body.get("data_b64") or "", validate=True)
+        except (ValueError, TypeError):
+            self._send_json(400, {"error": "bad_base64"})
+            return
+        if not raw or len(raw) > 10 * 1024 * 1024:
+            self._send_json(400, {"error": "file_empty_or_over_10mb"})
+            return
+        try:
+            pcm = _filler_transcode_to_call_format(raw)
+        except Exception as exc:  # noqa: BLE001 — report, don't crash
+            self._send_json(400, {"error": f"could_not_decode_audio: {exc}"})
+            return
+        if len(pcm) / 2 / _FILLER_SAMPLE_RATE > 6.0:
+            self._send_json(400, {"error": "clip_longer_than_6s"})
+            return
+        lang_dir = self._fillers_dir() / language
+        lang_dir.mkdir(parents=True, exist_ok=True)
+        target = lang_dir / f"{name}.wav"
+        n = 2
+        while target.exists():
+            target = lang_dir / f"{name}-{n}.wav"
+            n += 1
+        with wave.open(str(target), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(_FILLER_SAMPLE_RATE)
+            w.writeframes(pcm)
+        rel = f"{language}/{target.name}"
+        self._send_json(
+            200,
+            {"ok": True, "path": rel, "seconds": round(len(pcm) / 2 / _FILLER_SAMPLE_RATE, 2)},
+        )
+
+    def _handle_fillers_delete(self) -> None:
+        """POST /api/admin/fillers/delete — remove a clip from the library."""
+        ok, _ = self._admin_auth(require_daily=False)
+        if not ok:
+            return
+        body = self._read_json_body()
+        rel = str(body.get("file") or "")
+        path = self._fillers_safe_path(rel) if rel else None
+        if path is None or not path.is_file() or path.suffix != ".wav":
+            self._send_json(404, {"error": "clip_not_found"})
+            return
+        path.unlink()
+        # Prune the deleted clip from both modes' selections.
+        config = self._fillers_read_config()
+        for mode in config.get("modes", {}).values():
+            if isinstance(mode.get("clips"), list) and rel in mode["clips"]:
+                mode["clips"].remove(rel)
+        (self._fillers_dir() / "fillers.json").write_text(
+            json.dumps(config, indent=2) + "\n", encoding="utf-8"
+        )
         self._send_json(200, {"ok": True})
 
     def _handle_admin_voice_catalog(self) -> None:

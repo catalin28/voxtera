@@ -224,30 +224,43 @@ def _build_filler_player(hotel_scope: str | None):
     with the bot's own voice by scripts/generate_fillers.py). Returns None
     when disabled or no clips are loadable — the call runs without fillers.
 
-    MODE-AWARE default: ON for the travel agent (fuller pipeline, 1.2s
-    trigger), OFF for the hotel concierge — its turns are fast and the lobby
-    ambience masks the short gaps more naturally than a spoken aside. When
-    explicitly enabled for hotel mode, the trigger waits 2.0s so only
-    genuine spikes get a filler. FILLERS_ENABLED / FILLER_DELAY_SECS
-    override the defaults.
+    Settings come from ``assets/fillers/fillers.json`` (the admin "Voice
+    Fillers" page), read PER CALL — edits apply to the next call without a
+    restart. Per concierge mode (hotel/travel): enabled, delay, and which
+    clips are active. FILLERS_ENABLED / FILLER_DELAY_SECS env vars override
+    the file (emergency switches).
     """
-    override = os.environ.get("FILLERS_ENABLED", "").strip().lower()
-    enabled = override not in ("0", "false", "no") if override else not hotel_scope
-    if not enabled:
-        return None
-    default_delay = 2.0 if hotel_scope else 1.2
     try:
-        delay = float(os.environ.get("FILLER_DELAY_SECS", "") or default_delay)
-    except ValueError:
-        delay = default_delay
-    try:
-        from voxtera.fillers import DEFAULT_FILLER_DIR, FillerPlayer, load_filler_clips
+        from voxtera.fillers import (
+            DEFAULT_FILLER_DIR,
+            FillerPlayer,
+            load_filler_clips,
+            load_filler_settings,
+        )
 
         clips_dir = os.environ.get("FILLER_DIR", "").strip() or DEFAULT_FILLER_DIR
-        clips = load_filler_clips(clips_dir, sample_rate=_AUDIO_OUT_RATE)
-        if not clips:
-            logger.warning("[whatsapp-call] no filler clips in {} — fillers off", clips_dir)
+        mode = "hotel" if hotel_scope else "travel"
+        settings = load_filler_settings(mode, clips_dir)
+
+        override = os.environ.get("FILLERS_ENABLED", "").strip().lower()
+        enabled = override not in ("0", "false", "no") if override else settings["enabled"]
+        if not enabled:
             return None
+        try:
+            delay = float(os.environ.get("FILLER_DELAY_SECS", "") or settings["delay_secs"])
+        except ValueError:
+            delay = settings["delay_secs"]
+
+        clips = load_filler_clips(clips_dir, sample_rate=_AUDIO_OUT_RATE, only=settings["clips"])
+        if not clips:
+            logger.warning("[whatsapp-call] no filler clips selected/loadable — fillers off")
+            return None
+        logger.info(
+            "[whatsapp-call] fillers on (mode={}, delay={}s, clips={})",
+            mode,
+            delay,
+            {k: len(v) for k, v in clips.items()},
+        )
         return FillerPlayer(clips, sample_rate=_AUDIO_OUT_RATE, delay_secs=delay)
     except Exception as e:  # noqa: BLE001 — fillers must never block a call
         logger.warning("[whatsapp-call] fillers unavailable: {}", e)

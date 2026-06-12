@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voxtera — Voice Fillers</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0f1117; color: #e4e4e7; min-height: 100vh;
+}
+header {
+  background: #1a1b23; border-bottom: 1px solid #2a2b35; padding: 14px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+header h1 { font-size: 18px; font-weight: 600; color: #fff; }
+header a { color: #9ca3af; text-decoration: none; font-size: 13px; }
+header a:hover { color: #e4e4e7; }
+.wrap { max-width: 1060px; margin: 0 auto; padding: 24px; }
+.hint { color: #9ca3af; font-size: 13px; margin-bottom: 20px; line-height: 1.5; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+.panel {
+  background: #1a1b23; border: 1px solid #2a2b35; border-radius: 10px; padding: 18px;
+}
+.panel h2 { font-size: 15px; color: #fff; margin-bottom: 4px; }
+.panel .sub { color: #9ca3af; font-size: 12px; margin-bottom: 14px; }
+.row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.row label { font-size: 13px; color: #c4c7cf; }
+input[type="number"] {
+  width: 80px; background: #0f1117; color: #e4e4e7; border: 1px solid #2a2b35;
+  border-radius: 6px; padding: 6px 8px; font-size: 13px;
+}
+.switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute; cursor: pointer; inset: 0; background: #2a2b35;
+  border-radius: 22px; transition: .2s;
+}
+.slider:before {
+  content: ""; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px;
+  background: #9ca3af; border-radius: 50%; transition: .2s;
+}
+.switch input:checked + .slider { background: #2563eb; }
+.switch input:checked + .slider:before { transform: translateX(18px); background: #fff; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: #9ca3af; font-weight: 500; padding: 6px 8px; border-bottom: 1px solid #2a2b35; }
+td { padding: 7px 8px; border-bottom: 1px solid #22232c; }
+tr:hover td { background: #20212b; }
+.lang-tag {
+  display: inline-block; background: #2a2b35; color: #c4c7cf; border-radius: 4px;
+  padding: 1px 7px; font-size: 11px; text-transform: uppercase;
+}
+button {
+  background: #2563eb; color: #fff; border: 0; border-radius: 6px;
+  padding: 8px 16px; font-size: 13px; cursor: pointer;
+}
+button:hover { background: #1d4ed8; }
+button.secondary { background: #2a2b35; color: #c4c7cf; }
+button.secondary:hover { background: #34353f; }
+button.tiny { padding: 3px 9px; font-size: 12px; }
+button.danger { background: transparent; color: #f87171; border: 1px solid #3a2b2b; }
+button.danger:hover { background: #2a1d1d; }
+.upload { border: 1px dashed #2a2b35; border-radius: 10px; padding: 16px; margin-top: 20px; }
+.upload h2 { font-size: 14px; color: #fff; margin-bottom: 10px; }
+input[type="file"], input[type="text"], select {
+  background: #0f1117; color: #e4e4e7; border: 1px solid #2a2b35; border-radius: 6px;
+  padding: 7px 9px; font-size: 13px;
+}
+#status {
+  position: fixed; bottom: 20px; right: 20px; background: #1a1b23; color: #e4e4e7;
+  border: 1px solid #2a2b35; border-radius: 8px; padding: 10px 16px; font-size: 13px;
+  opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 420px;
+}
+#status.show { opacity: 1; }
+#status.err { border-color: #7f1d1d; color: #fca5a5; }
+.savebar { margin-top: 20px; display: flex; gap: 10px; align-items: center; }
+.dirty-note { color: #fbbf24; font-size: 12px; display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🕰️ Voice Fillers</h1>
+  <a href="/admin/index.html">← Back to Admin</a>
+</header>
+<div class="wrap">
+  <p class="hint">
+    Short clips the bot speaks (in its own voice) when an answer is slow to start —
+    "mm, one moment". Pick which clips each concierge uses, set when they trigger,
+    or switch them off. Saves apply from the <strong>next call</strong> — no restart.
+    Clips are matched to the caller's detected language, falling back to English.
+  </p>
+
+  <div class="grid">
+    <div class="panel" id="panel-hotel"></div>
+    <div class="panel" id="panel-travel"></div>
+  </div>
+
+  <div class="upload">
+    <h2>Upload a new clip</h2>
+    <div class="row">
+      <input type="file" id="up-file" accept=".wav,.mp3,.m4a,.ogg,audio/*">
+      <select id="up-lang">
+        <option value="en">English</option><option value="tr">Turkish</option>
+        <option value="fr">French</option><option value="ro">Romanian</option>
+        <option value="de">German</option><option value="es">Spanish</option>
+        <option value="ru">Russian</option>
+      </select>
+      <input type="text" id="up-name" placeholder="name (e.g. soft-hmm)" size="18">
+      <button id="up-btn">Upload</button>
+    </div>
+    <p class="sub">Max 6 seconds. Converted automatically to the call format (mono 24 kHz).
+    Keep it quiet and unhurried — it plays as an aside, not an announcement.</p>
+  </div>
+
+  <div class="savebar">
+    <button id="save-btn">Save settings</button>
+    <span class="dirty-note" id="dirty">unsaved changes</span>
+  </div>
+</div>
+<div id="status"></div>
+
+<script>
+function getCookie(name) {
+  const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+  return m ? decodeURIComponent(m.pop()) : '';
+}
+const TOKEN = getCookie('voxtera_admin_token') || sessionStorage.getItem('voxtera_admin_token');
+if (!TOKEN) window.location.href = '/admin/index.html';
+
+const MODE_TITLES = {
+  hotel:  ['🏨 Hotel concierge', 'Fast turns — lobby ambience usually covers the gaps. Enable only if you want spoken asides too.'],
+  travel: ['🌍 Travel agent', 'Fuller pipeline — a spoken "one moment" bridges the longer waits.'],
+};
+
+let state = { config: { modes: {} }, clips: [] };
+let dirty = false;
+
+function setDirty(d) {
+  dirty = d;
+  document.getElementById('dirty').style.display = d ? 'inline' : 'none';
+}
+
+function showStatus(msg, isErr) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'show' + (isErr ? ' err' : '');
+  setTimeout(() => { el.className = el.className.replace('show', ''); }, isErr ? 6000 : 2500);
+}
+
+function modeSettings(mode) {
+  const m = state.config.modes[mode] || {};
+  return {
+    enabled: !!m.enabled,
+    delay_secs: typeof m.delay_secs === 'number' ? m.delay_secs : (mode === 'hotel' ? 2.0 : 1.2),
+    clips: Array.isArray(m.clips) ? m.clips : [],
+  };
+}
+
+function render() {
+  for (const mode of ['hotel', 'travel']) {
+    const s = modeSettings(mode);
+    const [title, sub] = MODE_TITLES[mode];
+    const rows = state.clips.map(c => `
+      <tr>
+        <td><input type="checkbox" data-mode="${mode}" data-clip="${c.path}"
+              ${s.clips.includes(c.path) ? 'checked' : ''}></td>
+        <td><span class="lang-tag">${c.language}</span></td>
+        <td>${c.path.split('/').pop()}</td>
+        <td>${c.seconds ? c.seconds + 's' : '—'}</td>
+        <td>
+          <button class="tiny secondary" data-play="${c.path}">▶</button>
+          <button class="tiny danger" data-del="${c.path}">✕</button>
+        </td>
+      </tr>`).join('');
+    document.getElementById('panel-' + mode).innerHTML = `
+      <h2>${title}</h2>
+      <p class="sub">${sub}</p>
+      <div class="row">
+        <label class="switch">
+          <input type="checkbox" data-enable="${mode}" ${s.enabled ? 'checked' : ''}>
+          <span class="slider"></span>
+        </label>
+        <label>Fillers enabled</label>
+        <label style="margin-left:auto">Trigger after</label>
+        <input type="number" min="0.3" max="10" step="0.1" value="${s.delay_secs}" data-delay="${mode}">
+        <label>s</label>
+      </div>
+      <table>
+        <tr><th></th><th>Lang</th><th>Clip</th><th>Len</th><th></th></tr>
+        ${rows || '<tr><td colspan="5" style="color:#9ca3af">No clips yet — upload one below.</td></tr>'}
+      </table>`;
+  }
+  bindEvents();
+}
+
+function collect() {
+  const modes = {};
+  for (const mode of ['hotel', 'travel']) {
+    modes[mode] = {
+      enabled: document.querySelector(`[data-enable="${mode}"]`).checked,
+      delay_secs: parseFloat(document.querySelector(`[data-delay="${mode}"]`).value) || 1.2,
+      clips: [...document.querySelectorAll(`input[data-mode="${mode}"]:checked`)]
+        .map(el => el.dataset.clip),
+    };
+  }
+  return { modes };
+}
+
+let player = null;
+function bindEvents() {
+  document.querySelectorAll('[data-play]').forEach(btn => btn.onclick = () => {
+    if (player) player.pause();
+    player = new Audio('/api/admin/fillers/audio?file=' +
+      encodeURIComponent(btn.dataset.play) + '&token=' + encodeURIComponent(TOKEN));
+    player.play();
+  });
+  document.querySelectorAll('[data-del]').forEach(btn => btn.onclick = async () => {
+    if (!confirm('Delete ' + btn.dataset.del + ' from the library?')) return;
+    const res = await fetch('/api/admin/fillers/delete', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: btn.dataset.del }),
+    });
+    if (res.ok) { showStatus('Deleted.'); await load(); }
+    else showStatus('Delete failed: ' + (await res.json()).error, true);
+  });
+  document.querySelectorAll('input[data-mode], [data-enable], [data-delay]')
+    .forEach(el => el.onchange = () => setDirty(true));
+}
+
+async function load() {
+  const res = await fetch('/api/admin/fillers', { headers: { 'X-Admin-Token': TOKEN } });
+  if (!res.ok) { showStatus('Could not load filler config', true); return; }
+  state = await res.json();
+  setDirty(false);
+  render();
+}
+
+document.getElementById('save-btn').onclick = async () => {
+  const res = await fetch('/api/admin/fillers', {
+    method: 'POST',
+    headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify(collect()),
+  });
+  if (res.ok) { showStatus('Saved — applies from the next call.'); setDirty(false); await load(); }
+  else showStatus('Save failed: ' + (await res.json()).error, true);
+};
+
+document.getElementById('up-btn').onclick = async () => {
+  const file = document.getElementById('up-file').files[0];
+  if (!file) { showStatus('Choose a file first.', true); return; }
+  const name = document.getElementById('up-name').value ||
+    file.name.replace(/\.[^.]+$/, '');
+  const buf = await file.arrayBuffer();
+  let bin = ''; const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  const res = await fetch('/api/admin/fillers/upload', {
+    method: 'POST',
+    headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      language: document.getElementById('up-lang').value,
+      name,
+      data_b64: btoa(bin),
+    }),
+  });
+  const data = await res.json();
+  if (res.ok) {
+    showStatus(`Uploaded ${data.path} (${data.seconds}s). Tick it for a concierge and save.`);
+    document.getElementById('up-file').value = '';
+    document.getElementById('up-name').value = '';
+    await load();
+  } else showStatus('Upload failed: ' + data.error, true);
+};
+
+load();
+</script>
+</body>
+</html>

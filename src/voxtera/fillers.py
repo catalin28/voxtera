@@ -19,15 +19,19 @@ They're loaded once and pushed as ``TTSAudioRawFrame`` chunks, which keeps
 every downstream behaviour consistent: the call recorder captures them as
 bot audio and the leakage guard treats them as bot speech.
 
-Env knobs (read by the call bot at wiring time):
-    FILLERS_ENABLED       default "true"
-    FILLER_DELAY_SECS     default "1.2"
-    FILLER_DIR            default "assets/fillers" (repo-relative)
+Configuration lives in ``assets/fillers/fillers.json`` (editable from the
+admin "Voice Fillers" page) and is re-read at every call start, so changes
+take effect on the NEXT call with no restart. Per concierge mode (``hotel`` /
+``travel``): enabled, trigger delay, and which clips are active. Env knobs
+(FILLERS_ENABLED / FILLER_DELAY_SECS / FILLER_DIR) still override the file —
+emergency switches, not the normal workflow.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
 import random
 import wave
 from pathlib import Path
@@ -53,26 +57,73 @@ _CHUNK_MS = 20
 # Repo root (two parents up from src/voxtera/).
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FILLER_DIR = _REPO_ROOT / "assets" / "fillers"
+CONFIG_FILE_NAME = "fillers.json"
+
+# Fallbacks when fillers.json is missing/unreadable (matches the historical
+# env-only behaviour: travel fills early, hotel only on genuine spikes).
+_DEFAULT_MODE_SETTINGS = {
+    "hotel": {"enabled": False, "delay_secs": 2.0, "clips": None},  # None = all
+    "travel": {"enabled": True, "delay_secs": 1.2, "clips": None},
+}
+
+
+def load_filler_settings(
+    mode: str,
+    directory: Path | str = DEFAULT_FILLER_DIR,
+) -> dict:
+    """Read one mode's settings from ``fillers.json`` (admin-managed).
+
+    Returns ``{"enabled": bool, "delay_secs": float, "clips": list[str]|None}``
+    where ``clips`` is a list of paths relative to the filler dir (``None``
+    means "use everything on disk"). Malformed files degrade to the defaults
+    — the call must never fail because of a bad config edit.
+    """
+    defaults = dict(_DEFAULT_MODE_SETTINGS.get(mode) or _DEFAULT_MODE_SETTINGS["travel"])
+    config_path = Path(directory) / CONFIG_FILE_NAME
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        settings = (data.get("modes") or {}).get(mode) or {}
+    except (OSError, json.JSONDecodeError, AttributeError) as e:
+        logger.warning("[fillers] could not read {} ({}) — using defaults", config_path, e)
+        return defaults
+    out = dict(defaults)
+    if isinstance(settings.get("enabled"), bool):
+        out["enabled"] = settings["enabled"]
+    with contextlib.suppress(KeyError, TypeError, ValueError):
+        out["delay_secs"] = float(settings["delay_secs"])
+    clips = settings.get("clips")
+    if isinstance(clips, list):
+        out["clips"] = [str(c) for c in clips if isinstance(c, str)]
+    return out
 
 
 def load_filler_clips(
     directory: Path | str = DEFAULT_FILLER_DIR,
     *,
     sample_rate: int,
+    only: list[str] | None = None,
 ) -> dict[str, list[bytes]]:
     """Load filler WAVs grouped by language subdirectory.
 
     Layout: ``<dir>/<lang>/*.wav`` (mono 16-bit, at the transport's output
-    sample rate — ``generate_fillers.py`` produces exactly this). Files with
-    a mismatched rate or channel count are skipped with a warning rather
-    than resampled — a wrong-pitch filler is worse than none.
+    sample rate — ``generate_fillers.py`` and the admin upload produce
+    exactly this). Files with a mismatched rate or channel count are skipped
+    with a warning rather than resampled — a wrong-pitch filler is worse
+    than none.
+
+    Args:
+        only: Optional allow-list of dir-relative paths ("en/01.wav") — the
+            admin page's per-concierge clip selection. None loads everything.
     """
     clips: dict[str, list[bytes]] = {}
     base = Path(directory)
     if not base.is_dir():
         return clips
+    selected = {s.strip() for s in only} if only is not None else None
     for lang_dir in sorted(p for p in base.iterdir() if p.is_dir()):
         for wav_path in sorted(lang_dir.glob("*.wav")):
+            if selected is not None and f"{lang_dir.name}/{wav_path.name}" not in selected:
+                continue
             try:
                 with wave.open(str(wav_path), "rb") as wav:
                     if wav.getnchannels() != 1 or wav.getsampwidth() != 2:

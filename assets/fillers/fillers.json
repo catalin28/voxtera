@@ -1,0 +1,38 @@
+{
+  "modes": {
+    "hotel": {
+      "enabled": false,
+      "delay_secs": 2.0,
+      "clips": [
+        "en/01.wav",
+        "en/02.wav",
+        "en/03.wav",
+        "en/04.wav",
+        "tr/01.wav",
+        "tr/02.wav",
+        "tr/03.wav",
+        "fr/01.wav",
+        "fr/02.wav",
+        "ro/01.wav",
+        "ro/02.wav"
+      ]
+    },
+    "travel": {
+      "enabled": true,
+      "delay_secs": 1.2,
+      "clips": [
+        "en/01.wav",
+        "en/02.wav",
+        "en/03.wav",
+        "en/04.wav",
+        "tr/01.wav",
+        "tr/02.wav",
+        "tr/03.wav",
+        "fr/01.wav",
+        "fr/02.wav",
+        "ro/01.wav",
+        "ro/02.wav"
+      ]
+    }
+  }
+}

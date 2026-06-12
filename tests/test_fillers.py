@@ -161,3 +161,52 @@ async def test_vad_stop_without_transcript_never_arms() -> None:
         frames_to_send=[VADUserStoppedSpeakingFrame(), SleepFrame(sleep=0.3)],
     )
     assert _filler_audio(down) == b""
+
+
+def test_filler_settings_read_from_json(tmp_path) -> None:
+    from voxtera.fillers import load_filler_settings
+
+    (tmp_path / "fillers.json").write_text(
+        '{"modes": {"hotel": {"enabled": true, "delay_secs": 3.5, "clips": ["en/x.wav"]},'
+        ' "travel": {"enabled": false, "delay_secs": 0.9, "clips": []}}}'
+    )
+    hotel = load_filler_settings("hotel", tmp_path)
+    assert hotel == {"enabled": True, "delay_secs": 3.5, "clips": ["en/x.wav"]}
+    travel = load_filler_settings("travel", tmp_path)
+    assert travel["enabled"] is False and travel["clips"] == []
+
+
+def test_filler_settings_defaults_when_missing_or_broken(tmp_path) -> None:
+    from voxtera.fillers import load_filler_settings
+
+    # No file at all → historical defaults.
+    assert load_filler_settings("hotel", tmp_path)["enabled"] is False
+    assert load_filler_settings("travel", tmp_path) == {
+        "enabled": True,
+        "delay_secs": 1.2,
+        "clips": None,
+    }
+    # Broken JSON → same defaults, no exception.
+    (tmp_path / "fillers.json").write_text("{not json")
+    assert load_filler_settings("travel", tmp_path)["enabled"] is True
+
+
+def test_clip_selection_filters_loaded_files(tmp_path) -> None:
+    for lang, names in {"en": ["01", "02"], "tr": ["01"]}.items():
+        d = tmp_path / lang
+        d.mkdir()
+        for n in names:
+            with wave.open(str(d / f"{n}.wav"), "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(SR)
+                w.writeframes(b"\x00\x01" * 100)
+
+    everything = load_filler_clips(tmp_path, sample_rate=SR)
+    assert {k: len(v) for k, v in everything.items()} == {"en": 2, "tr": 1}
+
+    picked = load_filler_clips(tmp_path, sample_rate=SR, only=["en/02.wav"])
+    assert {k: len(v) for k, v in picked.items()} == {"en": 1}
+
+    nothing = load_filler_clips(tmp_path, sample_rate=SR, only=[])
+    assert nothing == {}
