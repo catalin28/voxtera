@@ -118,26 +118,86 @@ async def run_concierge(
 
 
 async def _process_message(app: web.Application, msg: dict[str, str]) -> None:
-    """Run the concierge for one inbound message and reply. Best-effort."""
+    """Run the concierge for one inbound message and reply. Best-effort.
+
+    Photo-offer flow (two-turn):
+      Turn 1 — Concierge describes a facility that has a catalog image:
+               LLM naturally asks "Would you like to see a photo?" and appends
+               [OFFER:<id>] to its reply. We strip the tag, save the pending
+               offer for this wa_id, and send the clean text.
+      Turn 2 — Guest replies with a clear affirmative ("yes", "oui", "da" …):
+               We detect it, skip the concierge entirely, send the image, done.
+               Any other reply clears the pending offer and goes through normally.
+    """
     settings: WhatsAppSettings = app[KEY_SETTINGS]
     client: WhatsAppClient = app[KEY_CLIENT]
     deps: dict[str, Any] = app[KEY_DEPS]
     wa_id = msg["from"]
+    text = msg["text"]
 
     try:
         await client.mark_read(message_id=msg["id"])
     except Exception as e:  # noqa: BLE001 — read receipt is non-critical
         logger.debug("mark_read failed for {}: {}", msg["id"], e)
 
+    # -----------------------------------------------------------------------
+    # Step 1 — Check for a pending photo offer + affirmative reply
+    # -----------------------------------------------------------------------
+    try:
+        from voxtera.whatsapp.image_catalog import (
+            clear_pending_offer,
+            extract_offer_tag,
+            get_tour_url,
+            is_affirmative,
+            pop_pending_offer,
+            resolve_media_id,
+            set_pending_offer,
+        )
+
+        pending_id = pop_pending_offer(wa_id)
+        if pending_id and is_affirmative(text):
+            # Check for tour URL first (virtual tour entries have no image).
+            tour_url = get_tour_url(pending_id)
+            if tour_url:
+                try:
+                    await client.send_text(to=wa_id, body=tour_url)
+                    logger.info(
+                        "[image-catalog] tour link sent for {} to {}", pending_id, wa_id
+                    )
+                    return
+                except Exception as tour_err:  # noqa: BLE001
+                    logger.warning(
+                        "[image-catalog] send tour_url failed {}: {}", pending_id, tour_err
+                    )
+            else:
+                # Regular image offer — upload once, send.
+                media_id = await resolve_media_id(pending_id, settings=settings)
+                if media_id:
+                    try:
+                        await client.send_image(to=wa_id, media_id=media_id)
+                        logger.info(
+                            "[image-catalog] offer accepted — sent {} to {}", pending_id, wa_id
+                        )
+                        return  # no text reply needed after an image
+                    except Exception as img_err:  # noqa: BLE001
+                        logger.warning(
+                            "[image-catalog] send_image failed for offer {}: {}", pending_id, img_err
+                        )
+            # Send or upload failed — fall through to concierge as normal.
+    except Exception as e:  # noqa: BLE001 — offer logic must never break the pipeline
+        logger.warning("[image-catalog] offer check failed: {}", e)
+        pending_id = None
+
+    # -----------------------------------------------------------------------
+    # Step 2 — Run the concierge for a normal answer
+    # -----------------------------------------------------------------------
     try:
         from voxtera.whatsapp.config import property_hotel_id
 
         result = await run_concierge(
             deps=deps,
-            utterance=msg["text"],
+            utterance=text,
             session_id=wa_id,
-            # Travel↔hotel demo switch: hotel scope → answer from the
-            # property's own guide; unset → travel agent (default).
             hotel_id=property_hotel_id(),
             region=settings.default_region,
         )
@@ -148,24 +208,23 @@ async def _process_message(app: web.Application, msg: dict[str, str]) -> None:
         logger.exception("Concierge failed for {}: {}", wa_id, e)
         answer = "Sorry — something went wrong on our side. Please try again."
 
-    # Extract any [IMG:<id>] tags the LLM embedded in the answer, strip them
-    # from the text, then send matching images before the text reply so the
-    # guest sees the photo first, then reads the answer below it.
+    # -----------------------------------------------------------------------
+    # Step 3 — Extract [OFFER:<id>] tag the LLM embedded; save pending offer
+    # -----------------------------------------------------------------------
     try:
-        from voxtera.whatsapp.image_catalog import extract_image_tags, resolve_media_id
+        answer, offered_id = extract_offer_tag(answer)
+        if offered_id:
+            set_pending_offer(wa_id, offered_id)
+            logger.info("[image-catalog] offer pending: {} → {}", wa_id, offered_id)
+        else:
+            # Guest asked something unrelated — clear any stale pending offer.
+            clear_pending_offer(wa_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[image-catalog] offer tag extraction failed: {}", e)
 
-        answer, image_ids = extract_image_tags(answer)
-        for img_id in image_ids:
-            media_id = await resolve_media_id(img_id, settings=settings)
-            if media_id:
-                try:
-                    await client.send_image(to=wa_id, media_id=media_id)
-                    logger.info("[image-catalog] sent image {} to {}", img_id, wa_id)
-                except Exception as img_err:  # noqa: BLE001
-                    logger.warning("[image-catalog] send_image failed {}: {}", img_id, img_err)
-    except Exception as e:  # noqa: BLE001 — catalog must never block the text reply
-        logger.warning("[image-catalog] tag extraction failed: {}", e)
-
+    # -----------------------------------------------------------------------
+    # Step 4 — Send the (clean) text reply
+    # -----------------------------------------------------------------------
     try:
         await client.send_text(to=wa_id, body=answer)
         logger.info("Replied to {} ({} chars)", wa_id, len(answer))

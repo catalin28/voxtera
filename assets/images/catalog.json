@@ -10,5 +10,21 @@
       "path": "assets/images/grand_lumiere_whatsapp.jpg",
       "description": "Grand Lumière branded welcome card — elegant lobby with hotel name and tagline"
     }
+    ,
+    {
+      "id": "rooftop",
+      "path": "assets/images/la_petite_terrasse_whatsapp.jpg",
+      "description": "La Petite Terrasse — rooftop lounge and infinity pool at golden hour, champagne seating, panoramic city views"
+    },
+    {
+      "id": "bar",
+      "path": "assets/images/bar_lumiere_whatsapp.jpg",
+      "description": "Bar Lumière — intimate jazz cocktail bar in the lobby, crystal chandeliers, marble counter, live jazz every evening from 6pm"
+    },
+    {
+      "id": "virtual_tour",
+      "tour_url": "https://www.kempinski.com/en/hotel-corvinus-budapest/virtual-tour",
+      "description": "Interactive 3D virtual tour of the entire hotel — guests can walk through the lobby, rooms, spa, and rooftop from their phone"
+    }
   ]
 }

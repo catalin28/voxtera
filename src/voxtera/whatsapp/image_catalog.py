@@ -9,29 +9,31 @@ Workflow
 --------
 1. The catalog is loaded and its entries injected into the LLM render system
    prompt so the model knows which images exist and when to surface them.
-2. The LLM signals "show this image" by embedding ``[IMG:<id>]`` anywhere in
-   its reply text (typically at the end, per prompt instructions).
-3. ``extract_image_tags()`` strips those tags from the text and returns the
-   matched image ids.
-4. ``resolve_media_id()`` uploads the local file to the WhatsApp media store
-   (once per image per process lifetime) and returns the cached ``media_id``
-   for sending.
+2. When the concierge describes a facility it has a photo of, it naturally asks
+   the guest "Would you like to see a photo?" and embeds a hidden ``[OFFER:<id>]``
+   tag at the end of the reply.
+3. ``extract_offer_tag()`` strips the tag and returns the image id. The webhook
+   saves it as a pending offer for that wa_id.
+4. On the guest's next message: ``is_affirmative()`` checks for a yes-like reply
+   (multilingual). If affirmative and a pending offer exists, the image is sent
+   immediately — no concierge call needed.
+5. ``resolve_media_id()`` uploads the local file to the WhatsApp media store
+   once per image per process lifetime and returns the cached ``media_id``.
 
 Catalog JSON schema
 -------------------
 {
   "images": [
     {
-      "id":          "lobby",                           // unique key used in [IMG:lobby]
-      "path":        "assets/images/hotel_hallway.jpg", // relative to repo root
-      "description": "Grand Lumière main lobby — ..."   // shown to the LLM
+      "id":          "restaurant",
+      "path":        "assets/images/restaurant.jpg",
+      "description": "Le Lumière restaurant — candlelit tables, floor-to-ceiling windows"
     },
     ...
   ]
 }
 
-Paths are relative to the repo root (two parents above this file's package).
-Absolute paths are also accepted.
+Paths are relative to the repo root. Absolute paths are also accepted.
 """
 
 from __future__ import annotations
@@ -49,7 +51,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _CATALOG_PATH = _REPO_ROOT / "assets" / "images" / "catalog.json"
 
 # ---------------------------------------------------------------------------
-# Hot-reload cache
+# Hot-reload catalog loader
 # ---------------------------------------------------------------------------
 _catalog_cache: tuple[float, list[dict[str, Any]]] | None = None
 
@@ -68,7 +70,6 @@ def _load_catalog() -> list[dict[str, Any]]:
     try:
         data = json.loads(_CATALOG_PATH.read_bytes().decode("utf-8"))
         entries: list[dict[str, Any]] = data.get("images", [])
-        # Resolve each path relative to repo root; filter missing files.
         valid = []
         for entry in entries:
             raw_path = entry.get("path", "")
@@ -86,57 +87,134 @@ def _load_catalog() -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# System prompt block
+# System prompt block (injected into LLM render prompt)
 # ---------------------------------------------------------------------------
-_IMG_TAG_RULE = (
-    "IMAGES — You can show the guest a photo by placing [IMG:<id>] "
-    "at the very END of your reply, after the last sentence. "
-    "Use it only when a photo genuinely adds value (showing a space or view the guest asked about). "
-    "Use at most one image per reply. Omit entirely if no image adds clear value. "
-    "Never place [IMG:…] mid-sentence. Available images:"
-)
+_OFFER_TAG_RULE = """\
+PHOTO OFFERS — When you describe a hotel space or facility that has a photo in \
+the list below, end your reply by naturally offering to show it \
+(e.g. "Would you like to see a photo?" or "Shall I show you a picture?" — \
+vary the phrasing, keep it brief, match the guest's language). \
+Then append the hidden tag [OFFER:<id>] at the very end (after all visible text). \
+Use at most one offer per reply. Never mention the tag to the guest. \
+Only offer when you have genuinely described the space — not for every reply. \
+Available photos:\
+"""
 
 
 def system_prompt_block() -> str:
     """Return the image catalog block to append to the LLM render system prompt.
 
-    Returns an empty string when the catalog is empty (feature disabled or no
-    images configured) so the prompt is unchanged in that case.
+    Returns an empty string when the catalog is empty so the prompt is unchanged.
     """
     entries = _load_catalog()
     if not entries:
         return ""
 
-    lines = [_IMG_TAG_RULE]
+    lines = [_OFFER_TAG_RULE]
     for e in entries:
-        lines.append(f"  - [IMG:{e['id']}] — {e['description']}")
+        lines.append(f"  - [OFFER:{e['id']}] — {e['description']}")
     return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
-# Tag extraction
+# Offer tag extraction  ([OFFER:<id>] — hidden LLM signal)
 # ---------------------------------------------------------------------------
-_IMG_RE = re.compile(r"\[IMG:([^\]]+)\]")
+_OFFER_RE = re.compile(r"\[OFFER:([^\]]+)\]")
 
 
-def extract_image_tags(text: str) -> tuple[str, list[str]]:
-    """Strip ``[IMG:<id>]`` tags from *text* and return (clean_text, [ids]).
+def extract_offer_tag(text: str) -> tuple[str, str | None]:
+    """Strip the first ``[OFFER:<id>]`` tag from *text* and return (clean_text, id).
 
-    Unknown ids (not in the current catalog) are logged and dropped — we
-    never send a stale reference that would error on the Graph API.
+    Returns (text, None) when no valid offer tag is present.
+    Unknown ids are logged and discarded so stale catalog entries never error.
     """
-    found = _IMG_RE.findall(text)
-    clean = _IMG_RE.sub("", text).strip()
+    match = _OFFER_RE.search(text)
+    if not match:
+        return text.strip(), None
+
+    img_id = match.group(1)
+    clean = _OFFER_RE.sub("", text).strip()
 
     catalog_ids = {e["id"] for e in _load_catalog()}
-    valid_ids: list[str] = []
-    for img_id in found:
-        if img_id in catalog_ids:
-            valid_ids.append(img_id)
-        else:
-            logger.warning("[image-catalog] LLM referenced unknown image id: {!r}", img_id)
+    if img_id not in catalog_ids:
+        logger.warning("[image-catalog] LLM offered unknown image id: {!r}", img_id)
+        return clean, None
 
-    return clean, valid_ids
+    return clean, img_id
+
+
+# ---------------------------------------------------------------------------
+# Pending offer store  (in-memory, per wa_id)
+# ---------------------------------------------------------------------------
+# Maps wa_id → image_id the concierge just offered to show.
+# Cleared when the guest accepts (image sent) or asks something unrelated.
+_pending_offers: dict[str, str] = {}
+
+
+def set_pending_offer(wa_id: str, image_id: str) -> None:
+    _pending_offers[wa_id] = image_id
+    logger.debug("[image-catalog] pending offer set: {} → {}", wa_id, image_id)
+
+
+def pop_pending_offer(wa_id: str) -> str | None:
+    """Return and clear the pending offer for *wa_id*, or None if none."""
+    return _pending_offers.pop(wa_id, None)
+
+
+def clear_pending_offer(wa_id: str) -> None:
+    _pending_offers.pop(wa_id, None)
+
+
+# ---------------------------------------------------------------------------
+# Affirmative reply detection  (multilingual)
+# ---------------------------------------------------------------------------
+# Short list of clear yes-signals across the languages Voxtera supports.
+# We only intercept short, clearly affirmative messages — anything complex
+# falls through to the normal concierge so the LLM handles nuance.
+_AFFIRMATIVES = {
+    # English
+    "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please",
+    "absolutely", "of course", "definitely", "go ahead", "show me",
+    "yes please", "yes, please", "send it", "show it",
+    # French
+    "oui", "bien sûr", "bien sur", "s'il vous plaît", "s'il vous plait",
+    "avec plaisir", "volontiers",
+    # Spanish
+    "sí", "si", "claro", "por favor", "dale", "desde luego",
+    # Portuguese
+    "sim", "claro", "por favor", "com certeza",
+    # Romanian
+    "da", "sigur", "desigur", "bineînțeles", "bineinteles", "te rog",
+    # German
+    "ja", "bitte", "natürlich", "naturlich", "klar", "gerne",
+    # Italian
+    "sì", "si", "certo", "certamente", "per favore",
+    # Turkish
+    "evet", "tabii", "lütfen", "lutfen", "elbette",
+    # Dutch
+    "ja", "natuurlijk", "graag",
+    # Arabic (transliterated)
+    "نعم", "أكيد", "من فضلك",
+    # Russian
+    "да", "конечно", "пожалуйста",
+    # Japanese
+    "はい", "もちろん",
+    # Chinese
+    "是", "好的", "当然",
+}
+
+
+def is_affirmative(text: str) -> bool:
+    """Return True if *text* looks like a clear yes to a photo offer.
+
+    Matches case-insensitively against a multilingual affirmative list.
+    Only short messages (≤ 6 words) are tested — longer messages are
+    likely a new question and should go through the concierge instead.
+    """
+    stripped = text.strip().rstrip("!.,?")
+    if len(stripped.split()) > 6:
+        return False
+    return stripped.lower() in _AFFIRMATIVES
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +241,10 @@ async def resolve_media_id(
         logger.error("[image-catalog] resolve_media_id: unknown id {!r}", image_id)
         return None
 
+    # Tour-only entries have no image to upload.
+    if "_resolved_path" not in entry:
+        return None
+
     from voxtera.whatsapp.client import WhatsAppClient
 
     try:
@@ -175,6 +257,13 @@ async def resolve_media_id(
     except Exception as e:  # noqa: BLE001
         logger.warning("[image-catalog] upload failed for {}: {}", image_id, e)
         return None
+
+
+def get_tour_url(image_id: str) -> str | None:
+    """Return the ``tour_url`` for *image_id* if the entry has one, else None."""
+    entries = {e["id"]: e for e in _load_catalog()}
+    entry = entries.get(image_id)
+    return entry.get("tour_url") if entry else None
 
 
 def clear_media_id_cache() -> None:
