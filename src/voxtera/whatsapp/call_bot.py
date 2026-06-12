@@ -190,7 +190,12 @@ def _ambience_mixer(hotel_scope: str | None):
     enabled = override in ("1", "true", "yes") if override else bool(hotel_scope)
     if not enabled:
         return None
-    default_file = Path(__file__).resolve().parents[3] / "assets" / "audio" / "lobby_tone.wav"
+    # Default track: prefer the jazz loop when present (the lobby with a
+    # piano bar), fall back to the synthetic room tone. LOBBY_AMBIENCE_FILE
+    # overrides both.
+    audio_dir = Path(__file__).resolve().parents[3] / "assets" / "audio"
+    jazz, tone = audio_dir / "lobby_jazz.wav", audio_dir / "lobby_tone.wav"
+    default_file = jazz if jazz.exists() else tone
     sound_file = os.environ.get("LOBBY_AMBIENCE_FILE", "").strip() or str(default_file)
     try:
         volume = float(os.environ.get("LOBBY_AMBIENCE_VOLUME", "0.06"))
