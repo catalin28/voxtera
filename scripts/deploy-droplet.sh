@@ -149,6 +149,7 @@ if [[ "$SKIP_SYNC" == "false" ]]; then
     --exclude '.mypy_cache/' \
     --exclude '.ruff_cache/' \
     --exclude 'tests/' \
+    --exclude 'downloads/' \
     --exclude 'logs/*.jsonl' \
     --exclude 'logs/*.db*' \
     --exclude 'logs/calls/' \
