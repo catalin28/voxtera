@@ -181,8 +181,8 @@ def _ambience_mixer(hotel_scope: str | None):
     agent (which uses spoken fillers instead). LOBBY_AMBIENCE_ENABLED
     overrides either way.
 
-    Volume via LOBBY_AMBIENCE_VOLUME (default 0.06 — barely audible on
-    purpose: the WhatsApp leg has no echo cancellation, so loud ambience
+    Volume via LOBBY_AMBIENCE_VOLUME (default 0.03 — 'like a wind': felt
+    more than heard. The WhatsApp leg has no echo cancellation, so loud ambience
     would feed the caller's mic). File via LOBBY_AMBIENCE_FILE (mono 16-bit
     WAV at the output rate; see scripts/generate_ambience.py).
     """
@@ -198,9 +198,9 @@ def _ambience_mixer(hotel_scope: str | None):
     default_file = jazz if jazz.exists() else tone
     sound_file = os.environ.get("LOBBY_AMBIENCE_FILE", "").strip() or str(default_file)
     try:
-        volume = float(os.environ.get("LOBBY_AMBIENCE_VOLUME", "0.06"))
+        volume = float(os.environ.get("LOBBY_AMBIENCE_VOLUME", "0.03"))
     except ValueError:
-        volume = 0.06
+        volume = 0.03
     try:
         from pipecat.audio.mixers.soundfile_mixer import SoundfileMixer
 
