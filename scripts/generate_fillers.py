@@ -23,27 +23,55 @@ SAMPLE_RATE = 24000  # matches the call bot's audio_out_sample_rate
 MODEL = "eleven_flash_v2_5"
 
 # Short, neutral, breath-like — they must work in front of ANY answer.
+# Wrapped in unhurried sentence shapes (lowercase starts, commas) so the
+# model reads them as quiet asides, not announcements. The first live take
+# rendered isolated exclamations with far too much energy.
 PHRASES: dict[str, list[str]] = {
     "en": [
-        "Mm — one moment.",
-        "Just a second…",
-        "Let me see…",
-        "One moment, please.",
+        "mm, one moment,",
+        "just a second,",
+        "let me see,",
+        "hmm, let me check,",
     ],
     "tr": [
-        "Hemen bakıyorum…",
-        "Bir saniye lütfen…",
-        "Şöyle söyleyeyim…",
+        "hemen bakıyorum,",
+        "bir saniye,",
+        "şöyle bakayım,",
     ],
     "fr": [
-        "Un instant…",
-        "Voyons voir…",
+        "un instant,",
+        "voyons voir,",
     ],
     "ro": [
-        "O clipă…",
-        "Să văd…",
+        "o clipă,",
+        "să văd,",
     ],
 }
+
+# Post-processing: a small leading pause (the "breath"), gentle fades so the
+# clip never starts or ends abruptly, and a -6 dB pad — a filler should sit
+# UNDER the bot's normal speaking level, like a real aside.
+LEAD_SILENCE_MS = 140
+FADE_MS = 30
+GAIN = 0.5
+
+
+def _post_process(pcm: bytes) -> bytes:
+    import numpy as np
+
+    samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
+    # Trim digital silence at the edges so fades act on actual sound.
+    nz = np.flatnonzero(np.abs(samples) > 100)
+    if nz.size:
+        samples = samples[nz[0] : nz[-1] + 1]
+    fade = int(SAMPLE_RATE * FADE_MS / 1000)
+    if samples.size > 2 * fade:
+        samples[:fade] *= np.linspace(0.0, 1.0, fade)
+        samples[-fade:] *= np.linspace(1.0, 0.0, fade)
+    samples *= GAIN
+    lead = np.zeros(int(SAMPLE_RATE * LEAD_SILENCE_MS / 1000), dtype=np.float32)
+    out = np.concatenate([lead, samples])
+    return np.clip(out, -32768, 32767).astype(np.int16).tobytes()
 
 
 def synthesize(text: str, *, api_key: str, voice_id: str) -> bytes:
@@ -52,8 +80,9 @@ def synthesize(text: str, *, api_key: str, voice_id: str) -> bytes:
     body = {
         "text": text,
         "model_id": MODEL,
-        # Slightly calmer than default — fillers should sound unhurried.
-        "voice_settings": {"stability": 0.6, "similarity_boost": 0.8},
+        # Maximum stability = flattest, calmest delivery. Fillers are asides,
+        # not lines; any expressiveness reads as shouting at this length.
+        "voice_settings": {"stability": 0.95, "similarity_boost": 0.75},
     }
     import json
 
@@ -81,7 +110,7 @@ def main() -> int:
         lang_dir = out_base / lang
         lang_dir.mkdir(parents=True, exist_ok=True)
         for i, phrase in enumerate(phrases, start=1):
-            pcm = synthesize(phrase, api_key=api_key, voice_id=voice_id)
+            pcm = _post_process(synthesize(phrase, api_key=api_key, voice_id=voice_id))
             path = lang_dir / f"{i:02d}.wav"
             with wave.open(str(path), "wb") as wav:
                 wav.setnchannels(1)

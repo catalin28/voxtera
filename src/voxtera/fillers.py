@@ -43,7 +43,6 @@ from pipecat.frames.frames import (
     TTSAudioRawFrame,
     TTSStartedFrame,
     VADUserStartedSpeakingFrame,
-    VADUserStoppedSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -136,9 +135,18 @@ class FillerPlayer(FrameProcessor):
     async def process_frame(self, frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, VADUserStoppedSpeakingFrame):
-            self._fired_this_turn = False
-            self._arm()
+        if isinstance(frame, TranscriptionFrame):
+            # A FINAL transcript is the arming signal: it means a turn is
+            # being processed and an answer IS coming. (Arming on VAD-stop —
+            # the first version — fired after trailing-off "umm"s that never
+            # produced a transcript: the bot said "one moment" and then had
+            # nothing to follow it with.)
+            lang = str(getattr(frame, "language", "") or "").strip().lower()
+            if lang:
+                self._language = lang.split("-")[0]
+            if (frame.text or "").strip():
+                self._fired_this_turn = False
+                self._arm()
         elif isinstance(frame, VADUserStartedSpeakingFrame | InterruptionFrame):
             # Guest is talking (or barged in) — stop everything, including a
             # clip mid-play (the interruption also clears the transport queue).
@@ -149,10 +157,6 @@ class FillerPlayer(FrameProcessor):
             # it, whereas truncating mid-syllable leaves a weird half-sound
             # ("Mm—") that callers can't identify.
             self._disarm(stop_playback=False)
-        elif isinstance(frame, TranscriptionFrame):
-            lang = str(getattr(frame, "language", "") or "").strip().lower()
-            if lang:
-                self._language = lang.split("-")[0]
         elif isinstance(frame, EndFrame | CancelFrame):
             self._disarm(stop_playback=True)
         elif isinstance(frame, StartFrame):

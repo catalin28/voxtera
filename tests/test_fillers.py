@@ -11,13 +11,19 @@ import wave
 
 import pytest
 from pipecat.frames.frames import (
+    TranscriptionFrame,
     TTSAudioRawFrame,
     VADUserStartedSpeakingFrame,
-    VADUserStoppedSpeakingFrame,
 )
 from pipecat.tests.utils import SleepFrame, run_test
 
 from voxtera.fillers import FillerPlayer, load_filler_clips
+
+
+def _final(text: str, language: str | None = None) -> TranscriptionFrame:
+    """A finalized guest utterance — the arming signal (an answer is coming)."""
+    return TranscriptionFrame(text=text, user_id="g", timestamp="t", language=language)
+
 
 SR = 16000
 CHUNK = int(SR * 0.02) * 2  # one 20 ms chunk, 16-bit mono
@@ -39,7 +45,7 @@ async def test_filler_fires_when_answer_is_slow() -> None:
     player = FillerPlayer(_clips(), sample_rate=SR, delay_secs=0.08)
     down, _ = await run_test(
         player,
-        frames_to_send=[VADUserStoppedSpeakingFrame(), SleepFrame(sleep=0.3)],
+        frames_to_send=[_final("what time is breakfast?"), SleepFrame(sleep=0.3)],
     )
     audio = _filler_audio(down)
     assert len(audio) == 3 * CHUNK  # the whole en clip was played
@@ -53,7 +59,7 @@ async def test_no_filler_when_answer_is_fast() -> None:
     down, _ = await run_test(
         player,
         frames_to_send=[
-            VADUserStoppedSpeakingFrame(),
+            _final("hello"),
             SleepFrame(sleep=0.03),
             real,  # real speech arrives before the 80 ms deadline
             SleepFrame(sleep=0.3),
@@ -69,7 +75,7 @@ async def test_no_filler_when_guest_resumes_speaking() -> None:
     down, _ = await run_test(
         player,
         frames_to_send=[
-            VADUserStoppedSpeakingFrame(),
+            _final("hello"),
             SleepFrame(sleep=0.03),
             VADUserStartedSpeakingFrame(),  # guest kept talking
             SleepFrame(sleep=0.3),
@@ -87,7 +93,7 @@ async def test_started_filler_finishes_when_answer_arrives_mid_clip() -> None:
     down, _ = await run_test(
         player,
         frames_to_send=[
-            VADUserStoppedSpeakingFrame(),
+            _final("hello"),
             SleepFrame(sleep=0.08),  # filler fired, clip mid-play (10 paced chunks)
             real,  # the answer's audio arrives now
             SleepFrame(sleep=0.4),
@@ -103,21 +109,18 @@ async def test_filler_fires_at_most_once_per_turn() -> None:
     player = FillerPlayer(_clips(), sample_rate=SR, delay_secs=0.05)
     down, _ = await run_test(
         player,
-        frames_to_send=[VADUserStoppedSpeakingFrame(), SleepFrame(sleep=0.4)],
+        frames_to_send=[_final("what time is breakfast?"), SleepFrame(sleep=0.4)],
     )
     assert len(_filler_audio(down)) == 3 * CHUNK  # one clip, not a loop
 
 
 @pytest.mark.asyncio
 async def test_filler_follows_detected_language() -> None:
-    from pipecat.frames.frames import TranscriptionFrame
-
     player = FillerPlayer(_clips(), sample_rate=SR, delay_secs=0.05)
     down, _ = await run_test(
         player,
         frames_to_send=[
-            TranscriptionFrame(text="merhaba", user_id="g", timestamp="t", language="tr-TR"),
-            VADUserStoppedSpeakingFrame(),
+            _final("merhaba", language="tr-TR"),
             SleepFrame(sleep=0.4),
         ],
     )
@@ -144,3 +147,17 @@ def test_load_filler_clips_validates_format(tmp_path) -> None:
     clips = load_filler_clips(tmp_path, sample_rate=SR)
     assert list(clips) == ["en"]
     assert len(clips["en"]) == 1  # only the valid one survived
+
+
+@pytest.mark.asyncio
+async def test_vad_stop_without_transcript_never_arms() -> None:
+    """A trailing-off 'umm' (VAD stop, no transcript) means NO answer is
+    coming — the filler must stay silent instead of promising one."""
+    from pipecat.frames.frames import VADUserStoppedSpeakingFrame
+
+    player = FillerPlayer(_clips(), sample_rate=SR, delay_secs=0.05)
+    down, _ = await run_test(
+        player,
+        frames_to_send=[VADUserStoppedSpeakingFrame(), SleepFrame(sleep=0.3)],
+    )
+    assert _filler_audio(down) == b""

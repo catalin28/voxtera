@@ -206,12 +206,16 @@ def _ambience_mixer():
         return None
 
 
-def _build_filler_player():
+def _build_filler_player(hotel_scope: str | None):
     """Optional FillerPlayer for this call (FILLERS_ENABLED, default on).
 
     Clips live in FILLER_DIR (default assets/fillers/<lang>/*.wav, rendered
     with the bot's own voice by scripts/generate_fillers.py). Returns None
     when disabled or no clips are loadable — the call runs without fillers.
+
+    The trigger delay is mode-aware: hotel turns are fast (~1.5-2.5s), so the
+    filler only steps in on genuine spikes (2.0s); the travel agent's fuller
+    pipeline warrants the earlier 1.2s. FILLER_DELAY_SECS overrides both.
     """
     enabled = os.environ.get("FILLERS_ENABLED", "true").strip().lower() not in (
         "0",
@@ -220,10 +224,11 @@ def _build_filler_player():
     )
     if not enabled:
         return None
+    default_delay = 2.0 if hotel_scope else 1.2
     try:
-        delay = float(os.environ.get("FILLER_DELAY_SECS", "1.2"))
+        delay = float(os.environ.get("FILLER_DELAY_SECS", "") or default_delay)
     except ValueError:
-        delay = 1.2
+        delay = default_delay
     try:
         from voxtera.fillers import DEFAULT_FILLER_DIR, FillerPlayer, load_filler_clips
 
@@ -432,7 +437,7 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     # Voice fillers: a short "mm, one moment" in the bot's own voice when the
     # answer hasn't started within FILLER_DELAY_SECS. Placed after TTS so it
     # sees (and yields to) real speech; VAD frames reach it downstream too.
-    filler_player = _build_filler_player()
+    filler_player = _build_filler_player(hotel_scope)
     if filler_player is not None:
         processors.append(filler_player)
     processors.append(transport.output())
