@@ -99,7 +99,7 @@ async def handle_concierge(request: web.Request) -> web.Response:
     """POST /api/concierge — synchronous JSON Q&A backed by ConciergePipeline.
 
     Request:  {"utterance": str, "region": str, "session_id": str|None,
-               "brief": bool, "hotel_id": str|None}
+               "brief": bool, "hotel_id": str|None, "images": bool}
     Response: full ConciergePipeline.run() dict.
     """
     from voxtera.call_center.deps import build_pipeline
@@ -119,6 +119,7 @@ async def handle_concierge(request: web.Request) -> web.Response:
             region=region,
             brief=bool(body.get("brief")),
             hotel_id=hotel_id,
+            images=bool(body.get("images")),
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("[concierge] error: {}", exc)
@@ -190,6 +191,7 @@ async def handle_concierge_stream(request: web.Request) -> web.StreamResponse:
                 region=region,
                 brief=bool(body.get("brief")),
                 hotel_id=hotel_id,
+                images=bool(body.get("images")),
             ),
             timeout=120,
         )

@@ -117,9 +117,95 @@ _TRACE_CHANNEL = "wa"
 _LAUNCHER_URL = os.environ.get("VOXTERA_LAUNCHER_URL", "http://127.0.0.1:8080/api/bot-event")
 
 
+async def _deliver_offer(
+    image_id: str, *, caller_wa_id: str | None, settings: WhatsAppSettings
+) -> None:
+    """Upload (once) and send the image or tour link to the caller's chat."""
+    from voxtera.whatsapp.client import WhatsAppClient
+    from voxtera.whatsapp.image_catalog import get_tour_url, resolve_media_id
+
+    if not caller_wa_id:
+        return
+    try:
+        tour_url = get_tour_url(image_id)
+        async with aiohttp.ClientSession() as http:
+            client = WhatsAppClient(settings=settings, session=http)
+            if tour_url:
+                await client.send_text(to=caller_wa_id, body=tour_url)
+                logger.info("[voice-offer] tour link sent: {} → {}", image_id, caller_wa_id)
+            else:
+                media_id = await resolve_media_id(image_id, settings=settings)
+                if media_id:
+                    await client.send_image(to=caller_wa_id, media_id=media_id)
+                    logger.info("[voice-offer] image sent: {} → {}", image_id, caller_wa_id)
+                else:
+                    logger.warning("[voice-offer] no media_id for {}", image_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[voice-offer] delivery failed for {}: {}", image_id, e)
+
+
+class VoiceAffirmativeDetector(FrameProcessor):
+    """Deliver the pending photo offer when the caller says "yes".
+
+    MUST sit BEFORE ``context_aggregator.user()``: in Pipecat 1.x the user
+    aggregator CONSUMES ``TranscriptionFrame`` and does not push it downstream,
+    so a processor placed after the brain never sees caller speech (which is
+    why detection inside ``VoiceOfferProcessor`` was dead code).
+
+    On a final ``TranscriptionFrame`` that is a clear multilingual affirmative
+    while an offer is pending for this caller:
+      * fire the WhatsApp send (async, never blocks the voice turn),
+      * speak a short acknowledgement via ``TTSSpeakFrame``,
+      * SWALLOW the transcription so the bare "yes" never becomes a concierge
+        turn — mirroring webhook.py's "skip the concierge entirely" behavior
+        on the text channel.
+    Anything else passes through untouched.
+    """
+
+    def __init__(self, *, caller_wa_id: str | None, settings: WhatsAppSettings) -> None:
+        super().__init__()
+        self._caller_wa_id = caller_wa_id
+        self._settings = settings
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if (
+            direction == FrameDirection.DOWNSTREAM
+            and isinstance(frame, TranscriptionFrame)
+            and self._caller_wa_id
+        ):
+            from voxtera.whatsapp.image_catalog import is_affirmative, pop_pending_offer
+
+            if is_affirmative(frame.text):
+                pending_id = pop_pending_offer(self._caller_wa_id)
+                if pending_id:
+                    logger.info(
+                        "[voice-offer] affirmative '{}' → delivering {}",
+                        frame.text.strip(),
+                        pending_id,
+                    )
+                    asyncio.create_task(
+                        _deliver_offer(
+                            pending_id,
+                            caller_wa_id=self._caller_wa_id,
+                            settings=self._settings,
+                        )
+                    )
+                    # Confirm out loud, then swallow the "yes" — no concierge turn.
+                    ack = os.environ.get(
+                        "WHATSAPP_OFFER_ACK_TEXT",
+                        "I've just sent it to your WhatsApp chat — take a look!",
+                    )
+                    await self.push_frame(TTSSpeakFrame(ack), FrameDirection.DOWNSTREAM)
+                    return
+
+        await self.push_frame(frame, direction)
+
+
 class VoiceOfferProcessor(FrameProcessor):
-    """Strip [OFFER:<id>] tags from LLM output bound for TTS, and deliver
-    images/tour links to the caller's WhatsApp chat when they say yes.
+    """Strip [OFFER:<id>] tags from LLM output bound for TTS and remember the
+    pending offer; delivery on "yes" happens in ``VoiceAffirmativeDetector``.
 
     Placed between brain and TTS in the pipeline.
 
@@ -127,10 +213,6 @@ class VoiceOfferProcessor(FrameProcessor):
     The [OFFER:<id>] tag can be split across chunk boundaries, so we buffer all
     ``LLMTextFrame`` chunks and process the joined text at ``LLMFullResponseEndFrame``,
     then re-emit one clean ``LLMTextFrame`` before the end frame.
-
-    ``TranscriptionFrame`` (caller speech) flows downstream past brain unchanged;
-    we inspect it for multilingual affirmatives and, when a pending offer is set,
-    fire an async WhatsApp send without blocking the voice turn.
     """
 
     def __init__(self, *, caller_wa_id: str | None, settings: WhatsAppSettings) -> None:
@@ -185,48 +267,7 @@ class VoiceOfferProcessor(FrameProcessor):
                 await self.push_frame(frame, direction)  # LLMFullResponseEndFrame
                 return
 
-            if isinstance(frame, TranscriptionFrame) and self._caller_wa_id:
-                from voxtera.whatsapp.image_catalog import is_affirmative, pop_pending_offer
-
-                pending_id = pop_pending_offer(self._caller_wa_id)
-                if pending_id and is_affirmative(frame.text):
-                    logger.info(
-                        "[voice-offer] affirmative '{}' → delivering {}",
-                        frame.text.strip(),
-                        pending_id,
-                    )
-                    asyncio.create_task(self._deliver(pending_id))
-                # pending_id already popped — cleared whether matched or not.
-
         await self.push_frame(frame, direction)
-
-    async def _deliver(self, image_id: str) -> None:
-        """Upload (once) and send the image or tour link to the caller's chat."""
-        from voxtera.whatsapp.client import WhatsAppClient
-        from voxtera.whatsapp.image_catalog import get_tour_url, resolve_media_id
-
-        if not self._caller_wa_id:
-            return
-        try:
-            tour_url = get_tour_url(image_id)
-            async with aiohttp.ClientSession() as http:
-                client = WhatsAppClient(settings=self._settings, session=http)
-                if tour_url:
-                    await client.send_text(to=self._caller_wa_id, body=tour_url)
-                    logger.info(
-                        "[voice-offer] tour link sent: {} → {}", image_id, self._caller_wa_id
-                    )
-                else:
-                    media_id = await resolve_media_id(image_id, settings=self._settings)
-                    if media_id:
-                        await client.send_image(to=self._caller_wa_id, media_id=media_id)
-                        logger.info(
-                            "[voice-offer] image sent: {} → {}", image_id, self._caller_wa_id
-                        )
-                    else:
-                        logger.warning("[voice-offer] no media_id for {}", image_id)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("[voice-offer] delivery failed for {}: {}", image_id, e)
 
 
 def _call_settings() -> Settings:
@@ -585,7 +626,14 @@ async def run_call_bot(
     # (WHATSAPP_DEFAULT_REGION); empty → None → the concierge asks the caller
     # which region on the first turn.
     wa_region = load_whatsapp_settings().default_region
-    brain = TravelAgentBrain(region=wa_region or None, session_id=session_id, hotel_id=hotel_scope)
+    brain = TravelAgentBrain(
+        region=wa_region or None,
+        session_id=session_id,
+        hotel_id=hotel_scope,
+        # WhatsApp call: images CAN be delivered to the caller's chat, so the
+        # hotel render is allowed to offer photos ([OFFER:<id>] tags).
+        images=bool(caller_wa_id),
+    )
 
     # Optional observability processors (WAV + transcript). Imported lazily and
     # guarded so a recording problem can never stop a call from connecting.
@@ -639,6 +687,10 @@ async def run_call_bot(
     processors.append(BotActiveUserFrameSuppressor(allow_interruptions=allow_interruptions))
     if transcript_timer is not None:
         processors.append(transcript_timer)
+    # Affirmative "yes" → send the pending photo offer. MUST be before the
+    # user aggregator (which consumes TranscriptionFrame); swallows the "yes"
+    # so it never becomes a concierge turn.
+    processors.append(VoiceAffirmativeDetector(caller_wa_id=caller_wa_id, settings=settings))
     processors.append(context_aggregator.user())
     processors.append(brain)
     if tracer is not None:

@@ -161,8 +161,14 @@ class TravelAgentBrain(FrameProcessor):
         region: str | None = None,
         session_id: str | None = None,
         hotel_id: str | None = None,
+        images: bool = False,
     ) -> None:
         super().__init__()
+        # Photo offers: True only when this channel can DELIVER an image to
+        # the guest (WhatsApp call bot → image lands in the caller's chat).
+        # False (default) for the web orb, which has no delivery path — the
+        # render prompt then never embeds [OFFER:<id>] tags.
+        self._images = images
         # Region scope is forwarded verbatim to /api/concierge, which owns the
         # ""/None semantics ("" = all regions; a name = scope to it). We default
         # an absent env to "" (all regions) — never None — so the endpoint clears
@@ -207,6 +213,8 @@ class TravelAgentBrain(FrameProcessor):
             "hotel_id": self._hotel_id,
             # Voice channel: short, spoken-style answer (travel_agent_voice_render_brief.md).
             "brief": True,
+            # Channel can deliver images → hotel render may offer photos.
+            "images": self._images,
         }
         timeout = aiohttp.ClientTimeout(total=130)
         result: dict[str, Any] = {}

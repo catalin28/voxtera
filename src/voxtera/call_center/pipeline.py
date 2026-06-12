@@ -896,6 +896,7 @@ class ConciergePipeline:
         region: str | None = None,
         brief: bool = False,
         hotel_id: str | None = None,
+        images: bool = False,
     ) -> dict[str, Any]:
         utterance = (utterance or "").strip()
         # When the user explicitly selects "All regions" the caller sends
@@ -913,6 +914,11 @@ class ConciergePipeline:
         # Voice channel sets brief=True → the render step uses the short,
         # spoken-style prompt (travel_agent_voice_render_brief.md). Read in _render.
         self._brief = brief
+        # Photo offers: True only when the channel can DELIVER an image to the
+        # guest (WhatsApp text/call). Voice channels that cannot (web orb)
+        # leave it False so the render prompt never embeds [OFFER:<id>] tags
+        # that would be spoken aloud. Read in render_property_turn's payload.
+        self._images = images
         sid = session_id or new_session_id()
         t_start = time.perf_counter()
         timings: dict[str, float] = {}
@@ -1624,6 +1630,8 @@ class ConciergePipeline:
             "retrieval": retrieval or {},
             "transcript": build_transcript(session.get("history")),
             "brief": getattr(self, "_brief", False),
+            # Channel can deliver images → render may offer photos ([OFFER:<id>]).
+            "images": getattr(self, "_images", False),
         }
         ticket = None
         try:

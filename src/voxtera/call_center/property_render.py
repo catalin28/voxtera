@@ -185,7 +185,13 @@ async def render_property_turn(
 
     brief = bool(payload.get("brief"))
     prompt_name = "travel_agent_voice_render_brief" if brief else "concierge_render"
-    system_text = _with_persona(prompt_name)
+    # Photo offers ([OFFER:<id>]) only when the channel can deliver an image.
+    # Text/chat (brief=False) keeps its historical default of True (the
+    # WhatsApp webhook strips the tag + delivers). Voice (brief=True) must
+    # OPT IN via the payload "images" flag — only the WhatsApp call bot sets
+    # it; the web orb doesn't, so it never speaks a tag it cannot fulfil.
+    include_images = bool(payload.get("images", not brief))
+    system_text = _with_persona(prompt_name, include_images=include_images)
     tools: list[dict[str, Any]] = []
     if runtime is not None:
         from voxtera.actions.prompt import build_actions_prompt_fragment
