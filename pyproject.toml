@@ -24,6 +24,7 @@ dependencies = [
     "pyrnnoise>=0.4.3",
     "psutil>=5.9",
     "redis>=5.0",
+    "yt-dlp>=2026.6.9",
 ]
 
 [project.urls]
