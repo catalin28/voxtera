@@ -155,19 +155,44 @@ async def _process_message(app: web.Application, msg: dict[str, str]) -> None:
         logger.exception("Failed to send WhatsApp reply to {}: {}", wa_id, e)
 
 
+def _extract_call_from(body: dict[str, Any]) -> str | None:
+    """Pull the caller's WhatsApp id from a ``calls`` webhook body.
+
+    The number lives at entry[].changes[].value.calls[].from (a plain str in
+    the JSON, aliased to ``from_`` in Pipecat's model). Returns the first one
+    found, or None when the structure is unexpected.
+    """
+    for entry in body.get("entry", []) or []:
+        for change in entry.get("changes", []) or []:
+            for call in (change.get("value") or {}).get("calls", []) or []:
+                caller = call.get("from") or call.get("from_")
+                if caller:
+                    return str(caller)
+    return None
+
+
 async def _process_call(app: web.Application, body: dict[str, Any]) -> None:
     """Hand a `calls` webhook to Pipecat's WhatsAppClient, which terminates the
     WebRTC media (SDP answer + pre_accept/accept) and runs the voice bot."""
     from pipecat.transports.whatsapp.api import WhatsAppWebhookRequest
 
-    from voxtera.whatsapp.call_bot import run_call_bot
+    from voxtera.whatsapp.call_bot import make_call_bot
+
+    # Extract the caller's wa_id here — Pipecat's connection_callback only
+    # receives the SmallWebRTCConnection, not the call metadata, so we grab
+    # it from the raw body and close over it in the callback factory.
+    caller_wa_id = _extract_call_from(body)
+    if caller_wa_id:
+        logger.debug("Incoming call from wa_id={}", caller_wa_id)
 
     client = app[KEY_CALL_CLIENT]
     try:
         request = WhatsAppWebhookRequest(**body)
         # Signature already validated by our handler, so the Pipecat client is
         # constructed without a secret and skips its own re-validation.
-        await client.handle_webhook_request(request, connection_callback=run_call_bot)
+        await client.handle_webhook_request(
+            request, connection_callback=make_call_bot(caller_wa_id)
+        )
     except Exception as e:  # noqa: BLE001
         logger.exception("WhatsApp call handling failed: {}", e)
 

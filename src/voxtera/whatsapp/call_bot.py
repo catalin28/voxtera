@@ -367,10 +367,34 @@ async def _ensure_handshake_media_id(settings: WhatsAppSettings) -> str | None:
     return _HANDSHAKE_MEDIA_ID
 
 
-async def run_call_bot(connection: SmallWebRTCConnection) -> None:
+def make_call_bot(
+    caller_wa_id: str | None,
+) -> "Callable[[SmallWebRTCConnection], Awaitable[None]]":
+    """Return a connection_callback with the caller's wa_id captured.
+
+    Pipecat's ``handle_webhook_request`` only passes the ``SmallWebRTCConnection``
+    to the callback — it drops call metadata like ``call.from_``.  We parse
+    the caller's number from the raw webhook body in ``_process_call`` and
+    close over it here so ``run_call_bot`` can send the visual handshake image
+    to the right WhatsApp chat.
+    """
+    from collections.abc import Awaitable, Callable
+
+    async def _callback(connection: SmallWebRTCConnection) -> None:
+        await run_call_bot(connection, caller_wa_id=caller_wa_id)
+
+    return _callback
+
+
+async def run_call_bot(
+    connection: SmallWebRTCConnection,
+    *,
+    caller_wa_id: str | None = None,
+) -> None:
     """Run a Pipecat voice pipeline for one WhatsApp call. Returns on hang-up.
 
-    Invoked as the ``connection_callback`` of ``WhatsAppClient.handle_webhook_request``.
+    Invoked via ``make_call_bot`` (the connection_callback factory) so the
+    caller's WhatsApp id is available for the visual handshake image send.
     """
     settings = _call_settings()
     # Filesystem-safe id (no colon) — used as the logs/calls/<id>/ folder name.
@@ -563,14 +587,6 @@ async def run_call_bot(connection: SmallWebRTCConnection) -> None:
     # agent immediately instead of dead air. Queued on connect (not at build)
     # because the audio track isn't live until the peer connection is up.
     greeting_text = _greeting_text(hotel_scope)
-
-    # The caller's wa_id is not available inside run_call_bot directly — it
-    # lives on the SmallWebRTCConnection as the peer identifier set by Pipecat's
-    # WhatsApp client during SDP negotiation. We extract it from the connection's
-    # metadata if available, otherwise fall back to a no-op for the image send.
-    caller_wa_id: str | None = getattr(connection, "peer_id", None) or getattr(
-        connection, "wa_id", None
-    )
 
     @transport.event_handler("on_client_connected")
     async def _on_client_connected(_transport, _client) -> None:  # noqa: ANN001
