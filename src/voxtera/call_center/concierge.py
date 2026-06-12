@@ -55,11 +55,27 @@ _DECOMPOSE_SYSTEM = load_prompt("concierge_decompose_legacy")
 _RENDER_SYSTEM = load_prompt("concierge_render")
 
 
-def _with_persona(task_prompt_name: str) -> str:
+def _with_persona(task_prompt_name: str, *, include_images: bool = True) -> str:
     """Shared persona + task prompt. The persona (tone, spoken format, language)
     lives ONCE in concierge_persona.md and is prepended to every answer-writing
-    prompt — edit the persona there, not in the task files."""
-    return load_prompt("concierge_persona") + "\n\n" + load_prompt(task_prompt_name)
+    prompt — edit the persona there, not in the task files.
+
+    When ``include_images`` is True (default for text/WhatsApp channel) and the
+    image catalog is non-empty, the catalog block is appended so the LLM knows
+    which images it can surface via ``[IMG:<id>]`` tags. Voice render skips this
+    (images can't be shown in audio) by passing ``include_images=False``.
+    """
+    base = load_prompt("concierge_persona") + "\n\n" + load_prompt(task_prompt_name)
+    if include_images:
+        try:
+            from voxtera.whatsapp.image_catalog import system_prompt_block
+
+            block = system_prompt_block()
+            if block:
+                base = base + "\n\n" + block
+        except Exception as e:  # noqa: BLE001 — catalog must never break the pipeline
+            logger.debug("image_catalog unavailable (skipping): {}", e)
+    return base
 
 
 class ConciergeAgent:
@@ -319,6 +335,10 @@ def _build_anthropic_render_stream(model: str) -> RenderStreamFn:
         brief = bool(payload.get("brief"))
         prompt_name = "travel_agent_voice_render_brief" if brief else "concierge_render"
         max_tokens = 320 if brief else 512
+        # Voice brief replies go to TTS — images can't be shown in audio.
+        # Text (WhatsApp chat) replies include the image catalog so the LLM
+        # can embed [IMG:<id>] tags when a visual adds value.
+        include_images = not brief
         client = _anthropic()  # shared, connection pool kept warm
         async with client.messages.stream(
             model=model,
@@ -326,7 +346,7 @@ def _build_anthropic_render_stream(model: str) -> RenderStreamFn:
             system=[
                 {
                     "type": "text",
-                    "text": _with_persona(prompt_name),
+                    "text": _with_persona(prompt_name, include_images=include_images),
                     "cache_control": {"type": "ephemeral"},
                 }
             ],

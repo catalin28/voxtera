@@ -148,6 +148,24 @@ async def _process_message(app: web.Application, msg: dict[str, str]) -> None:
         logger.exception("Concierge failed for {}: {}", wa_id, e)
         answer = "Sorry — something went wrong on our side. Please try again."
 
+    # Extract any [IMG:<id>] tags the LLM embedded in the answer, strip them
+    # from the text, then send matching images before the text reply so the
+    # guest sees the photo first, then reads the answer below it.
+    try:
+        from voxtera.whatsapp.image_catalog import extract_image_tags, resolve_media_id
+
+        answer, image_ids = extract_image_tags(answer)
+        for img_id in image_ids:
+            media_id = await resolve_media_id(img_id, settings=settings)
+            if media_id:
+                try:
+                    await client.send_image(to=wa_id, media_id=media_id)
+                    logger.info("[image-catalog] sent image {} to {}", img_id, wa_id)
+                except Exception as img_err:  # noqa: BLE001
+                    logger.warning("[image-catalog] send_image failed {}: {}", img_id, img_err)
+    except Exception as e:  # noqa: BLE001 — catalog must never block the text reply
+        logger.warning("[image-catalog] tag extraction failed: {}", e)
+
     try:
         await client.send_text(to=wa_id, body=answer)
         logger.info("Replied to {} ({} chars)", wa_id, len(answer))

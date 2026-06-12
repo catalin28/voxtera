@@ -1,0 +1,14 @@
+{
+  "images": [
+    {
+      "id": "lobby",
+      "path": "assets/images/hotel_hallway.jpg",
+      "description": "Grand Lumière main lobby — crystal chandeliers, polished marble floors, tall arched windows with warm golden light"
+    },
+    {
+      "id": "lobby_card",
+      "path": "assets/images/grand_lumiere_whatsapp.jpg",
+      "description": "Grand Lumière branded welcome card — elegant lobby with hotel name and tagline"
+    }
+  ]
+}
