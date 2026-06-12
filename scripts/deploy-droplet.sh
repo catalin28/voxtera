@@ -23,6 +23,7 @@ CONFIGURE_CADDY="${CONFIGURE_CADDY:-true}"
 
 INGEST_RAG="true"
 SKIP_SYNC="false"
+RESTART_SERVICES="true"
 
 usage() {
   cat <<'EOF'
@@ -45,12 +46,16 @@ Options:
   --skip-caddy                Do not touch the Caddyfile (print the route snippet instead)
   --skip-ingest               Do not run RAG ingest
   --skip-sync                 Do not rsync files (restart/install only)
+  --no-restart                Sync files + deps but do NOT restart any service
+                              (new code takes effect on your next manual restart,
+                              e.g. when switching demo↔hotel mode)
   -h, --help                  Show this help
 
 Examples:
   scripts/deploy-droplet.sh
   scripts/deploy-droplet.sh --host voxtera --hotel-id demo
   scripts/deploy-droplet.sh --skip-ingest
+  scripts/deploy-droplet.sh --no-restart
 EOF
 }
 
@@ -110,6 +115,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-sync)
       SKIP_SYNC="true"
+      shift
+      ;;
+    --no-restart)
+      RESTART_SERVICES="false"
       shift
       ;;
     -h|--help)
@@ -226,28 +235,35 @@ else
   echo "==> Skipping RAG ingest"
 fi
 
-echo "==> Restarting services"
-# In on-demand (serve.py) mode, the standalone bot service must NEVER run
-# alongside the UI launcher — both would join the same Daily room and the
-# standalone bot would hold the Gladia STT session, causing 429 errors on
-# every user session.  We stop + disable it unconditionally on every deploy.
-ssh "${HOST}" "systemctl stop '${SERVICE_NAME}' || true"
-ssh "${HOST}" "systemctl disable '${SERVICE_NAME}' || true"
-# Kill UI service and any stale process on port 8080, then restart.
-ssh "${HOST}" "systemctl stop '${UI_SERVICE_NAME}' || true; fuser -k 8080/tcp 2>/dev/null || true"
-echo "    Waiting 30s for Telegram long-poll to expire..."
-sleep 30
-ssh "${HOST}" "systemctl start '${UI_SERVICE_NAME}'"
+if [[ "$RESTART_SERVICES" == "true" ]]; then
+  echo "==> Restarting services"
+  # In on-demand (serve.py) mode, the standalone bot service must NEVER run
+  # alongside the UI launcher — both would join the same Daily room and the
+  # standalone bot would hold the Gladia STT session, causing 429 errors on
+  # every user session.  We stop + disable it unconditionally on every deploy.
+  ssh "${HOST}" "systemctl stop '${SERVICE_NAME}' || true"
+  ssh "${HOST}" "systemctl disable '${SERVICE_NAME}' || true"
+  # Kill UI service and any stale process on port 8080, then restart.
+  ssh "${HOST}" "systemctl stop '${UI_SERVICE_NAME}' || true; fuser -k 8080/tcp 2>/dev/null || true"
+  echo "    Waiting 30s for Telegram long-poll to expire..."
+  sleep 30
+  ssh "${HOST}" "systemctl start '${UI_SERVICE_NAME}'"
 
-echo "==> Health checks"
-ssh "${HOST}" "systemctl --no-pager --full status '${UI_SERVICE_NAME}' | head -n 25"
-ssh "${HOST}" "journalctl -u '${UI_SERVICE_NAME}' -n 20 --no-pager | egrep 'error|FATAL|Fatal' || true"
+  echo "==> Health checks"
+  ssh "${HOST}" "systemctl --no-pager --full status '${UI_SERVICE_NAME}' | head -n 25"
+  ssh "${HOST}" "journalctl -u '${UI_SERVICE_NAME}' -n 20 --no-pager | egrep 'error|FATAL|Fatal' || true"
+else
+  echo "==> Skipping service restarts (--no-restart): files + deps are synced,"
+  echo "    running services keep the OLD code until you restart them:"
+  echo "        ssh ${HOST} systemctl restart ${UI_SERVICE_NAME} ${CONCIERGE_SERVICE_NAME}"
+fi
 
 # --------------------------------------------------------------------------
 # Concierge service (warm pipeline + WhatsApp text/calls), on CONCIERGE_PORT.
 # Generated inline so the unit always matches the deploy variables.
 # Supersedes the old voxtera-whatsapp unit, which is stopped + disabled.
 # --------------------------------------------------------------------------
+if [[ "$RESTART_SERVICES" == "true" ]]; then
 echo "==> Installing/updating ${CONCIERGE_SERVICE_NAME} systemd service (port ${CONCIERGE_PORT})"
 ssh "${HOST}" "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_USER='${REMOTE_USER}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' CONCIERGE_SERVICE_NAME='${CONCIERGE_SERVICE_NAME}' CONCIERGE_PORT='${CONCIERGE_PORT}' LEGACY_WHATSAPP_SERVICE_NAME='${LEGACY_WHATSAPP_SERVICE_NAME}' bash -s" <<'REMOTE_WA'
 set -e
@@ -286,6 +302,9 @@ ssh "${HOST}" "systemctl --no-pager --full status '${CONCIERGE_SERVICE_NAME}' | 
 ssh "${HOST}" "journalctl -u '${CONCIERGE_SERVICE_NAME}' -n 20 --no-pager | egrep -i 'error|FATAL|Traceback' || true"
 echo "==> ${CONCIERGE_SERVICE_NAME} /health gate (30s)"
 ssh "${HOST}" "for i in \$(seq 1 30); do curl -fsS --max-time 2 http://127.0.0.1:${CONCIERGE_PORT}/health >/dev/null 2>&1 && { echo '    OK — /health responding'; exit 0; }; sleep 1; done; echo '    ERROR: /health not responding after 30s' >&2; exit 1"
+else
+  echo "==> Skipping ${CONCIERGE_SERVICE_NAME} unit install/restart (--no-restart)"
+fi
 
 # --------------------------------------------------------------------------
 # Reverse proxy: route voxtera.io/whatsapp/* AND voxtera.io/api/concierge*
