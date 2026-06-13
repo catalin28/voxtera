@@ -67,7 +67,7 @@ from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.openai.llm import OpenAILLMService
-from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+from voxtera.turns import TailAwareTurnStopStrategy
 from pipecat.turns.user_stop.speech_timeout_user_turn_stop_strategy import (
     SpeechTimeoutUserTurnStopStrategy,
 )
@@ -1060,7 +1060,11 @@ def build_pipeline(
             cpu_count=settings.smart_turn_cpu_count,
             params=SmartTurnParams(stop_secs=settings.smart_turn_stop_secs),
         )
-        _user_turn_stop = [TurnAnalyzerUserTurnStopStrategy(turn_analyzer=_smart_turn)]
+        # Tail-aware (subclass of TurnAnalyzerUserTurnStopStrategy): stops the
+        # turn the moment the STT's trailing final lands instead of always
+        # paying the fixed p99 timeout, and holds for an in-flight utterance
+        # so a split sentence isn't cut in half (see voxtera/turns.py).
+        _user_turn_stop = [TailAwareTurnStopStrategy(turn_analyzer=_smart_turn)]
         logger.info(
             "[turn-detector] LocalSmartTurnAnalyzerV3 cpu_count={} stop_secs={}",
             settings.smart_turn_cpu_count,

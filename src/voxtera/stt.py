@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from collections.abc import AsyncIterable, Callable
 from pathlib import Path
@@ -1007,10 +1008,21 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     logger.info("[stt] custom vocabulary DISABLED for testing")
 
     _t_ctor = time.perf_counter()
+    # ttfs_p99_latency drives how long the turn-stop strategy waits after VAD
+    # stop for Gladia's trailing final (timeout = p99 − vad_stop_secs).
+    # Pipecat's built-in default (1.49 s) is too low: measured tails in
+    # production reach ~1.6 s after VAD stop, so a trailing final could miss
+    # the turn and the bot answered half a question. 2.3 s covers the observed
+    # tail (~2.0 s wait with vad_stop_secs=0.3). This raised cap does NOT slow
+    # normal turns: TailAwareTurnStopStrategy (voxtera.turns) stops the turn
+    # the moment the tail final lands — the timeout is only paid when Gladia
+    # is genuinely late.
+    gladia_ttfs_p99 = float(os.environ.get("GLADIA_TTFS_P99_SECS", "2.3"))
     stt = _LazyConnectGladiaSTTService(
         api_key=settings.gladia_api_key,
         region=settings.gladia_region,
         sample_rate=16000,
+        ttfs_p99_latency=gladia_ttfs_p99,
         settings=GladiaSTTService.Settings(**settings_kwargs),
     )
     logger.info("[stt] gladia constructor took {:.0f}ms", (time.perf_counter() - _t_ctor) * 1000)

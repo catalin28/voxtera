@@ -1030,6 +1030,20 @@ class InterruptionResumer(FrameProcessor):
         # nothing to do with the original (e.g. user coughs, falls silent,
         # then asks something else minutes later).
         self._pending_resume_ttl_secs = 15.0
+        # Flush-race bookkeeping. When the user barges in at the exact instant
+        # the bot starts speaking, the output flush is near-instant: Bot
+        # Started/Stopped arrive as a ~0 ms pair and the InterruptionFrame can
+        # reach this processor AFTER the stop already cleared _bot_started_at —
+        # the barge-in (and a wholly-UNSPOKEN reply) would be missed. Track the
+        # last speech's stop time and duration so the case is recognisable: a
+        # "speech" that lasted < _flushed_speech_max_secs and ended <
+        # _flush_race_grace_secs ago said nothing, and is always worth
+        # resuming. Observed in trace wacall_8317dae263a6 (+217 s): reply
+        # flushed after 0 ms → caller heard only silence → "Alo? Alo?".
+        self._bot_stopped_at: float | None = None
+        self._last_speech_duration_secs: float | None = None
+        self._flush_race_grace_secs = 1.0
+        self._flushed_speech_max_secs = 0.5
 
     async def process_frame(self, frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -1058,6 +1072,10 @@ class InterruptionResumer(FrameProcessor):
             # interrupting TranscriptionFrame can consume it. Cleanup
             # happens in the TranscriptionFrame consumer (on inject) and
             # in the BotStartedSpeakingFrame defensive path (stale flags).
+            if self._bot_started_at is not None:
+                now = time.monotonic()
+                self._last_speech_duration_secs = now - self._bot_started_at
+                self._bot_stopped_at = now
             self._bot_started_at = None
 
         elif isinstance(frame, InterruptionFrame):
@@ -1081,7 +1099,34 @@ class InterruptionResumer(FrameProcessor):
                         elapsed,
                         self._resume_window_secs,
                     )
+            elif self._enabled and self._bot_stopped_at is not None:
+                # Flush race: the reply was flushed before (or the instant)
+                # playback began, so BotStopped already cleared
+                # _bot_started_at by the time this InterruptionFrame arrived.
+                # Recognise it by the signature "near-zero speech that ended
+                # just now" — nothing was actually said, so always arm. The
+                # tight thresholds (duration < 0.5 s, ended < 1.0 s ago) keep
+                # normal quick turn-taking after a short complete reply from
+                # false-arming.
+                now = time.monotonic()
+                since_stop = now - self._bot_stopped_at
+                duration = self._last_speech_duration_secs or 0.0
+                if (
+                    since_stop <= self._flush_race_grace_secs
+                    and duration <= self._flushed_speech_max_secs
+                ):
+                    self._pending_resume = True
+                    self._pending_resume_at = now
+                    logger.info(
+                        "[interruption-resumer] flush-race barge-in: reply "
+                        "played {:.2f}s and stopped {:.2f}s ago — arming "
+                        "resume note (unspoken reply)",
+                        duration,
+                        since_stop,
+                    )
             self._bot_started_at = None
+            self._bot_stopped_at = None
+            self._last_speech_duration_secs = None
 
         elif (
             isinstance(frame, TranscriptionFrame)

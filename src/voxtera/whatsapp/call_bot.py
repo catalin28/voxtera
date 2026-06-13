@@ -83,7 +83,7 @@ from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 from pipecat.turns.user_start import VADUserTurnStartStrategy
-from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+from voxtera.turns import TailAwareTurnStopStrategy
 from pipecat.turns.user_turn_strategies import (
     UserTurnStrategies,
     default_user_turn_start_strategies,
@@ -611,9 +611,13 @@ async def run_call_bot(
         start_strategies: list = [VADUserTurnStartStrategy()]
     else:
         start_strategies = default_user_turn_start_strategies()
+    # TailAwareTurnStopStrategy (not the stock TurnAnalyzer one): stops the
+    # turn the moment Gladia's trailing final lands instead of always paying
+    # the fixed p99 timeout, and holds for an in-flight utterance so a split
+    # sentence isn't cut in half (see voxtera/turns.py for the full story).
     user_turn_strategies = UserTurnStrategies(
         start=start_strategies,
-        stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=smart_turn)],
+        stop=[TailAwareTurnStopStrategy(turn_analyzer=smart_turn)],
     )
     context_aggregator = LLMContextAggregatorPair(
         context,
@@ -692,6 +696,27 @@ async def run_call_bot(
     # user aggregator (which consumes TranscriptionFrame); swallows the "yes"
     # so it never becomes a concierge turn.
     processors.append(VoiceAffirmativeDetector(caller_wa_id=caller_wa_id, settings=wa_settings))
+    # Interruption resume (mirrors the Daily pipeline): when a barge-in cuts
+    # the bot off early — including the flush race where the reply is killed
+    # at ~0 ms and the caller hears nothing ("Alo? Alo?") — inject a note so
+    # the answering LLM knows its previous reply went unheard and can repeat
+    # or resume it. Must sit upstream of context_aggregator.user() so the note
+    # lands in context before the LLM run, and after VoiceAffirmativeDetector
+    # (which may swallow the TranscriptionFrame entirely).
+    if allow_interruptions:
+        from voxtera.controllers import InterruptionResumer
+
+        processors.append(
+            InterruptionResumer(
+                enabled=settings.interruption_resume_enabled,
+                resume_window_secs=settings.interruption_resume_window_secs,
+            )
+        )
+        logger.info(
+            "[whatsapp-call] interruption-resumer enabled={} window={}s",
+            settings.interruption_resume_enabled,
+            settings.interruption_resume_window_secs,
+        )
     processors.append(context_aggregator.user())
     processors.append(brain)
     if tracer is not None:
@@ -711,6 +736,16 @@ async def run_call_bot(
         processors.append(call_recorder)
     processors.append(context_aggregator.assistant())
 
+    # Idle-timeout backstop. The global PIPELINE_IDLE_TIMEOUT_SECS is usually
+    # unset (None), which previously meant cancel_on_idle_timeout=False — so a
+    # missed hang-up event left the pipeline (and its Gladia session) alive
+    # forever, reconnecting hourly. WhatsApp calls now ALWAYS have an idle
+    # timeout: the global value if set, else WA_PIPELINE_IDLE_TIMEOUT_SECS
+    # (default 300s of no conversation activity → cancel).
+    wa_idle_timeout: float = settings.pipeline_idle_timeout_secs or float(
+        os.environ.get("WA_PIPELINE_IDLE_TIMEOUT_SECS", "300")
+    )
+
     task = PipelineTask(
         Pipeline(processors),
         params=PipelineParams(
@@ -724,9 +759,8 @@ async def run_call_bot(
             enable_metrics=True,
             enable_usage_metrics=True,
         ),
-        # End the pipeline when the caller hangs up (connection closes).
-        cancel_on_idle_timeout=settings.pipeline_idle_timeout_secs is not None,
-        idle_timeout_secs=settings.pipeline_idle_timeout_secs,
+        cancel_on_idle_timeout=True,
+        idle_timeout_secs=wa_idle_timeout,
     )
 
     # Ship trace events to serve.py so the call appears in the dashboard (tagged
@@ -809,6 +843,18 @@ async def run_call_bot(
             except Exception as e:  # noqa: BLE001
                 logger.error("[whatsapp-call] STT lazy_connect failed: {}", e)
         await task.queue_frames([TTSSpeakFrame(text=greeting_text)])
+
+    @transport.event_handler("on_client_disconnected")
+    async def _on_client_disconnected(_transport, _client) -> None:  # noqa: ANN001
+        # Caller hung up (or the WebRTC peer connection dropped). Cancel the
+        # pipeline immediately so the Gladia session, trace forwarder, and call
+        # record are torn down. Without this, the pipeline lived on forever
+        # after hang-up (zombie session reconnecting its STT websocket hourly).
+        logger.info(
+            "[whatsapp-call] client disconnected — cancelling pipeline (session={})",
+            session_id,
+        )
+        await task.cancel()
 
     # handle_sigint=False: the bot runs inside the async webhook service, not as a
     # dedicated process, so it must not install signal handlers.
