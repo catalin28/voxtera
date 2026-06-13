@@ -25,6 +25,7 @@ LOCAL_ENV_FILE="${LOCAL_ENV_FILE:-.env.fra}"
 # This is unrelated to the call-center Elasticsearch/Qdrant/Redis (untouched).
 INGEST_RAG="true"
 SKIP_SYNC="false"
+RESTART_SERVICES="true"
 
 usage() {
   cat <<'EOF'
@@ -44,6 +45,7 @@ Options:
   --content-dir <remote-path> Content folder for ingest (default: /opt/voxtera/app/demo-hotel)
   --skip-ingest               Do not run RAG ingest
   --skip-sync                 Do not rsync files (restart/install only)
+  --no-restart                Sync files and install deps, but do not restart services
   -h, --help                  Show this help
 
 Examples:
@@ -93,6 +95,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-sync)
       SKIP_SYNC="true"
+      shift
+      ;;
+    --no-restart)
+      RESTART_SERVICES="false"
       shift
       ;;
     -h|--help)
@@ -202,31 +208,36 @@ else
   echo "==> Skipping RAG ingest"
 fi
 
-echo "==> Restarting services"
-# In on-demand (serve.py) mode, the standalone bot service must NEVER run
-# alongside the UI launcher — both would join the same Daily room and the
-# standalone bot would hold the Gladia STT session, causing 429 errors on
-# every user session.  We stop + disable it unconditionally on every deploy.
-ssh "${HOST}" "systemctl stop '${SERVICE_NAME}' || true"
-ssh "${HOST}" "systemctl disable '${SERVICE_NAME}' || true"
-# Kill UI service and any stale process on port 8080, then restart.
-ssh "${HOST}" "systemctl stop '${UI_SERVICE_NAME}' || true; fuser -k 8080/tcp 2>/dev/null || true"
-echo "    Waiting 30s for Telegram long-poll to expire..."
-sleep 30
-ssh "${HOST}" "systemctl start '${UI_SERVICE_NAME}'"
+if [[ "$RESTART_SERVICES" == "true" ]]; then
+  echo "==> Restarting services"
+  # In on-demand (serve.py) mode, the standalone bot service must NEVER run
+  # alongside the UI launcher — both would join the same Daily room and the
+  # standalone bot would hold the Gladia STT session, causing 429 errors on
+  # every user session.  We stop + disable it unconditionally on every deploy.
+  ssh "${HOST}" "systemctl stop '${SERVICE_NAME}' || true"
+  ssh "${HOST}" "systemctl disable '${SERVICE_NAME}' || true"
+  # Kill UI service and any stale process on port 8080, then restart.
+  ssh "${HOST}" "systemctl stop '${UI_SERVICE_NAME}' || true; fuser -k 8080/tcp 2>/dev/null || true"
+  echo "    Waiting 30s for Telegram long-poll to expire..."
+  sleep 30
+  ssh "${HOST}" "systemctl start '${UI_SERVICE_NAME}'"
 
-echo "==> Health checks"
-ssh "${HOST}" "systemctl --no-pager --full status '${UI_SERVICE_NAME}' | head -n 25"
-ssh "${HOST}" "journalctl -u '${UI_SERVICE_NAME}' -n 20 --no-pager | egrep 'error|FATAL|Fatal' || true"
+  echo "==> Health checks"
+  ssh "${HOST}" "systemctl --no-pager --full status '${UI_SERVICE_NAME}' | head -n 25"
+  ssh "${HOST}" "journalctl -u '${UI_SERVICE_NAME}' -n 20 --no-pager | egrep 'error|FATAL|Fatal' || true"
 
-echo "==> Conflict guard — verifying standalone bot is NOT running"
-BOT_ACTIVE=$(ssh "${HOST}" "systemctl is-active '${SERVICE_NAME}' 2>/dev/null || true")
-if [[ "$BOT_ACTIVE" == "active" ]]; then
-  echo "ERROR: ${SERVICE_NAME} is still active! This will cause a dual-bot conflict." >&2
-  echo "       Run: ssh ${HOST} systemctl stop ${SERVICE_NAME} && systemctl disable ${SERVICE_NAME}" >&2
-  exit 1
+  echo "==> Conflict guard — verifying standalone bot is NOT running"
+  BOT_ACTIVE=$(ssh "${HOST}" "systemctl is-active '${SERVICE_NAME}' 2>/dev/null || true")
+  if [[ "$BOT_ACTIVE" == "active" ]]; then
+    echo "ERROR: ${SERVICE_NAME} is still active! This will cause a dual-bot conflict." >&2
+    echo "       Run: ssh ${HOST} systemctl stop ${SERVICE_NAME} && systemctl disable ${SERVICE_NAME}" >&2
+    exit 1
+  fi
+  echo "    OK — ${SERVICE_NAME} is not running (status: ${BOT_ACTIVE})"
+else
+  echo "==> Skipping service restart (--no-restart)"
+  echo "    Run 'ssh ${HOST} systemctl restart ${UI_SERVICE_NAME}' when ready."
 fi
-echo "    OK — ${SERVICE_NAME} is not running (status: ${BOT_ACTIVE})"
 
 echo "==> Deploy complete"
 echo "Open: https://eu.voxtera.io/demo.html"
