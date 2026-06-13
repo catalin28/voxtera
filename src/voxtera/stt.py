@@ -810,7 +810,13 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
                 return  # a transcript arrived — session is alive
             finally:
                 self._deaf_check_task = None
-            if not self._session_url:
+            # Post-call guard. FrameProcessor.cleanup() does NOT cancel tasks
+            # made via create_task, so this check can outlive the call. Plain
+            # _disconnect() (run by stop()/cancel() at hang-up) clears NEITHER
+            # _session_url nor the websocket — but it DOES set _disconnecting.
+            # Without this guard an orphaned check could strike → recycle →
+            # open a fresh Gladia session on a dead call (leaked session).
+            if self._disconnecting or not self._session_url:
                 return  # call ended / session closed while we slept — don't resurrect
             self._deaf_strikes += 1
             logger.warning(
@@ -831,7 +837,7 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
             lazy_connect's orphan purge would kill the live sessions of other
             concurrent calls on this server.
             """
-            if self._deaf_recycling:
+            if self._deaf_recycling or self._disconnecting:
                 return
             self._deaf_recycling = True
             self._deaf_strikes = 0
