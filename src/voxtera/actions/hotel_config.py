@@ -49,6 +49,12 @@ class HotelConfig:
     # Optional hotel-specific facts to inject into the LLM system prompt
     # (room count, address, brand voice notes). May be None.
     system_prompt_addendum: str | None = None
+    # Optional fully custom spoken greeting for this property. When set, it is
+    # used verbatim as the call's opening line (WhatsApp/phone), overriding the
+    # generic "You've reached the concierge at {hotel_name}" template. Keep it
+    # in the channel's default language (English on the phone path, since the
+    # caller's language isn't known until they speak). May be None.
+    greeting: str | None = None
 
 
 def _project_root() -> Path:
@@ -113,6 +119,7 @@ def load_hotel_config(hotel_id: str, config_dir: Path | None = None) -> HotelCon
         telegram_channel_id=str(data["telegram_channel_id"]),
         allowed_categories=_coerce_categories(data["allowed_categories"], config_path),
         system_prompt_addendum=data.get("system_prompt_addendum"),
+        greeting=(str(data["greeting"]).strip() if data.get("greeting") else None),
     )
     logger.info(
         "[hotel_config] Loaded hotel_id={} name={!r} lang={} " "categories={} channel={}",

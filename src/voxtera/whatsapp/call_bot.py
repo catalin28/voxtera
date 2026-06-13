@@ -283,6 +283,7 @@ def _call_settings() -> Settings:
 
 def _greeting_text(hotel_id: str | None) -> str:
     """Channel greeting — overridable, with per-mode defaults."""
+    # Global manual override (applies to every hotel) — highest precedence.
     explicit = os.environ.get("WHATSAPP_GREETING_TEXT", "").strip()
     if explicit:
         return explicit
@@ -291,7 +292,11 @@ def _greeting_text(hotel_id: str | None) -> str:
         try:
             from voxtera.actions import load_hotel_config
 
-            hotel_name = load_hotel_config(hotel_id).hotel_name
+            cfg = load_hotel_config(hotel_id)
+            # Per-hotel custom greeting from the property's YAML wins next.
+            if cfg.greeting:
+                return cfg.greeting
+            hotel_name = cfg.hotel_name
         except Exception:  # noqa: BLE001 — greeting must never block a call
             pass
         return f"Hello! You've reached the concierge at {hotel_name}. How can I help you today?"

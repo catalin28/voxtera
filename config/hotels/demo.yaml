@@ -4,6 +4,12 @@
 
 hotel_name: "Grand Hôtel Lumière"
 
+# Optional fully custom spoken greeting (opening line of every call). When
+# omitted, the bot uses the generic "You've reached the concierge at
+# {hotel_name}" template. Keep this in English on the phone path — the
+# caller's language isn't known until they speak.
+greeting: "Good day, and welcome to the Grand Hôtel Lumière. You've reached our concierge — how may I assist you today?"
+
 # Staff operate in English. The bot still speaks to guests in their detected
 # language, but ticket summaries land in the channel translated to English.
 official_language: "en"
