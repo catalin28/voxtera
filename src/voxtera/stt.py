@@ -550,6 +550,13 @@ def preimport_gladia() -> None:
         logger.warning("[stt] preimport_gladia failed: {}", exc)
 
 
+# Deafness watchdog knobs (see _LazyConnectGladiaSTTService). Check delay must
+# exceed the worst NORMAL Gladia tail (observed ≤1.6s, p99 budget 2.3s) so a
+# slow-but-alive session never counts as a strike.
+_GLADIA_DEAF_CHECK_SECS = float(os.environ.get("GLADIA_DEAF_CHECK_SECS", "4.0"))
+_GLADIA_DEAF_MAX_STRIKES = int(os.environ.get("GLADIA_DEAF_MAX_STRIKES", "2"))
+
+
 def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     """Build the Gladia Solaria-1 STT service if its credentials are present.
 
@@ -585,6 +592,7 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
     try:
         from pipecat.frames.frames import (
             Frame,
+            InterimTranscriptionFrame,
             StartFrame,
             TranscriptionFrame,
             VADUserStartedSpeakingFrame,
@@ -754,6 +762,22 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
         _t_first_audio: float | None = None
         _t_user_stopped: float | None = None
 
+        # ── Deafness watchdog ───────────────────────────────────────────────
+        # Observed in trace wacall_0521dcbcd502 (2026-06-13): two ~22 s
+        # windows where VAD fired on real speech, audio streamed to the
+        # websocket, and Gladia returned NOTHING — 5 utterances lost, bot
+        # deaf. No errors surfaced: pipecat's auto-reconnect reattaches to
+        # the SAME session URL, which does not revive a wedged session
+        # (the documented "VAD fires but zero transcripts" failure mode,
+        # see lazy_disconnect). Watchdog: after each VAD stop, expect a
+        # transcript (interim or final) within _deaf_check_secs; after
+        # _deaf_max_strikes consecutive silent utterances, hard-recycle the
+        # session (DELETE + fresh /v2/live init). Costs ~1 s of STT
+        # downtime while the user is silent — far better than staying deaf.
+        _deaf_strikes: int = 0
+        _deaf_check_task = None
+        _deaf_recycling: bool = False
+
         async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
             # Mark the start of an utterance the moment Silero VAD fires.
             # Pipecat's STTGate only opens the audio path between VAD-start
@@ -768,13 +792,73 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
                 # one we see (== when Gladia last received audio).
                 if self._t_user_stopped is None:
                     self._t_user_stopped = time.monotonic()
+                self._arm_deaf_check()
             await super().process_frame(frame, direction)
+
+        def _arm_deaf_check(self) -> None:
+            """Schedule a one-shot check: did this utterance produce ANY transcript?"""
+            if self._deaf_check_task is not None or self._deaf_recycling:
+                return  # a check is already pending for an earlier silent utterance
+            if not self._session_url:
+                return  # session not open — nothing to watch
+            self._deaf_check_task = self.create_task(self._deaf_check_handler())
+
+        async def _deaf_check_handler(self) -> None:
+            try:
+                await asyncio.sleep(_GLADIA_DEAF_CHECK_SECS)
+            except asyncio.CancelledError:
+                return  # a transcript arrived — session is alive
+            finally:
+                self._deaf_check_task = None
+            if not self._session_url:
+                return  # call ended / session closed while we slept — don't resurrect
+            self._deaf_strikes += 1
+            logger.warning(
+                "[stt] gladia DEAF? utterance ended {:.1f}s ago with no transcript "
+                "(strike {}/{})",
+                _GLADIA_DEAF_CHECK_SECS,
+                self._deaf_strikes,
+                _GLADIA_DEAF_MAX_STRIKES,
+            )
+            if self._deaf_strikes >= _GLADIA_DEAF_MAX_STRIKES:
+                await self._deaf_recycle()
+
+        async def _deaf_recycle(self) -> None:
+            """Tear down the wedged session and open a fresh one.
+
+            Goes through lazy_disconnect (ws close + DELETE + state clear) but
+            then calls self._connect() DIRECTLY — not lazy_connect — because
+            lazy_connect's orphan purge would kill the live sessions of other
+            concurrent calls on this server.
+            """
+            if self._deaf_recycling:
+                return
+            self._deaf_recycling = True
+            self._deaf_strikes = 0
+            logger.error(
+                "[stt] gladia DEAF — recycling session (ws close + DELETE + fresh init)"
+            )
+            try:
+                await self.lazy_disconnect()
+                await self._connect()
+                logger.info("[stt] gladia deaf-recycle complete — new session live")
+            except Exception as exc:  # noqa: BLE001 — a failed recycle must not kill the call
+                logger.error("[stt] gladia deaf-recycle FAILED: {}", exc)
+            finally:
+                self._deaf_recycling = False
 
         async def push_frame(
             self,
             frame: Frame,
             direction: FrameDirection = FrameDirection.DOWNSTREAM,
         ) -> None:
+            # Any transcript (interim or final) proves the session is alive —
+            # feed the deafness watchdog before the latency instrumentation.
+            if isinstance(frame, TranscriptionFrame | InterimTranscriptionFrame):
+                self._deaf_strikes = 0
+                if self._deaf_check_task is not None:
+                    task, self._deaf_check_task = self._deaf_check_task, None
+                    await self.cancel_task(task)
             # Log on the final TranscriptionFrame Gladia emits downstream.
             # InterimTranscriptionFrames are ignored so the log line marks the
             # moment Gladia is "done answering".
