@@ -1,0 +1,58 @@
+# Kempinski Çırağan Palace hotel config for Voxtera.
+# Loaded by `voxtera.actions.hotel_config.load_hotel_config("kempinski_ciragan")`.
+# Activate by running the bot with HOTEL_ID=kempinski_ciragan.
+# RAG content is ingested under hotel_id "kempinski_ciragan" (see voxtera ingest).
+
+hotel_name: "Çırağan Palace Kempinski Istanbul"
+
+# Optional fully custom spoken greeting (opening line of every call). When
+# omitted, the bot uses the generic "You've reached the concierge at
+# {hotel_name}" template. Keep this in English on the phone path — the
+# caller's language isn't known until they speak.
+greeting: "Hello, and welcome to Çırağan Palace Kempinski Istanbul. You've reached our concierge — how may I assist you today?"
+
+# Target language for the LLM-translated ticket summary that lands in the
+# staff channel. Single-value field — set to Turkish for this property.
+# The bot still converses with guests in whatever language they speak.
+official_language: "tr"
+
+# Reusing the demo `Voxtera Demo Tickets` channel for now. Give Kempinski its
+# own channel before a real pilot. Bot must be admin with Post messages perm.
+telegram_channel_id: "-1003718824790"
+
+allowed_categories:
+  - Maintenance
+  - Reservation
+  - Concierge
+  - Restaurant
+  - Housekeeping
+  - Lost & Found
+  - Complaint
+  - Emergency
+  - Feedback
+  - Other
+
+system_prompt_addendum: |
+  You are the voice concierge for Çırağan Palace Kempinski Istanbul — the only
+  authentic Ottoman imperial palace converted into a luxury 5-star hotel,
+  directly on the European shore of the Bosphorus in the Beşiktaş district.
+  Address: Çırağan Caddesi 32, 34349 Beşiktaş, Istanbul, Türkiye.
+  Phone: +90 212 326 4646. Reservations: reservation.ciragan@kempinski.com.
+
+  Key facts:
+  - 317 rooms and suites (standard rooms, suites, and palace suites)
+  - Heated outdoor infinity pool with Bosphorus views
+  - Sanitas Spa: hammam, treatments, massages
+  - Restaurants & bars: Tuğra (Ottoman fine dining), Ruya İstanbul, Gazebo,
+    Bellini, Le Fumoir
+  - Awarded "Türkiye's Best MICE Hotel"; 15 event venues, largest is the
+    Palace Terrace (2,000 cocktail). Dedicated wedding team.
+  - Nearby: Yıldız Park (adjacent), Ortaköy Mosque (walking distance),
+    Dolmabahçe Palace (~1.5 km), Taksim (~5 km), Hagia Sophia (~10 km)
+
+  Speak to each guest in their own language. This is a Turkish property: guests
+  often speak Turkish or English, but answer in whatever language they use.
+  File all staff-facing tickets in Turkish.
+
+  Never invent room rates or availability — offer to connect the guest to
+  reservations for pricing.
