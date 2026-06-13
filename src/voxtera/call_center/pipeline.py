@@ -669,6 +669,48 @@ def _answer_offers_web(answer: str) -> bool:
     return "?" in a and any(k in a for k in _WEB_OFFER_KEYWORDS)
 
 
+# Phrases that mark the bot's own answer as an offer to FETCH something from the
+# property guide (menu, opening hours, a detail it didn't have to hand) and come
+# back with it — e.g. "let me check with the kitchen and come back to you with
+# the menu". A bare "yes" next turn then means "yes, go and get it", and we must
+# re-run the ORIGINAL question through KB retrieval rather than embedding the
+# literal "yes" (which matches nothing and makes the render fabricate "I don't
+# have it"). Deliberately does NOT require a trailing "?": the warm persona often
+# phrases the offer as a statement.
+_KB_FETCH_OFFER_KEYWORDS = (
+    "check with",
+    "check on",
+    "come back to you",
+    "get back to you",
+    "let me check",
+    "let me find",
+    "i'll check",
+    "i can check",
+    "look into",
+    "find out",
+    "find that out",
+    "pull up",
+    "get you the",
+    "the kitchen",
+    "with the restaurant",
+    # Turkish
+    "mutfak",
+    "kontrol ed",
+    "öğrenip",
+    "geri döneyim",
+    "geri dönerim",
+    "bakıp",
+    "teyit ed",
+)
+
+
+def _answer_offers_fetch(answer: str) -> bool:
+    """True when the bot offered to fetch a guide detail (menu/hours) and report
+    back — the KB-side counterpart to :func:`_answer_offers_web`."""
+    a = (answer or "").lower()
+    return any(k in a for k in _KB_FETCH_OFFER_KEYWORDS)
+
+
 # When the guest asks about REVIEWS, point the web search straight at review
 # sites instead of the open web. (Google reviews live in Maps and are hard to
 # fetch, but TripAdvisor + the OTAs carry rich guest reviews.)
@@ -1581,12 +1623,10 @@ class ConciergePipeline:
         timings["session_load_ms"] = _ms(time.perf_counter() - t0)
         # Pin the session to the property (scoped follow-ups, hybrid path).
         session["active_hotel_id"] = pid
-        t0 = time.perf_counter()
-        retrieval = await self._run_kb({"language": session.get("language")}, session, PATH_SCOPED)
-        timings["retrieve_ms"] = _ms(time.perf_counter() - t0)
 
         # Web-offer follow-ups and explicit "search online" requests reuse the
-        # standard handlers (the hybrid path keeps the property scope).
+        # standard handlers (the hybrid path keeps the property scope). These
+        # short-circuit before any KB retrieval runs, so handle them first.
         pending_web_offer = bool(session.pop("pending_web_offer", False))
         if self._web is not None and pending_web_offer and _is_affirmation(utterance):
             return await self._handle_web_request(sid, utterance, session, t_start, timings)
@@ -1618,13 +1658,40 @@ class ConciergePipeline:
         if self._web is not None and _is_web_search_request(utterance):
             return await self._handle_web_request(sid, utterance, session, t_start, timings)
 
-        session["last_question"] = utterance
+        # KB-offer follow-up: when the previous answer offered to fetch a guide
+        # detail it didn't have to hand ("let me check with the kitchen and come
+        # back to you with the menu") and the guest replies with a bare "yes",
+        # the literal "yes" is a useless retrieval query — it matches nothing and
+        # the render fabricates "I don't have it" even though the menu IS indexed.
+        # Re-run the ORIGINAL question (preserved in last_question) so the guide
+        # passage actually gets retrieved. The KB query is _turn_utterance, so we
+        # repoint it; history still records what the guest really said ("yes").
+        kb_offer_rerun = False
+        if bool(session.pop("pending_kb_offer", False)) and _is_affirmation(utterance):
+            prior_q = (session.get("last_question") or "").strip()
+            if prior_q:
+                self._turn_utterance = prior_q
+                kb_offer_rerun = True
+
+        t0 = time.perf_counter()
+        retrieval = await self._run_kb({"language": session.get("language")}, session, PATH_SCOPED)
+        timings["retrieve_ms"] = _ms(time.perf_counter() - t0)
+
+        # On a KB-offer re-run keep last_question pointing at the substantive
+        # question (so a further follow-up still resolves); otherwise this turn's
+        # utterance becomes the question of record.
+        if not kb_offer_rerun:
+            session["last_question"] = utterance
+
+        # The query the render should answer: on a re-run that's the original
+        # question, not the bare "yes".
+        render_utterance = self._turn_utterance if kb_offer_rerun else utterance
 
         # Minimal synthetic decomposition: the render formats language/type
         # from it; persona rules handle the actual reply language.
         decomposition = {"query_type": "scoped", "language": session.get("language")}
         payload = {
-            "utterance": utterance,
+            "utterance": render_utterance,
             "region": None,
             "decomposition": decomposition,
             "retrieval": retrieval or {},
@@ -1649,7 +1716,16 @@ class ConciergePipeline:
             ticket = rendered["ticket"]
         except Exception as e:  # noqa: BLE001 — degrade to the plain render
             logger.warning("[property-render] failed ({}) — falling back to plain render", e)
-            answer = await self._render(utterance, decomposition, retrieval, session)
+            answer = await self._render(render_utterance, decomposition, retrieval, session)
+
+        # Arm the KB-offer flag when this answer offered to fetch a guide detail
+        # and report back (and it isn't already a web offer). A bare "yes" next
+        # turn then re-runs the original question through KB retrieval above
+        # instead of embedding "yes" and fabricating "I don't have it".
+        if _answer_offers_fetch(answer) and not (
+            self._web is not None and _answer_offers_web(answer)
+        ):
+            session["pending_kb_offer"] = True
 
         await self._sessions.append_turn(
             session,

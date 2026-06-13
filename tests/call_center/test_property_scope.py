@@ -208,6 +208,80 @@ async def test_property_turn_never_calls_classifier() -> None:
     assert "classify_ms" not in out["timings"]
 
 
+# ---------- KB-offer follow-up ("…shall I get the menu?" → "yes") ----------
+
+
+@pytest.mark.asyncio
+async def test_kb_offer_yes_reruns_original_question(monkeypatch) -> None:
+    """A bare "yes" accepting a guide-fetch offer must re-run the ORIGINAL
+    question through KB retrieval — not embed the literal "yes" (which matches
+    nothing and makes the render fabricate "I don't have the menu")."""
+
+    # Turn 1 offers to fetch; turn 2 answers. Scripted by call order.
+    calls: list[dict[str, Any]] = []
+
+    async def fake_render(*, payload, hotel_id, ticketer, model, on_delta=None, client=None):
+        calls.append(payload)
+        if len(calls) == 1:
+            answer = (
+                "I don't have the dinner menu to hand — let me check with the "
+                "kitchen and come back to you with the details."
+            )
+        else:
+            answer = "Here is the Tuğra menu: " + ", ".join(
+                (h.get("evidence") or {}).get("dining", {}).get("text", "")
+                for h in (payload.get("retrieval") or {}).get("hotels", [])
+            )
+        if on_delta is not None:
+            await on_delta(answer)
+        return {"answer": answer, "ticket": None}
+
+    monkeypatch.setattr("voxtera.call_center.property_render.render_property_turn", fake_render)
+
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    p = _build(compound=compound, property_kb=kb)
+
+    q = "Do you have the dinner menu for Tuğra?"
+    out1 = await p.run(utterance=q, session_id="menu-1", hotel_id=HOTEL)
+    assert out1["reason"] == "property_fast"
+    # Turn-1 guide query is the real question.
+    assert kb.calls[0]["query"] == q
+
+    # Turn 2: bare affirmation accepting the fetch offer.
+    out2 = await p.run(utterance="Yes.", session_id="menu-1", hotel_id=HOTEL)
+    assert out2["reason"] == "property_fast"
+    # The re-run queried the ORIGINAL question, NOT "Yes." — this is the fix.
+    assert kb.calls[1]["query"] == q
+    assert kb.calls[1]["query"].lower() != "yes."
+    # The render received evidence and answered the menu.
+    assert "menu" in out2["answer"].lower()
+    # The guest's literal turn is still recorded in history.
+    assert out2["utterance"] == "Yes."
+
+
+@pytest.mark.asyncio
+async def test_bare_yes_without_offer_does_not_rerun(monkeypatch) -> None:
+    """A "yes" that does NOT follow a guide-fetch offer must behave normally —
+    the KB query is the literal utterance, no re-run hijack."""
+
+    async def fake_render(*, payload, hotel_id, ticketer, model, on_delta=None, client=None):
+        # Plain answer with no fetch offer → pending_kb_offer never armed.
+        answer = "The breakfast buffet runs until 10:30."
+        if on_delta is not None:
+            await on_delta(answer)
+        return {"answer": answer, "ticket": None}
+
+    monkeypatch.setattr("voxtera.call_center.property_render.render_property_turn", fake_render)
+
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    p = _build(compound=compound, property_kb=kb)
+
+    await p.run(utterance="What time is breakfast?", session_id="b-1", hotel_id=HOTEL)
+    await p.run(utterance="Yes.", session_id="b-1", hotel_id=HOTEL)
+    # No offer armed → second turn queries the literal "Yes.", not the prior Q.
+    assert kb.calls[1]["query"] == "Yes."
+
+
 # ---------- One-brain ticket flow (create_ticket tool on the render) ----------
 
 
