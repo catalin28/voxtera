@@ -385,11 +385,22 @@ fi
 echo "==> Conflict guard — verifying standalone bot is NOT running"
 BOT_ACTIVE=$(ssh "${HOST}" "systemctl is-active '${SERVICE_NAME}' 2>/dev/null || true")
 if [[ "$BOT_ACTIVE" == "active" ]]; then
-  echo "ERROR: ${SERVICE_NAME} is still active! This will cause a dual-bot conflict." >&2
-  echo "       Run: ssh ${HOST} systemctl stop ${SERVICE_NAME} && systemctl disable ${SERVICE_NAME}" >&2
-  exit 1
+  # The standalone ${SERVICE_NAME} bot is the legacy architecture, superseded
+  # by ${CONCIERGE_SERVICE_NAME}. Running both fights over the same WhatsApp
+  # webhook. Auto-retire it (stop + disable) and continue rather than aborting
+  # the deploy and making the operator run it by hand every time.
+  echo "    ${SERVICE_NAME} is active — auto-retiring it (superseded by ${CONCIERGE_SERVICE_NAME})"
+  ssh "${HOST}" "systemctl stop '${SERVICE_NAME}' && systemctl disable '${SERVICE_NAME}'"
+  BOT_ACTIVE=$(ssh "${HOST}" "systemctl is-active '${SERVICE_NAME}' 2>/dev/null || true")
+  if [[ "$BOT_ACTIVE" == "active" ]]; then
+    echo "ERROR: failed to stop ${SERVICE_NAME} — still active after stop+disable." >&2
+    echo "       Investigate: ssh ${HOST} systemctl status ${SERVICE_NAME}" >&2
+    exit 1
+  fi
+  echo "    OK — ${SERVICE_NAME} stopped and disabled (status: ${BOT_ACTIVE})"
+else
+  echo "    OK — ${SERVICE_NAME} is not running (status: ${BOT_ACTIVE})"
 fi
-echo "    OK — ${SERVICE_NAME} is not running (status: ${BOT_ACTIVE})"
 
 # --------------------------------------------------------------------------
 # Post-deploy smoke test: hit the public WhatsApp webhook handshake exactly
