@@ -123,6 +123,7 @@ button:disabled{opacity:.42;cursor:not-allowed}
         <label>Provider</label>
         <select id="f-provider">
           <option value="all">All</option><option value="google">Google</option>
+          <option value="gemini">Gemini</option>
           <option value="cartesia">Cartesia</option><option value="elevenlabs">ElevenLabs</option>
         </select>
         <label>Gender</label>
@@ -173,6 +174,7 @@ const propertyId = new URLSearchParams(location.search).get('property_id') || 'd
 
 const DEFAULTS = {
   google: {},
+  gemini: {},
   cartesia: { speed: 0, emotion: [], volume: 0, pronunciation_dict_id: '' },
   elevenlabs: { stability: 0.71, similarity_boost: 0.75, style: 0, use_speaker_boost: true, speed: 1.0 },
 };
@@ -250,6 +252,11 @@ function renderParams(provider){
 
   if(provider==='google'){
     body.innerHTML='<p class="no-params-note">Chirp 3 HD voices have no adjustable parameters — what you hear in the preview is exactly what your guests will hear.</p>';
+    return;
+  }
+
+  if(provider==='gemini'){
+    body.innerHTML='<p class="no-params-note">Gemini 2.5 Flash TTS style is controlled by the GEMINI_TTS_PROMPT setting, not per-voice sliders. Best-in-class for Turkish.</p>';
     return;
   }
 
@@ -407,7 +414,7 @@ async function saveVoice(){
   if(!S.selKey) return;
   const v=voiceByKey(S.selKey);
   // Build fallback_chain: all providers except the active one
-  const allProviders=['google','cartesia','elevenlabs'];
+  const allProviders=['google','gemini','cartesia','elevenlabs'];
   const fallbackChain=allProviders.filter(p=>p!==v.provider);
   // Build complete tts_config.json structure per spec
   const payload={

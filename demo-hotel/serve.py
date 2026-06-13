@@ -1851,19 +1851,80 @@ def _tts_google(text: str, voice: str, language: str) -> bytes:
     else:
         locale_code = google_locale_for(language.lower()) or f"{language}-US"
 
-    # Rewrite the voice ID's locale prefix to match the requested locale.
-    # Chirp 3 HD voice IDs follow the pattern "<locale>-Chirp3-HD-<character>";
-    # we keep the character (Charon, Aoede, etc.) and swap the prefix.
+    # Normalize to a full Chirp 3 HD voice ID matching the requested locale.
+    # Chirp 3 HD voice IDs follow the pattern "<locale>-Chirp3-HD-<character>".
+    # Inputs arrive in two shapes:
+    #   - full ID, e.g. "en-US-Chirp3-HD-Charon" (Test Speaker page)
+    #   - bare character, e.g. "Charon" (admin voice catalog → preview)
+    # In both cases we keep the character (Charon, Aoede, …) and (re)build the
+    # locale prefix. Google rejects a name that isn't a full, valid voice ID,
+    # so a bare character left untouched would 500 the preview.
     voice_id = voice
     if "Chirp3-HD-" in voice:
         character = voice.split("Chirp3-HD-")[-1]
         voice_id = f"{locale_code}-Chirp3-HD-{character}"
+    elif "-" not in voice:
+        # Bare character name from the catalog — build the full voice ID.
+        voice_id = f"{locale_code}-Chirp3-HD-{voice}"
 
     client = texttospeech.TextToSpeechClient()
     synthesis_input = texttospeech.SynthesisInput(text=text)
     voice_params = texttospeech.VoiceSelectionParams(
         language_code=locale_code,
         name=voice_id,
+    )
+    audio_config = texttospeech.AudioConfig(
+        audio_encoding=texttospeech.AudioEncoding.MP3,
+    )
+    response = client.synthesize_speech(
+        input=synthesis_input, voice=voice_params, audio_config=audio_config
+    )
+    return response.audio_content
+
+
+def _tts_gemini(text: str, voice: str, language: str) -> bytes:
+    """Generate a preview clip via Gemini 2.5 Flash TTS, returning MP3 bytes.
+
+    Uses the same Cloud Text-to-Speech client and Google service-account
+    credentials as :func:`_tts_google`, but selects a Gemini TTS model via
+    ``model_name`` and a bare, multilingual character voice (e.g. "Charon").
+    An optional ``GEMINI_TTS_PROMPT`` env var supplies a style instruction.
+
+    Requires google-cloud-texttospeech >= 2.29.0 (the ``model_name`` voice
+    field and ``SynthesisInput.prompt`` landed in that release).
+    """
+    import os
+
+    from google.cloud import texttospeech
+
+    creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+    if creds and not os.path.isabs(creds):
+        creds = str(Path(__file__).resolve().parent.parent / creds)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds
+
+    # Resolve BCP-47 locale (Gemini voices are multilingual; locale only sets
+    # the synthesis language). Bare character name is used as-is.
+    if "-" in language:
+        locale_code = language
+    else:
+        locale_code = google_locale_for(language.lower()) or f"{language}-US"
+
+    # Strip any accidental locale/Chirp prefix — Gemini wants the bare name.
+    voice_name = voice.split("Chirp3-HD-")[-1] if "Chirp3-HD-" in voice else voice
+
+    model_name = os.environ.get("GEMINI_TTS_MODEL", "gemini-2.5-flash-tts")
+    prompt = (os.environ.get("GEMINI_TTS_PROMPT") or "").strip()
+
+    client = texttospeech.TextToSpeechClient()
+    synthesis_input = (
+        texttospeech.SynthesisInput(text=text, prompt=prompt)
+        if prompt
+        else texttospeech.SynthesisInput(text=text)
+    )
+    voice_params = texttospeech.VoiceSelectionParams(
+        language_code=locale_code,
+        name=voice_name,
+        model_name=model_name,
     )
     audio_config = texttospeech.AudioConfig(
         audio_encoding=texttospeech.AudioEncoding.MP3,
@@ -5817,7 +5878,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         tmp.replace(_VOICE_CONFIGS_PATH)
 
     def _provider_preview_ready(self, provider: str) -> tuple[bool, str | None]:
-        if provider == "google":
+        # Google Chirp 3 HD and Gemini TTS share the same service-account creds.
+        if provider in ("google", "gemini"):
             creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
             if not creds:
                 return False, "GOOGLE_APPLICATION_CREDENTIALS is not set"
@@ -5898,6 +5960,33 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
                     "language_coverage": google_coverage,
                     "preview_enabled": self._provider_preview_ready("google")[0],
                     "preview_error": self._provider_preview_ready("google")[1],
+                }
+            )
+
+        # Gemini 2.5 Flash TTS — same character names as Chirp 3 HD, but bare
+        # (multilingual). Reuses the shared google_chirp3_characters list so a
+        # single config entry feeds both providers. Strongest for Turkish.
+        gemini_ready, gemini_err = self._provider_preview_ready("gemini")
+        for char in LANG_CONFIG.get("voices", {}).get("google_chirp3_characters", []):
+            if not isinstance(char, dict):
+                continue
+            voice_id = str(char.get("id", "")).strip()
+            if not voice_id:
+                continue
+            label = str(char.get("name", voice_id))
+            voices.append(
+                {
+                    "voice_key": f"gemini:{voice_id}",
+                    "voice_id": voice_id,
+                    "display_name": voice_id,
+                    "provider": "gemini",
+                    "provider_label": "Gemini",
+                    "model": "gemini-2.5-flash-tts",
+                    "gender": self._voice_gender_from_label(label),
+                    "tone_tags": self._voice_tones_from_label(label),
+                    "language_coverage": 24,
+                    "preview_enabled": gemini_ready,
+                    "preview_error": gemini_err,
                 }
             )
 
@@ -6261,6 +6350,8 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
         try:
             if provider == "google":
                 audio_bytes = _tts_google(text, voice_id, "en")
+            elif provider == "gemini":
+                audio_bytes = _tts_gemini(text, voice_id, "en")
             elif provider == "cartesia":
                 audio_bytes = _tts_cartesia(text, voice_id, "en", params=params)
             elif provider == "elevenlabs":

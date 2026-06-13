@@ -57,6 +57,18 @@ TTS_MODEL_ELEVENLABS = "eleven_flash_v2_5"
 # Override at runtime via the HTML voice combo (voxtera-voice messages).
 TTS_ELEVENLABS_DEFAULT_VOICE = "21m00Tcm4TlvDq8ikWAM"
 
+# Gemini 2.5 Flash TTS — Google's controllable, expressive TTS model.
+# Unlike Chirp 3 HD (locale-encoded voice IDs), Gemini voices are bare
+# character names (Kore, Charon, …) that are inherently multilingual across
+# the model's ~24 supported languages; the locale is set per-utterance via
+# the ``language`` setting. Same Google service-account credentials as Chirp.
+# Chosen for Turkish: empirically the strongest TTS for tr-TR (see
+# feat Turkish demo). NOT a token-stream engine, so first-audio latency is
+# higher than Chirp/ElevenLabs — acceptable where voice quality is the goal.
+TTS_MODEL_GEMINI = "gemini-2.5-flash-tts"
+TTS_GEMINI_DEFAULT_VOICE = "Charon"
+TTS_GEMINI_DEFAULT_LANGUAGE = "en-US"
+
 # OpenAI tts-1 voices (provider-namespaced).
 _VALID_OPENAI_TTS_VOICES: frozenset[str] = frozenset(
     {"alloy", "ash", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"}
@@ -88,6 +100,16 @@ def _build_valid_google_tts_voices() -> frozenset[str]:
 
 
 _VALID_GOOGLE_TTS_VOICES: frozenset[str] = _build_valid_google_tts_voices()
+
+
+# Gemini 2.5 Flash TTS voices: the same character names as Chirp 3 HD, but
+# bare (no locale prefix) since Gemini voices are multilingual. Derived from
+# the shared config so adding a character in languages.json covers both.
+def _build_valid_gemini_tts_voices() -> frozenset[str]:
+    return frozenset(str(c["id"]).strip() for c in chirp3_voice_characters() if c.get("id"))
+
+
+_VALID_GEMINI_TTS_VOICES: frozenset[str] = _build_valid_gemini_tts_voices()
 # Cartesia Sonic-3 voice UUIDs. Starter set — extend as we curate from
 # https://play.cartesia.ai/voices. Adding a voice here is the only place
 # you need to register it on the Python side; the HTML demo.html voice
@@ -207,6 +229,77 @@ def _build_google_tts(settings: Settings) -> FrameProcessor | None:
         ),
     )
     logger.info("[tts] google chirp3-hd available (voice={}, mode=token-stream)", voice)
+    return tts
+
+
+def _build_gemini_tts(settings: Settings) -> FrameProcessor | None:
+    """Build the Gemini 2.5 Flash TTS branch if Google credentials are valid.
+
+    Reuses the same Google service-account JSON as the Chirp 3 HD branch
+    (``GOOGLE_APPLICATION_CREDENTIALS``) — no separate key. Gemini TTS is a
+    prompt-controllable, expressive model: an optional ``GEMINI_TTS_PROMPT``
+    env var sets a persistent style instruction (e.g. the concierge persona's
+    "warm, polished" register).
+
+    Notes:
+    * Output is fixed at 24 kHz — pinned here to match the rest of the
+      pipeline and silence pipecat's sample-rate-mismatch warning.
+    * Unlike Chirp 3 HD's gRPC token-stream, Gemini synthesises from buffered
+      text, so first-audio latency is higher. We therefore keep SENTENCE
+      aggregation (the default) rather than TOKEN — token-by-token offers no
+      latency win here and risks choppier prosody.
+    """
+    if not settings.google_tts_enabled:
+        return None
+    if not settings.google_application_credentials:
+        return None
+    creds_path = Path(settings.google_application_credentials).expanduser()
+    if not creds_path.is_absolute():
+        creds_path = Path.cwd() / creds_path
+    if not creds_path.exists():
+        logger.warning(
+            "[tts] google credentials path does not exist: {} — gemini TTS disabled",
+            creds_path,
+        )
+        return None
+    try:
+        from pipecat.services.google.tts import GeminiTTSService
+    except ImportError:
+        logger.warning(
+            "[tts] gemini TTS not available in this pipecat build — needs a recent "
+            "pipecat-ai[google] (GeminiTTSService). Skipping gemini branch."
+        )
+        return None
+
+    import os
+
+    voice = settings.default_tts_voice
+    if voice not in _VALID_GEMINI_TTS_VOICES:
+        voice = TTS_GEMINI_DEFAULT_VOICE
+
+    prompt = (os.environ.get("GEMINI_TTS_PROMPT") or "").strip()
+
+    settings_kwargs: dict = {
+        "model": TTS_MODEL_GEMINI,
+        "voice": voice,
+        "language": TTS_GEMINI_DEFAULT_LANGUAGE,
+    }
+    if prompt:
+        settings_kwargs["prompt"] = prompt
+
+    tts = GeminiTTSService(
+        credentials_path=str(creds_path),
+        # Google TTS always emits 24 kHz; pin it to match the pipeline and
+        # avoid the resampling-mismatch warning (same reasoning as ElevenLabs).
+        sample_rate=24000,
+        settings=GeminiTTSService.Settings(**settings_kwargs),
+    )
+    logger.info(
+        "[tts] gemini available (model={}, voice={}, prompt={})",
+        TTS_MODEL_GEMINI,
+        voice,
+        "set" if prompt else "none",
+    )
     return tts
 
 
@@ -338,6 +431,7 @@ def _build_elevenlabs_tts(settings: Settings) -> FrameProcessor | None:
 _TTS_BUILDERS: dict[str, Callable[[Settings], FrameProcessor | None]] = {
     "openai": _build_openai_tts,
     "google": _build_google_tts,
+    "gemini": _build_gemini_tts,
     "cartesia": _build_cartesia_tts,
     "elevenlabs": _build_elevenlabs_tts,
 }
@@ -346,6 +440,8 @@ _TTS_BUILDERS: dict[str, Callable[[Settings], FrameProcessor | None]] = {
 def _voices_for_tts_provider(provider: str) -> frozenset[str]:
     if provider == "google":
         return _VALID_GOOGLE_TTS_VOICES
+    if provider == "gemini":
+        return _VALID_GEMINI_TTS_VOICES
     if provider == "cartesia":
         return _VALID_CARTESIA_TTS_VOICES
     if provider == "elevenlabs":
@@ -356,6 +452,8 @@ def _voices_for_tts_provider(provider: str) -> frozenset[str]:
 def _default_voice_for_tts_provider(provider: str) -> str:
     if provider == "google":
         return TTS_GOOGLE_DEFAULT_VOICE
+    if provider == "gemini":
+        return TTS_GEMINI_DEFAULT_VOICE
     if provider == "cartesia":
         return TTS_CARTESIA_DEFAULT_VOICE
     if provider == "elevenlabs":
@@ -369,6 +467,7 @@ def _default_voice_for_tts_provider(provider: str) -> str:
 _VALID_TTS_VOICES: frozenset[str] = (
     _VALID_OPENAI_TTS_VOICES
     | _VALID_GOOGLE_TTS_VOICES
+    | _VALID_GEMINI_TTS_VOICES
     | _VALID_CARTESIA_TTS_VOICES
     | _VALID_ELEVENLABS_TTS_VOICES
 )

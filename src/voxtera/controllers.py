@@ -617,6 +617,11 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
         "vi": "vi-VN",
     }
 
+    # Languages that should be voiced by Gemini 2.5 Flash TTS rather than the
+    # property's default provider. Turkish first: empirically the strongest
+    # TTS for tr-TR (Turkish demo). Primary subtags only ("tr", not "tr-TR").
+    _GEMINI_PREFERRED_LANGS: frozenset[str] = frozenset({"tr"})
+
     def __init__(self, tts_router: TTSRouter) -> None:
         super().__init__()
         self._tts_router = tts_router
@@ -626,6 +631,46 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
         # same BCP-47 normalization upstream — only the downstream
         # Settings shape differs.
         self._current_lang: str | None = None
+        # The provider to return to after a Gemini-preferred language ends.
+        # Captured the first time we auto-switch INTO gemini so a later
+        # non-Turkish utterance restores the original provider rather than
+        # stranding the call on gemini.
+        self._base_provider: str | None = None
+
+    def _maybe_route_to_gemini(self, bcp47: str) -> None:
+        """Switch the active TTS provider to/from Gemini based on language.
+
+        Turkish (and any other ``_GEMINI_PREFERRED_LANGS``) is routed to the
+        ``gemini`` branch when it exists; every other language restores the
+        provider that was active before we switched in. No-op when the gemini
+        branch wasn't built (no Google credentials). Resets ``_current_lang``
+        on a real switch so the downstream language Settings re-apply to the
+        newly-active service.
+        """
+        primary = bcp47.split("-")[0].lower()
+        router = self._tts_router
+        active = router.active_provider
+        gemini_available = "gemini" in router.available_providers
+
+        if primary in self._GEMINI_PREFERRED_LANGS:
+            if gemini_available and active != "gemini":
+                self._base_provider = active
+                logger.info(
+                    "[tts-lang] {!r} → routing TTS provider {!r} → 'gemini'",
+                    bcp47,
+                    active,
+                )
+                router.set_active("gemini")
+                self._current_lang = None
+        elif active == "gemini" and self._base_provider is not None:
+            logger.info(
+                "[tts-lang] {!r} → restoring TTS provider 'gemini' → {!r}",
+                bcp47,
+                self._base_provider,
+            )
+            router.set_active(self._base_provider)
+            self._base_provider = None
+            self._current_lang = None
 
     @classmethod
     def _cartesia_lang_for_bcp47(cls, bcp47: str):
@@ -714,13 +759,19 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
             if isinstance(msg, dict) and msg.get("type") == "voxtera-tts-provider":
                 self._current_lang = None
 
-        elif (
-            isinstance(frame, TranscriptionFrame)
-            and direction == FrameDirection.DOWNSTREAM
-            and self._tts_router.active_provider in ("google", "cartesia", "elevenlabs")
-        ):
+        elif isinstance(frame, TranscriptionFrame) and direction == FrameDirection.DOWNSTREAM:
             bcp47 = self._resolve_lang(getattr(frame, "language", None))
-            if bcp47 and bcp47 != self._current_lang:
+            # Route Turkish (etc.) to Gemini / restore the base provider BEFORE
+            # reading the active provider below, so language Settings land on
+            # whichever branch is now live.
+            if bcp47:
+                self._maybe_route_to_gemini(bcp47)
+            if (
+                bcp47
+                and bcp47 != self._current_lang
+                and self._tts_router.active_provider
+                in ("google", "gemini", "cartesia", "elevenlabs")
+            ):
                 active_provider = self._tts_router.active_provider
                 try:
                     active_tts = self._tts_router.active_tts
@@ -742,6 +793,27 @@ class AutoTTSLanguageSwitcher(FrameProcessor):
                         await self.push_frame(
                             TTSUpdateSettingsFrame(
                                 delta=GoogleTTSService.Settings(voice=new_voice, language=bcp47),
+                                service=active_tts,
+                            ),
+                            FrameDirection.DOWNSTREAM,
+                        )
+                        self._current_lang = bcp47
+                    elif active_provider == "gemini":
+                        from pipecat.services.google.tts import GeminiTTSService
+
+                        # Gemini voices are bare, multilingual character names
+                        # (Kore, Charon, …) — no per-locale voice ID. Only the
+                        # language changes per utterance. Pass the BCP-47 string
+                        # directly (the Settings.language field accepts str).
+                        logger.info(
+                            "[tts-lang] detected={!r} → Gemini TTS language={!r} "
+                            "(voice unchanged)",
+                            bcp47,
+                            bcp47,
+                        )
+                        await self.push_frame(
+                            TTSUpdateSettingsFrame(
+                                delta=GeminiTTSService.Settings(language=bcp47),
                                 service=active_tts,
                             ),
                             FrameDirection.DOWNSTREAM,
@@ -1262,6 +1334,10 @@ class ModelSwitcher(FrameProcessor):
                             from pipecat.services.google.tts import GoogleTTSService
 
                             delta = GoogleTTSService.Settings(voice=voice)
+                        elif active_provider == "gemini":
+                            from pipecat.services.google.tts import GeminiTTSService
+
+                            delta = GeminiTTSService.Settings(voice=voice)
                         elif active_provider == "cartesia":
                             from pipecat.services.cartesia.tts import CartesiaTTSService
 

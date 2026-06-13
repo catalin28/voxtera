@@ -367,6 +367,15 @@ class TTSRouter(FrameProcessor):
         return self._active
 
     @property
+    def available_providers(self) -> frozenset[str]:
+        """Providers that were successfully built (credentials present).
+
+        Used by controllers (e.g. AutoTTSLanguageSwitcher) to check whether a
+        target branch like ``gemini`` exists before switching to it.
+        """
+        return frozenset(self._branches.keys())
+
+    @property
     def active_tts(self) -> FrameProcessor:
         return self._branches[self._active]["tts"]
 
