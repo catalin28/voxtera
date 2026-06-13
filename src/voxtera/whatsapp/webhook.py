@@ -248,6 +248,57 @@ def _extract_call_from(body: dict[str, Any]) -> str | None:
     return None
 
 
+def _extract_identity(body: dict[str, Any]) -> dict[str, str | None]:
+    """Best-effort caller/sender identity from any WhatsApp webhook body.
+
+    Returns a dict with:
+      * ``phone``   — the number from ``calls[].from`` or ``messages[].from``
+                      (E.164 without '+'). The dialable number. May be absent
+                      once WhatsApp usernames let users hide their number.
+      * ``wa_id``   — ``contacts[].wa_id`` (today identical to ``phone``; may
+                      be omitted in future payloads).
+      * ``user_id`` — ``contacts[].user_id``, Meta's Business-Scoped User ID
+                      (BSUID). Durable per-business identifier, present since
+                      2026-03-31. Becomes the only guaranteed id once numbers
+                      can be hidden — prefer it as the tracking/CRM key.
+      * ``name``    — ``contacts[].profile.name`` if WhatsApp supplied it.
+
+    All values are best-effort and may be None — never assume presence.
+    """
+    phone = wa_id = user_id = name = None
+    for entry in body.get("entry", []) or []:
+        for change in entry.get("changes", []) or []:
+            value = (change.get("value") or {})
+            # Sender number: calls (voice) or messages (text).
+            for call in value.get("calls", []) or []:
+                phone = phone or call.get("from") or call.get("from_")
+            for msg in value.get("messages", []) or []:
+                phone = phone or msg.get("from")
+            # BSUID + wa_id + profile name live in the contacts array.
+            for contact in value.get("contacts", []) or []:
+                wa_id = wa_id or contact.get("wa_id")
+                user_id = user_id or contact.get("user_id")
+                name = name or (contact.get("profile") or {}).get("name")
+    return {
+        "phone": str(phone) if phone else None,
+        "wa_id": str(wa_id) if wa_id else None,
+        "user_id": str(user_id) if user_id else None,
+        "name": str(name) if name else None,
+    }
+
+
+def _log_identity(channel: str, ident: dict[str, str | None]) -> None:
+    """Emit one searchable identity line. Grep-friendly key=value form."""
+    logger.info(
+        "[wa-identity] channel={} phone={} wa_id={} user_id={} name={}",
+        channel,
+        ident.get("phone") or "-",
+        ident.get("wa_id") or "-",
+        ident.get("user_id") or "-",
+        ident.get("name") or "-",
+    )
+
+
 async def _process_call(app: web.Application, body: dict[str, Any]) -> None:
     """Hand a `calls` webhook to Pipecat's WhatsAppClient, which terminates the
     WebRTC media (SDP answer + pre_accept/accept) and runs the voice bot."""
@@ -259,8 +310,7 @@ async def _process_call(app: web.Application, body: dict[str, Any]) -> None:
     # receives the SmallWebRTCConnection, not the call metadata, so we grab
     # it from the raw body and close over it in the callback factory.
     caller_wa_id = _extract_call_from(body)
-    if caller_wa_id:
-        logger.debug("Incoming call from wa_id={}", caller_wa_id)
+    _log_identity("voice", _extract_identity(body))
 
     client = app[KEY_CALL_CLIENT]
     try:
@@ -326,7 +376,13 @@ async def handle_webhook(request: web.Request) -> web.Response:
     if is_calls_event(body):
         asyncio.create_task(_process_call(request.app, body))
     else:
-        for msg in extract_text_messages(body):
+        text_msgs = extract_text_messages(body)
+        # Log caller identity once per inbound payload that carries a message —
+        # the BSUID/user_id lives in body.contacts, which the flattened msg
+        # dict drops, so log it here while the full body is in scope.
+        if text_msgs:
+            _log_identity("text", _extract_identity(body))
+        for msg in text_msgs:
             if _already_seen(request.app, msg["id"]):
                 logger.debug("Skipping duplicate message {}", msg["id"])
                 continue
