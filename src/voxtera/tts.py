@@ -21,7 +21,6 @@ from voxtera.lang_config import (
     google_locale_for,
     language_codes,
 )
-from voxtera.tts_normalize import attach_number_normalizer
 
 # tts-1 is faster; tts-1-hd is higher quality. Used by `_build_openai_tts`
 # and surfaced in startup logs.
@@ -154,7 +153,6 @@ def _build_openai_tts(settings: Settings) -> FrameProcessor | None:
         sample_rate=24000,
         settings=OpenAITTSService.Settings(model=TTS_MODEL, voice=voice),
     )
-    attach_number_normalizer(tts, enabled=settings.tts_number_normalize)
     logger.info("[tts] openai available (model={}, voice={})", TTS_MODEL, voice)
     return tts
 
@@ -208,7 +206,6 @@ def _build_google_tts(settings: Settings) -> FrameProcessor | None:
             language=TTS_GOOGLE_DEFAULT_LANGUAGE,
         ),
     )
-    attach_number_normalizer(tts, enabled=settings.tts_number_normalize)
     logger.info("[tts] google chirp3-hd available (voice={}, mode=token-stream)", voice)
     return tts
 
@@ -268,7 +265,6 @@ def _build_cartesia_tts(settings: Settings) -> FrameProcessor | None:
             language=Language.EN,
         ),
     )
-    attach_number_normalizer(tts, enabled=settings.tts_number_normalize)
     logger.info(
         "[tts] cartesia available (model={}, voice={}, mode=token-stream)",
         settings.cartesia_model,
@@ -331,7 +327,6 @@ def _build_elevenlabs_tts(settings: Settings) -> FrameProcessor | None:
         # use in the Google and Cartesia builders.
         text_aggregation_mode=TextAggregationMode.TOKEN,
     )
-    attach_number_normalizer(tts, enabled=settings.tts_number_normalize)
     logger.info(
         "[tts] elevenlabs available (model={}, voice={}, mode=token-stream)",
         settings.elevenlabs_model,

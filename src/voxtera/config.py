@@ -126,11 +126,6 @@ class Settings:
     # project). When False, only OpenAI TTS is available regardless of
     # GOOGLE_APPLICATION_CREDENTIALS.
     google_tts_enabled: bool = True
-    # Safety-net that rewrites leading-zero clock times ("12:00", "9:05") into a
-    # TTS-safe spoken form before synthesis, so a model slip-up doesn't produce
-    # mangled audio (the voice drops the zero: "twelve three"). Audio-only —
-    # transcripts/context keep the original digits. Set False to disable.
-    tts_number_normalize: bool = True
     # Deepgram API key (required when stt_provider=deepgram).
     deepgram_api_key: str | None = field(default=None, repr=False)
     # Gladia API key (required when stt_provider=gladia). Solaria-1 is the
@@ -374,8 +369,6 @@ def load_settings() -> Settings:
         stt_provider=os.environ.get("STT_PROVIDER", "whisper").lower(),
         tts_provider=os.environ.get("TTS_PROVIDER", "openai").lower(),
         google_tts_enabled=os.environ.get("GOOGLE_TTS_ENABLED", "true").lower()
-        not in ("0", "false", "no"),
-        tts_number_normalize=os.environ.get("TTS_NUMBER_NORMALIZE", "true").lower()
         not in ("0", "false", "no"),
         deepgram_api_key=os.environ.get("DEEPGRAM_API_KEY"),
         gladia_api_key=os.environ.get("GLADIA_API_KEY"),
