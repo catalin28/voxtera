@@ -550,11 +550,20 @@ def preimport_gladia() -> None:
         logger.warning("[stt] preimport_gladia failed: {}", exc)
 
 
-# Deafness watchdog knobs (see _LazyConnectGladiaSTTService). Check delay must
-# exceed the worst NORMAL Gladia tail (observed ≤1.6s, p99 budget 2.3s) so a
-# slow-but-alive session never counts as a strike.
-_GLADIA_DEAF_CHECK_SECS = float(os.environ.get("GLADIA_DEAF_CHECK_SECS", "4.0"))
-_GLADIA_DEAF_MAX_STRIKES = int(os.environ.get("GLADIA_DEAF_MAX_STRIKES", "2"))
+# Deafness watchdog knobs (see _LazyConnectGladiaSTTService).
+#
+# Why a single strike at 2.5s is safe (and why 10s recovery was overkill):
+# interim_results is ENABLED, so a healthy session streams an
+# InterimTranscriptionFrame within a few hundred ms of speech — and ANY
+# transcript (interim or final) resets the watchdog. There is therefore no
+# "slow but alive" turn that stays totally silent for 2.5s; a slow turn still
+# emits interims that keep resetting the timer. Total silence for 2.5s after
+# a turn ends == the session is wedged, not slow. So we recycle on the FIRST
+# such strike instead of waiting for a second utterance. Recovery ~2.5s vs the
+# old ~10s. CHECK_SECS still sits comfortably above the worst normal tail
+# (≤1.6s observed) as a margin against jitter.
+_GLADIA_DEAF_CHECK_SECS = float(os.environ.get("GLADIA_DEAF_CHECK_SECS", "2.5"))
+_GLADIA_DEAF_MAX_STRIKES = int(os.environ.get("GLADIA_DEAF_MAX_STRIKES", "1"))
 
 
 def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
