@@ -474,14 +474,39 @@ def _build_deepgram_stt(settings: Settings) -> FrameProcessor | None:
 _STT_VOCABULARY_PATH = Path(__file__).resolve().parents[2] / "config" / "stt_vocabulary.json"
 
 
-def _load_stt_vocabulary(hotel_id: str) -> list[str]:
-    """Load and flatten the Gladia custom-vocabulary term list.
+def _flatten_hotel_nouns(hotel_nouns: object) -> list[str]:
+    """Flatten one hotel's proper-noun entry.
 
-    Reads ``config/stt_vocabulary.json``: flattens every array under
-    ``categories`` and appends the proper nouns registered for ``hotel_id``
-    under ``hotel_proper_nouns``. Returns a de-duplicated, order-preserving
-    list of terms — or ``[]`` (logged) if the file is missing or malformed,
-    so STT runs un-biased rather than failing to start.
+    Accepts BOTH shapes used in ``hotel_proper_nouns``:
+      * a flat ``list[str]`` (legacy, e.g. ``demo``), or
+      * an object ``{venues: [...], dishes: [...], landmarks: [...]}``
+        whose sub-lists are all flattened for STT biasing.
+    """
+    if isinstance(hotel_nouns, list):
+        return [str(t) for t in hotel_nouns]
+    if isinstance(hotel_nouns, dict):
+        terms: list[str] = []
+        for value in hotel_nouns.values():
+            if isinstance(value, list):
+                terms.extend(str(t) for t in value)
+        return terms
+    return []
+
+
+def _load_stt_vocabulary(hotel_id: str, *, include_categories: bool = False) -> list[str]:
+    """Load and flatten the Gladia custom-vocabulary term list for ``hotel_id``.
+
+    Reads ``config/stt_vocabulary.json`` and returns the proper nouns
+    registered for ``hotel_id`` under ``hotel_proper_nouns`` (venues + dishes
+    + landmarks). Returns a de-duplicated, order-preserving list of terms — or
+    ``[]`` (logged) if the file is missing/malformed, so STT runs un-biased
+    rather than failing to start.
+
+    ``include_categories`` is OFF by default on purpose: the generic
+    domain-word ``categories`` block (``menu``, ``breakfast`` …) over-biased
+    Gladia — e.g. "the menu" → "kids menu" — which is why biasing was disabled.
+    We now bias ONLY the rare proper nouns that ASR genuinely mangles
+    (restaurant + Turkish dish names), which carries no such collision risk.
     """
     try:
         data = json.loads(_STT_VOCABULARY_PATH.read_text(encoding="utf-8"))
@@ -495,16 +520,15 @@ def _load_stt_vocabulary(hotel_id: str) -> list[str]:
         return []
 
     terms: list[str] = []
-    categories = data.get("categories")
-    if isinstance(categories, dict):
-        for entries in categories.values():
-            if isinstance(entries, list):
-                terms.extend(str(t) for t in entries)
+    if include_categories:
+        categories = data.get("categories")
+        if isinstance(categories, dict):
+            for entries in categories.values():
+                if isinstance(entries, list):
+                    terms.extend(str(t) for t in entries)
     proper_nouns = data.get("hotel_proper_nouns")
     if isinstance(proper_nouns, dict):
-        hotel_nouns = proper_nouns.get(hotel_id)
-        if isinstance(hotel_nouns, list):
-            terms.extend(str(t) for t in hotel_nouns)
+        terms.extend(_flatten_hotel_nouns(proper_nouns.get(hotel_id)))
 
     # De-duplicate while preserving first-seen order.
     seen: set[str] = set()
@@ -1091,20 +1115,29 @@ def _build_gladia_stt(settings: Settings) -> FrameProcessor | None:
         settings_kwargs,
     )
 
-    # Custom vocabulary — bias Gladia toward hotel-concierge domain terms so
-    # domain words ("breakfast", "amenities", the hotel's venue names) stop
-    # being mis-transcribed. Travels once in the session-init payload, not
-    # per utterance. Skipped silently when the vocabulary file is absent.
-    # TEMPORARILY DISABLED to test if vocabulary is causing "the menu" → "kids menu"
-    # _t_vocab = time.perf_counter()
-    # vocabulary = _load_stt_vocabulary(settings.hotel_id)
-    # if vocabulary:
-    #     settings_kwargs["realtime_processing"] = RealtimeProcessingConfig(
-    #         custom_vocabulary=True,
-    #         custom_vocabulary_config=CustomVocabularyConfig(vocabulary=vocabulary),
-    #     )
-    # logger.info("[stt] gladia vocab took {:.0f}ms", (time.perf_counter() - _t_vocab) * 1000)
-    logger.info("[stt] custom vocabulary DISABLED for testing")
+    # Custom vocabulary — bias Gladia toward the hotel's rare PROPER NOUNS
+    # (restaurant names + Turkish dish names) so they stop being mis-transcribed
+    # ("Tuğra" → "Tura"/"Tula"). Proper-nouns only by design: an earlier attempt
+    # that also biased generic domain words ("menu", "breakfast") over-triggered
+    # ("the menu" → "kids menu") and had to be disabled. Rare proper nouns carry
+    # no such collision risk. Travels once in the session-init payload, not per
+    # utterance. Skipped silently when the vocabulary file/entry is absent.
+    _t_vocab = time.perf_counter()
+    vocabulary = _load_stt_vocabulary(settings.hotel_id)
+    if vocabulary:
+        settings_kwargs["realtime_processing"] = RealtimeProcessingConfig(
+            custom_vocabulary=True,
+            custom_vocabulary_config=CustomVocabularyConfig(vocabulary=vocabulary),
+        )
+        logger.info(
+            "[stt] gladia custom vocabulary ENABLED: {} proper-noun terms "
+            "(hotel_id={!r}, {:.0f}ms)",
+            len(vocabulary),
+            settings.hotel_id,
+            (time.perf_counter() - _t_vocab) * 1000,
+        )
+    else:
+        logger.info("[stt] gladia custom vocabulary: no terms for hotel_id={!r}", settings.hotel_id)
 
     _t_ctor = time.perf_counter()
     # ttfs_p99_latency drives how long the turn-stop strategy waits after VAD

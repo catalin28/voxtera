@@ -95,7 +95,8 @@ from voxtera.call_context import CallContext
 from voxtera.config import Settings, load_settings
 from voxtera.stt import _build_stt
 from voxtera.travel_agent_brain import TravelAgentBrain
-from voxtera.tts import _TTS_BUILDERS
+from voxtera.tts import _TTS_BUILDERS, tts_supports_streaming
+from voxtera.whatsapp.offer_tags import OFFER_TAG_RE, split_streamable
 from voxtera.whatsapp.config import (
     WhatsAppSettings,
     handshake_caption,
@@ -210,16 +211,48 @@ class VoiceOfferProcessor(FrameProcessor):
     Placed between brain and TTS in the pipeline.
 
     Brain emits ``LLMFullResponseStartFrame`` → N×``LLMTextFrame`` → ``LLMFullResponseEndFrame``.
-    The [OFFER:<id>] tag can be split across chunk boundaries, so we buffer all
-    ``LLMTextFrame`` chunks and process the joined text at ``LLMFullResponseEndFrame``,
-    then re-emit one clean ``LLMTextFrame`` before the end frame.
+
+    Two modes (selected by ``stream``):
+
+    * ``stream=False`` (buffered TTS — Gemini/OpenAI): buffer ALL chunks, strip
+      the tag from the joined text, emit one clean ``LLMTextFrame`` at the end.
+      This is the safe default for TTS that wants the whole utterance at once.
+    * ``stream=True`` (streaming TTS — ElevenLabs/Cartesia): pass chunks through
+      as they arrive (stripping a complete tag inline and holding back only a
+      forming tag), so TTS starts speaking the first sentence mid-render. The
+      offer decision still runs on the FULL reply at the end, so its behaviour
+      is identical to the buffered path.
     """
 
-    def __init__(self, *, caller_wa_id: str | None, settings: WhatsAppSettings) -> None:
+    def __init__(
+        self,
+        *,
+        caller_wa_id: str | None,
+        settings: WhatsAppSettings,
+        stream: bool = False,
+    ) -> None:
         super().__init__()
         self._caller_wa_id = caller_wa_id
         self._settings = settings
-        self._buffer: list[str] = []   # accumulates LLMTextFrame chunks per turn
+        self._stream = stream
+        self._buffer: list[str] = []  # buffered mode: chunks for the whole turn
+        self._full: list[str] = []  # streaming mode: raw text (for end-of-turn offer)
+        self._hold = ""  # streaming mode: a forming tag held back from TTS
+
+    def _resolve_offer(self, full_text: str) -> None:
+        """Set/clear the caller's pending photo offer from the full reply."""
+        from voxtera.whatsapp.image_catalog import (
+            clear_pending_offer,
+            extract_offer_tag,
+            set_pending_offer,
+        )
+
+        clean, offered_id = extract_offer_tag(full_text)
+        if offered_id and self._caller_wa_id:
+            set_pending_offer(self._caller_wa_id, offered_id)
+            logger.info("[voice-offer] offer stored: {} → {}", self._caller_wa_id, offered_id)
+        elif clean.strip() and self._caller_wa_id:
+            clear_pending_offer(self._caller_wa_id)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -232,38 +265,37 @@ class VoiceOfferProcessor(FrameProcessor):
             )
 
             if isinstance(frame, LLMFullResponseStartFrame):
-                # New LLM turn — reset buffer and pass the start frame through.
                 self._buffer = []
+                self._full = []
+                self._hold = ""
                 await self.push_frame(frame, direction)
                 return
 
             if isinstance(frame, LLMTextFrame):
-                # Buffer the chunk; suppress from downstream until turn is complete.
-                self._buffer.append(frame.text)
-                return  # do NOT push yet
+                if self._stream:
+                    # Pass through incrementally; only hold a forming offer tag.
+                    self._full.append(frame.text)
+                    emit, self._hold = split_streamable(self._hold + frame.text)
+                    if emit:
+                        await self.push_frame(LLMTextFrame(text=emit), direction)
+                else:
+                    self._buffer.append(frame.text)  # suppress until the turn ends
+                return
 
             if isinstance(frame, LLMFullResponseEndFrame):
-                # Join all chunks, strip [OFFER:<id>], emit clean text + end frame.
-                full_text = "".join(self._buffer)
-                self._buffer = []
-
-                from voxtera.whatsapp.image_catalog import (
-                    clear_pending_offer,
-                    extract_offer_tag,
-                    set_pending_offer,
-                )
-
-                clean, offered_id = extract_offer_tag(full_text)
-                if offered_id and self._caller_wa_id:
-                    set_pending_offer(self._caller_wa_id, offered_id)
-                    logger.info(
-                        "[voice-offer] offer stored: {} → {}", self._caller_wa_id, offered_id
-                    )
-                elif clean.strip() and self._caller_wa_id:
-                    clear_pending_offer(self._caller_wa_id)
-
-                if clean.strip():
-                    await self.push_frame(LLMTextFrame(text=clean), direction)
+                if self._stream:
+                    # Any held tail is a dangling/partial tag — drop it (never
+                    # spoken). The offer decision uses the full raw reply.
+                    self._hold = ""
+                    self._resolve_offer("".join(self._full))
+                    self._full = []
+                else:
+                    full_text = "".join(self._buffer)
+                    self._buffer = []
+                    self._resolve_offer(full_text)
+                    clean = OFFER_TAG_RE.sub("", full_text).strip()
+                    if clean:
+                        await self.push_frame(LLMTextFrame(text=clean), direction)
                 await self.push_frame(frame, direction)  # LLMFullResponseEndFrame
                 return
 
@@ -318,6 +350,20 @@ def _allow_interruptions() -> bool:
     callers/speakerphone.
     """
     return os.environ.get("WHATSAPP_ALLOW_INTERRUPTIONS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _voice_photo_offers_enabled() -> bool:
+    """Whether the bot may offer/send photos during a VOICE call.
+
+    Default OFF: spoken "would you like to see a photo?" prompts proved annoying
+    on calls. Text-chat photo offers (webhook.py) are unaffected. Set
+    WHATSAPP_VOICE_PHOTO_OFFERS=true to re-enable on the call path.
+    """
+    return os.environ.get("WHATSAPP_VOICE_PHOTO_OFFERS", "").strip().lower() in (
         "1",
         "true",
         "yes",
@@ -640,9 +686,11 @@ async def run_call_bot(
         region=wa_region or None,
         session_id=session_id,
         hotel_id=hotel_scope,
-        # WhatsApp call: images CAN be delivered to the caller's chat, so the
-        # hotel render is allowed to offer photos ([OFFER:<id>] tags).
-        images=bool(caller_wa_id),
+        # WhatsApp call: images CAN technically be delivered to the caller's
+        # chat, but spoken photo offers proved annoying on calls — gated OFF by
+        # default (WHATSAPP_VOICE_PHOTO_OFFERS=true re-enables). Text-chat offers
+        # (webhook.py) are unaffected.
+        images=bool(caller_wa_id) and _voice_photo_offers_enabled(),
     )
 
     # Optional observability processors (WAV + transcript). Imported lazily and
@@ -728,7 +776,16 @@ async def run_call_bot(
         processors.append(tracer)
     # Strip [OFFER:<id>] from TTS text and send images/links on voice affirmatives.
     # Always added — handles None caller_wa_id gracefully (tag still stripped).
-    processors.append(VoiceOfferProcessor(caller_wa_id=caller_wa_id, settings=wa_settings))
+    # Stream render deltas straight to TTS (first sentence starts mid-render)
+    # only when the configured TTS accepts incremental text — ElevenLabs/Cartesia
+    # do; Gemini/OpenAI are buffered, so they keep whole-reply synthesis.
+    stream_tts = tts_supports_streaming(tts)
+    logger.info(
+        "[whatsapp-call] TTS provider={!r} streaming={}", settings.tts_provider, stream_tts
+    )
+    processors.append(
+        VoiceOfferProcessor(caller_wa_id=caller_wa_id, settings=wa_settings, stream=stream_tts)
+    )
     processors.append(tts)
     # Voice fillers: a short "mm, one moment" in the bot's own voice when the
     # answer hasn't started within FILLER_DELAY_SECS. Placed after TTS so it

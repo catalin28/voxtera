@@ -282,6 +282,54 @@ async def test_bare_yes_without_offer_does_not_rerun(monkeypatch) -> None:
     assert kb.calls[1]["query"] == "Yes."
 
 
+# ---------- Venue-name canonicalization (STT mishearing → KB query) ----------
+
+
+@pytest.mark.asyncio
+async def test_misheard_venue_canonicalized_before_kb_query(monkeypatch) -> None:
+    """A mis-heard restaurant name ("Tula") must be snapped to the real venue
+    ("Tuğra") BEFORE the property guide is queried — otherwise the menu lookup
+    searches for "Tula" and finds nothing. Uses the real kempinski_ciragan
+    venue list from config/stt_vocabulary.json."""
+
+    async def fake_render(*, payload, hotel_id, ticketer, model, on_delta=None, client=None):
+        return {"answer": f"About {payload['utterance']}", "ticket": None}
+
+    monkeypatch.setattr("voxtera.call_center.property_render.render_property_turn", fake_render)
+
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    p = _build(compound=compound, property_kb=kb)
+    out = await p.run(
+        utterance="No, I want the menu for Tula.",
+        session_id="kc-1",
+        hotel_id="kempinski_ciragan",
+    )
+
+    # The guide was queried with the canonical name, not the mis-heard "Tula".
+    assert "Tuğra" in kb.calls[0]["query"]
+    assert "Tula" not in kb.calls[0]["query"]
+    # The correction is surfaced in the trace, with the raw transcript kept.
+    assert out["entities"]["substitutions"][0]["canonical"] == "Tuğra"
+    assert out["entities"]["raw_utterance"] == "No, I want the menu for Tula."
+
+
+@pytest.mark.asyncio
+async def test_clean_utterance_has_no_entities_block(monkeypatch) -> None:
+    """When nothing is canonicalized, no entities block is attached."""
+
+    async def fake_render(*, payload, hotel_id, ticketer, model, on_delta=None, client=None):
+        return {"answer": "ok", "ticket": None}
+
+    monkeypatch.setattr("voxtera.call_center.property_render.render_property_turn", fake_render)
+    compound, kb = _FakeCompound(), _FakePropertyKB()
+    p = _build(compound=compound, property_kb=kb)
+    out = await p.run(
+        utterance="What time is breakfast?", session_id="kc-2", hotel_id="kempinski_ciragan"
+    )
+    assert "Tuğra" not in kb.calls[0]["query"]
+    assert "entities" not in out
+
+
 # ---------- One-brain ticket flow (create_ticket tool on the render) ----------
 
 

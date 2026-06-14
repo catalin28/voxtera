@@ -25,6 +25,7 @@ dependencies = [
     "psutil>=5.9",
     "redis>=5.0",
     "yt-dlp>=2026.6.9",
+    "rapidfuzz>=3.9",  # fuzzy proper-noun resolution (STT name mis-hearings)
 ]
 
 [project.urls]

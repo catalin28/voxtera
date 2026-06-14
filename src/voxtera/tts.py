@@ -437,6 +437,26 @@ _TTS_BUILDERS: dict[str, Callable[[Settings], FrameProcessor | None]] = {
 }
 
 
+def tts_supports_streaming(tts: object) -> bool:
+    """True when this TTS service accepts INCREMENTAL text input and streams
+    audio out — so feeding it sentence-by-sentence (instead of the whole reply)
+    lowers time-to-first-audio.
+
+    Capability is read from the pipecat base class rather than a hardcoded
+    provider list, so it auto-adapts if a provider's implementation changes:
+      * ``WebsocketTTSService`` / ``WordTTSService`` → streaming
+        (ElevenLabs ✅ active prod, Cartesia ✅).
+      * plain ``TTSService`` (HTTP / buffered) → NOT streaming
+        (Gemini 2.5 Flash TTS, OpenAI, Google Chirp HTTP path) → callers should
+        fall back to handing TTS the whole reply once it is complete.
+    """
+    try:
+        from pipecat.services.tts_service import WebsocketTTSService, WordTTSService
+    except ImportError:  # pragma: no cover - pipecat always present at runtime
+        return False
+    return isinstance(tts, (WebsocketTTSService, WordTTSService))
+
+
 def _voices_for_tts_provider(provider: str) -> frozenset[str]:
     if provider == "google":
         return _VALID_GOOGLE_TTS_VOICES

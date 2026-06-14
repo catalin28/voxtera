@@ -54,6 +54,7 @@ from loguru import logger
 from voxtera.call_center.classifier import EscalationClassifier
 from voxtera.call_center.compound import CompoundAndDiscovery
 from voxtera.call_center.decompose import QueryDecomposer
+from voxtera.call_center.entity_resolver import Substitution, canonicalize_venues
 from voxtera.call_center.kb_config import REGION_ALIASES, canonical_region
 from voxtera.call_center.resolver import HotelResolver
 from voxtera.call_center.router import (
@@ -949,6 +950,19 @@ class ConciergePipeline:
         # reads that property's guide (see _run_kb); name resolution and
         # geography clarifications are moot and collapse to scoped retrieval.
         self._property_hotel_id = (hotel_id or "").strip() or None
+        # Canonicalize mis-heard venue proper nouns BEFORE any routing/retrieval.
+        # Voice ASR mangles foreign restaurant names ("Tuğra" → "Tura"/"Tula"),
+        # which then fail to match the menu. Snap them to the hotel's known venue
+        # list so retrieval + render see the real name. Raw transcript is kept in
+        # the trace for debugging. Property scope only (one hotel = a known venue
+        # list); the multi-hotel path has no single venue set, so it's a no-op.
+        self._raw_utterance = utterance
+        self._entity_subs: list[Substitution] = []
+        if utterance and self._property_hotel_id:
+            canon, subs = canonicalize_venues(utterance, self._property_hotel_id)
+            if subs:
+                self._entity_subs = subs
+                utterance = canon
         # The raw utterance is the best guide-retrieval query (the guide is
         # ingested as Q&A-ish prose; decomposed requirement keywords lose the
         # question shape). Stashed for _run_kb's property branch.
@@ -2365,6 +2379,16 @@ class ConciergePipeline:
             "timings": timings,
             "trace": getattr(self, "_trace", {"qdrant": [], "es": []}),
         }
+        # Surface venue-name canonicalization (STT mis-hearing → known venue) so
+        # the trace dashboard shows what the resolver corrected this turn.
+        subs = getattr(self, "_entity_subs", None)
+        if subs:
+            result["entities"] = {
+                "raw_utterance": getattr(self, "_raw_utterance", utterance),
+                "substitutions": [
+                    {"heard": s.heard, "canonical": s.canonical, "score": s.score} for s in subs
+                ],
+            }
         self._log_query(result)
         return result
 
