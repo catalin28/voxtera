@@ -15,23 +15,25 @@ from __future__ import annotations
 
 import re
 
-# A complete tag, e.g. "[OFFER:tugra_menu]". Mirrors image_catalog._OFFER_RE.
-OFFER_TAG_RE = re.compile(r"\[OFFER:[^\]]+\]")
-OFFER_PREFIX = "[OFFER:"
+# Complete hidden tags the render may append: photo offers ([OFFER:<id>]) and
+# menu-PDF offers ([MENU:<id>]). Neither must ever be spoken aloud.
+OFFER_TAG_RE = re.compile(r"\[(?:OFFER|MENU):[^\]]+\]")
+_TAG_PREFIXES = ("[OFFER:", "[MENU:")
 
 
 def split_streamable(text: str) -> tuple[str, str]:
     """Split ``text`` into ``(emit_now, hold_back)`` for incremental TTS.
 
-    Strips any COMPLETE ``[OFFER:<id>]`` tags, then holds back a trailing
-    fragment ONLY if it could still become an offer tag (a prefix of
-    ``[OFFER:`` or an unclosed ``[OFFER:…``). Everything else is safe to speak
-    immediately, so a half-formed hidden tag is never voiced.
+    Strips any COMPLETE ``[OFFER:<id>]`` / ``[MENU:<id>]`` tags, then holds back
+    a trailing fragment ONLY if it could still become one of those tags (a
+    prefix of ``[OFFER:`` / ``[MENU:`` or an unclosed ``[OFFER:…``/``[MENU:…``).
+    Everything else is safe to speak immediately, so a half-formed hidden tag is
+    never voiced.
     """
     text = OFFER_TAG_RE.sub("", text)
     li = text.rfind("[")
     if li != -1:
         tail = text[li:]
-        if OFFER_PREFIX.startswith(tail) or tail.startswith(OFFER_PREFIX):
+        if any(pre.startswith(tail) or tail.startswith(pre) for pre in _TAG_PREFIXES):
             return text[:li], tail
     return text, ""

@@ -191,7 +191,13 @@ async def render_property_turn(
     # OPT IN via the payload "images" flag — only the WhatsApp call bot sets
     # it; the web orb doesn't, so it never speaks a tag it cannot fulfil.
     include_images = bool(payload.get("images", not brief))
-    system_text = _with_persona(prompt_name, include_images=include_images)
+    # Menu PDF offers: the channel can deliver a document to the guest's chat.
+    # Set by the WhatsApp call bot (voice); the web orb leaves it off so it
+    # never speaks a [MENU:] tag it cannot fulfil.
+    include_menus = bool(payload.get("menus", False))
+    system_text = _with_persona(
+        prompt_name, include_images=include_images, include_menus=include_menus
+    )
     tools: list[dict[str, Any]] = []
     if runtime is not None:
         from voxtera.actions.prompt import build_actions_prompt_fragment

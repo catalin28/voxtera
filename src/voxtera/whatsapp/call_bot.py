@@ -145,6 +145,41 @@ async def _deliver_offer(
         logger.warning("[voice-offer] delivery failed for {}: {}", image_id, e)
 
 
+async def _deliver_menu(
+    menu_id: str,
+    *,
+    caller_wa_id: str | None,
+    settings: WhatsAppSettings,
+    language: str | None,
+) -> None:
+    """Upload (once) and send the restaurant's menu PDF to the caller's chat."""
+    from voxtera.whatsapp.client import WhatsAppClient
+    from voxtera.whatsapp.menu_catalog import filename_for, resolve_media_id, restaurant_name
+
+    if not caller_wa_id:
+        return
+    # Normalise "en-US" / Language enum / None → a 2-letter code ("en"/"tr").
+    lang2 = None
+    if language:
+        lang2 = str(getattr(language, "value", language)).replace("_", "-").split("-")[0].lower()[:2]
+    try:
+        media_id = await resolve_media_id(menu_id, language=lang2, settings=settings)
+        if not media_id:
+            logger.warning("[voice-menu] no media_id for {}", menu_id)
+            return
+        async with aiohttp.ClientSession() as http:
+            client = WhatsAppClient(settings=settings, session=http)
+            await client.send_document(
+                to=caller_wa_id,
+                media_id=media_id,
+                filename=filename_for(menu_id, language),
+                caption=f"{restaurant_name(menu_id) or 'Restaurant'} — menu",
+            )
+        logger.info("[voice-menu] menu sent: {} → {}", menu_id, caller_wa_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[voice-menu] delivery failed for {}: {}", menu_id, e)
+
+
 class VoiceAffirmativeDetector(FrameProcessor):
     """Deliver the pending photo offer when the caller says "yes".
 
@@ -177,8 +212,33 @@ class VoiceAffirmativeDetector(FrameProcessor):
             and self._caller_wa_id
         ):
             from voxtera.whatsapp.image_catalog import is_affirmative, pop_pending_offer
+            from voxtera.whatsapp.menu_catalog import pop_pending_menu
 
             if is_affirmative(frame.text):
+                # Menu offers take priority (a menu PDF is the more likely pending
+                # ask in a dining conversation); fall back to a photo offer.
+                pending_menu = pop_pending_menu(self._caller_wa_id)
+                if pending_menu:
+                    logger.info(
+                        "[voice-menu] affirmative '{}' → sending menu {}",
+                        frame.text.strip(),
+                        pending_menu,
+                    )
+                    asyncio.create_task(
+                        _deliver_menu(
+                            pending_menu,
+                            caller_wa_id=self._caller_wa_id,
+                            settings=self._settings,
+                            language=getattr(frame, "language", None),
+                        )
+                    )
+                    ack = os.environ.get(
+                        "WHATSAPP_MENU_ACK_TEXT",
+                        "I've sent the menu to your WhatsApp chat — take a look!",
+                    )
+                    await self.push_frame(TTSSpeakFrame(ack), FrameDirection.DOWNSTREAM)
+                    return
+
                 pending_id = pop_pending_offer(self._caller_wa_id)
                 if pending_id:
                     logger.info(
@@ -240,19 +300,32 @@ class VoiceOfferProcessor(FrameProcessor):
         self._hold = ""  # streaming mode: a forming tag held back from TTS
 
     def _resolve_offer(self, full_text: str) -> None:
-        """Set/clear the caller's pending photo offer from the full reply."""
+        """Set/clear the caller's pending photo / menu offer from the full reply."""
         from voxtera.whatsapp.image_catalog import (
             clear_pending_offer,
             extract_offer_tag,
             set_pending_offer,
         )
+        from voxtera.whatsapp.menu_catalog import (
+            clear_pending_menu,
+            extract_menu_tag,
+            set_pending_menu,
+        )
 
-        clean, offered_id = extract_offer_tag(full_text)
-        if offered_id and self._caller_wa_id:
+        if not self._caller_wa_id:
+            return
+        _clean_i, offered_id = extract_offer_tag(full_text)
+        _clean_m, menu_id = extract_menu_tag(full_text)
+        if offered_id:
             set_pending_offer(self._caller_wa_id, offered_id)
-            logger.info("[voice-offer] offer stored: {} → {}", self._caller_wa_id, offered_id)
-        elif clean.strip() and self._caller_wa_id:
+            logger.info("[voice-offer] photo offer stored: {} → {}", self._caller_wa_id, offered_id)
+        else:
             clear_pending_offer(self._caller_wa_id)
+        if menu_id:
+            set_pending_menu(self._caller_wa_id, menu_id)
+            logger.info("[voice-offer] menu offer stored: {} → {}", self._caller_wa_id, menu_id)
+        else:
+            clear_pending_menu(self._caller_wa_id)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -364,6 +437,20 @@ def _voice_photo_offers_enabled() -> bool:
     WHATSAPP_VOICE_PHOTO_OFFERS=true to re-enable on the call path.
     """
     return os.environ.get("WHATSAPP_VOICE_PHOTO_OFFERS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _voice_menu_offers_enabled() -> bool:
+    """Whether the bot may offer to send a restaurant's menu PDF during a call.
+
+    Default ON: a full menu can't be read aloud, so the bot gives highlights and
+    offers to send the PDF to the caller's WhatsApp chat. Set
+    WHATSAPP_VOICE_MENU_OFFERS=false to disable.
+    """
+    return os.environ.get("WHATSAPP_VOICE_MENU_OFFERS", "true").strip().lower() in (
         "1",
         "true",
         "yes",
@@ -691,6 +778,9 @@ async def run_call_bot(
         # default (WHATSAPP_VOICE_PHOTO_OFFERS=true re-enables). Text-chat offers
         # (webhook.py) are unaffected.
         images=bool(caller_wa_id) and _voice_photo_offers_enabled(),
+        # Menu PDF offers: give highlights + send the full menu to the caller's
+        # chat. ON by default (a full menu can't be read aloud).
+        menus=bool(caller_wa_id) and _voice_menu_offers_enabled(),
     )
 
     # Optional observability processors (WAV + transcript). Imported lazily and

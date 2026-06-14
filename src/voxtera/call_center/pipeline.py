@@ -940,6 +940,7 @@ class ConciergePipeline:
         brief: bool = False,
         hotel_id: str | None = None,
         images: bool = False,
+        menus: bool = False,
     ) -> dict[str, Any]:
         utterance = (utterance or "").strip()
         # When the user explicitly selects "All regions" the caller sends
@@ -975,6 +976,9 @@ class ConciergePipeline:
         # leave it False so the render prompt never embeds [OFFER:<id>] tags
         # that would be spoken aloud. Read in render_property_turn's payload.
         self._images = images
+        # Menu PDF offers: True only when the channel can DELIVER a document to
+        # the guest's chat (WhatsApp call). Gates the [MENU:<id>] render rule.
+        self._menus = menus
         sid = session_id or new_session_id()
         t_start = time.perf_counter()
         timings: dict[str, float] = {}
@@ -1713,6 +1717,8 @@ class ConciergePipeline:
             "brief": getattr(self, "_brief", False),
             # Channel can deliver images → render may offer photos ([OFFER:<id>]).
             "images": getattr(self, "_images", False),
+            # Channel can deliver documents → render may offer menus ([MENU:<id>]).
+            "menus": getattr(self, "_menus", False),
         }
         ticket = None
         try:

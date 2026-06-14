@@ -120,6 +120,7 @@ async def handle_concierge(request: web.Request) -> web.Response:
             brief=bool(body.get("brief")),
             hotel_id=hotel_id,
             images=bool(body.get("images")),
+            menus=bool(body.get("menus")),
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("[concierge] error: {}", exc)
@@ -192,6 +193,7 @@ async def handle_concierge_stream(request: web.Request) -> web.StreamResponse:
                 brief=bool(body.get("brief")),
                 hotel_id=hotel_id,
                 images=bool(body.get("images")),
+                menus=bool(body.get("menus")),
             ),
             timeout=120,
         )

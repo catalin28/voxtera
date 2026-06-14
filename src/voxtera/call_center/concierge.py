@@ -55,7 +55,9 @@ _DECOMPOSE_SYSTEM = load_prompt("concierge_decompose_legacy")
 _RENDER_SYSTEM = load_prompt("concierge_render")
 
 
-def _with_persona(task_prompt_name: str, *, include_images: bool = True) -> str:
+def _with_persona(
+    task_prompt_name: str, *, include_images: bool = True, include_menus: bool = False
+) -> str:
     """Shared persona + task prompt. The persona (tone, spoken format, language)
     lives ONCE in concierge_persona.md and is prepended to every answer-writing
     prompt — edit the persona there, not in the task files.
@@ -75,6 +77,15 @@ def _with_persona(task_prompt_name: str, *, include_images: bool = True) -> str:
                 base = base + "\n\n" + block
         except Exception as e:  # noqa: BLE001 — catalog must never break the pipeline
             logger.debug("image_catalog unavailable (skipping): {}", e)
+    if include_menus:
+        try:
+            from voxtera.whatsapp.menu_catalog import system_prompt_block as menu_block
+
+            block = menu_block()
+            if block:
+                base = base + "\n\n" + block
+        except Exception as e:  # noqa: BLE001 — catalog must never break the pipeline
+            logger.debug("menu_catalog unavailable (skipping): {}", e)
     return base
 
 

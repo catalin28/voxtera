@@ -1,0 +1,48 @@
+{
+  "menus": [
+    {
+      "id": "tugra",
+      "restaurant": "Tuğra",
+      "description": "Ottoman & Turkish fine dining by Chef Onur Dönmez (Michelin-recommended)",
+      "files": {
+        "en": "assets/menus/en/tugra.pdf",
+        "tr": "assets/menus/tr/tugra.pdf"
+      }
+    },
+    {
+      "id": "ruya",
+      "restaurant": "Ruya İstanbul",
+      "description": "Contemporary Anatolian sharing plates",
+      "files": {
+        "en": "assets/menus/en/ruya.pdf",
+        "tr": "assets/menus/tr/ruya.pdf"
+      }
+    },
+    {
+      "id": "gazebo",
+      "restaurant": "Gazebo",
+      "description": "All-day Bosphorus-waterfront dining (international + Turkish)",
+      "files": {
+        "en": "assets/menus/en/gazebo.pdf",
+        "tr": "assets/menus/tr/gazebo.pdf"
+      }
+    },
+    {
+      "id": "bellini",
+      "restaurant": "Bellini",
+      "description": "Italian fine dining",
+      "files": {
+        "en": "assets/menus/en/bellini.pdf",
+        "tr": "assets/menus/tr/bellini.pdf"
+      }
+    },
+    {
+      "id": "bosphorus_grill",
+      "restaurant": "Bosphorus Grill",
+      "description": "Bosphorus-side grill",
+      "files": {
+        "en": "assets/menus/en/bosphorus_grill.pdf"
+      }
+    }
+  ]
+}

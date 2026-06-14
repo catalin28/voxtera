@@ -126,6 +126,44 @@ class WhatsAppClient:
         }
         return await self._post(payload)
 
+    async def send_document(
+        self,
+        *,
+        to: str,
+        media_id: str | None = None,
+        link: str | None = None,
+        filename: str = "",
+        caption: str = "",
+    ) -> dict[str, Any]:
+        """Send a document (e.g. a menu PDF) to a WhatsApp user.
+
+        Provide exactly one of ``media_id`` (from ``upload_media``) or ``link``
+        (a public HTTPS URL). ``filename`` is the name the recipient sees for
+        the file (recommended — without it WhatsApp shows a generic name).
+        ``caption`` is optional text shown with the document.
+        """
+        if not media_id and not link:
+            raise ValueError("send_document requires either media_id or link")
+
+        doc_payload: dict[str, Any] = {}
+        if media_id:
+            doc_payload["id"] = media_id
+        else:
+            doc_payload["link"] = link
+        if filename:
+            doc_payload["filename"] = filename
+        if caption:
+            doc_payload["caption"] = caption[:1024]
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "document",
+            "document": doc_payload,
+        }
+        return await self._post(payload)
+
     async def send_text(self, *, to: str, body: str, preview_url: bool = False) -> dict[str, Any]:
         """Send a plain-text message to a WhatsApp user.
 

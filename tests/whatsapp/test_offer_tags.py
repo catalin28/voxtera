@@ -47,7 +47,29 @@ def test_tag_reassembled_across_two_chunks() -> None:
 
 
 def test_benign_bracket_not_an_offer_streams_through() -> None:
-    # A "[" that can't become "[OFFER:" should not stall streaming.
+    # A "[" that can't become "[OFFER:" / "[MENU:" should not stall streaming.
     emit, hold = split_streamable("Room 12 [note] is ready")
     assert emit == "Room 12 [note] is ready"
     assert hold == ""
+
+
+def test_complete_menu_tag_is_stripped() -> None:
+    emit, hold = split_streamable("Here are a few highlights. [MENU:tugra]")
+    assert "[MENU" not in emit
+    assert "Here are a few highlights." in emit
+    assert hold == ""
+
+
+def test_forming_menu_tag_is_held_back() -> None:
+    emit, hold = split_streamable("Shall I send it? [MEN")
+    assert emit == "Shall I send it? "
+    assert hold == "[MEN"
+
+
+def test_menu_tag_reassembled_across_chunks() -> None:
+    emit1, hold1 = split_streamable("Lovely. [MENU:")
+    assert emit1 == "Lovely. "
+    assert hold1 == "[MENU:"
+    emit2, hold2 = split_streamable(hold1 + "ruya]")
+    assert emit2 == ""
+    assert hold2 == ""
