@@ -57,6 +57,14 @@ RenderStreamFn = Callable[[dict[str, Any]], AsyncIterator[str]]
 # docs/fix-plan/concierge-fix-plan.md Phase 1 step 2.
 LLM_STOP_SEQUENCES = ["\nUser:", "\nAssistant:", "\nDetected language:"]
 
+# Per-call max_tokens budgets are kept turn-sized on purpose: a long answer that
+# overruns one TTS chunk is worse than one that's slightly clipped. Audited
+# values (do not raise without measuring barge-in rate + TTS lag):
+#   render brief (voice): 320 | render full (chat): 512
+#   converse: 220 | web_query: 80 | web_synth: 420
+#   decompose: 512 (JSON) | classifier: 80
+# See docs/fix-plan/concierge-fix-plan.md Phase 1 step 3.
+
 
 # Prompts live in src/voxtera/call_center/prompts/*.md so they can be edited
 # without touching Python source (per project convention).
