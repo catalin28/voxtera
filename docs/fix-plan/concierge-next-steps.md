@@ -58,6 +58,21 @@ ticketing is enabled — see Cost below.
 
 ## Open items (prioritised)
 
+### 0. ℹ️ OPTIONAL HARDENING — single in-flight LLM call per turn (Phase 1 step 4)
+**Not a known-open defect — do not treat as blocking.** Phase 1 step 4 (cancel/coalesce
+a second `llm_start`) was never implemented as an explicit guard, but re-reading the
+traces shows it isn't needed to close the observed bugs:
+- The EN `now.Perfect` concat was a **single** `llm_start` (one call generating run-on
+  text) — fixed by P0's structured messages + stop_sequences, not by call-dedupe.
+- The TR double-`llm_start` (trace `wacall_e89b37e8562e`, 276.5s + 278.4s) produced
+  **one** spoken reply; its triggers are already closed by Phase 3 (drops "Altyazı M.K."
+  before it's a turn) + stop_sequences (no scaffold spoken).
+
+No trace shows two overlapping spoken replies. A turn-level "one completion in flight"
+guard remains *nice-to-have* defence-in-depth (and saves a wasted parallel render if a
+real mid-generation fragment ever fires), but it is not required by any observed failure.
+Implement only if a future trace actually shows overlapping renders.
+
 ### 1. ⚠️ Verify the slot-drift fix live (booking_extract)
 The extraction approach is coded + unit-tested but **not yet confirmed live**.
 The earlier prompt-only attempt failed live (re-asked the date; swapped the
@@ -99,9 +114,9 @@ STT, awards grounding) plus latency and leakage-guard frame counts — none of
 which the offline suite can prove.
 
 ### 5. Uncommitted/earlier follow-ups
-- `docs/fix-plan/last_chat.md` is an untracked scratch dump — delete or ignore.
-- Phase 4 `_run_property_fast` skips the decomposer by design; if booking ever
-  needs to work on the **travel** (multi-hotel) path too, that path differs.
+- Phase 4 `_run_property_turn` (the property fast path) skips the decomposer by
+  design; if booking ever needs to work on the **travel** (multi-hotel) path too,
+  that path differs.
 
 ---
 
@@ -115,7 +130,7 @@ which the offline suite can prove.
 | `src/voxtera/call_center/booking_extract.py` | the parallel slot-extraction call (slot-drift fix) |
 | `src/voxtera/call_center/prompts/booking_slot_extractor.md` | extractor prompt |
 | `src/voxtera/call_center/property_render.py` | spoken render + `create_ticket`; injects guidance + anchor + recap |
-| `src/voxtera/call_center/pipeline.py` | `_run_property_fast`: gathers render ∥ extract, persists slots, clears on ticket |
+| `src/voxtera/call_center/pipeline.py` | `_run_property_turn` (l.1655): gathers render ∥ extract, persists slots, clears on ticket |
 | `src/voxtera/call_center/session.py` | `session["booking_slots"]` |
 
 Tests: `tests/call_center/test_phase4_booking.py`, `test_phase5_grounding.py`,

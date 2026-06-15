@@ -158,19 +158,22 @@ BOOKING_SLOT_KEYS = (
 _RECAP_ORDER = BOOKING_SLOT_KEYS
 
 
-def booking_recap(slots: dict[str, str] | None) -> str:
+def booking_recap(slots: dict[str, str] | None, order: tuple[str, ...] | None = None) -> str:
     """Format persisted slots into a LOCKED recap line for the next turn.
 
     Empty string when there is nothing to recap. The wording tells the model
-    these are fixed — the antidote to it re-asking or swapping a value.
+    these are fixed — the antidote to it re-asking or swapping a value. ``order``
+    overrides the field order (the travel stay-booking passes its own keys);
+    unknown keys are appended in dict order either way.
     """
     if not slots:
         return ""
     clean = {k: str(v).strip() for k, v in slots.items() if str(v).strip()}
     if not clean:
         return ""
-    keys = [k for k in _RECAP_ORDER if k in clean]
-    keys += [k for k in clean if k not in _RECAP_ORDER]
+    recap_order = order or _RECAP_ORDER
+    keys = [k for k in recap_order if k in clean]
+    keys += [k for k in clean if k not in recap_order]
     pairs = "; ".join(f"{k}: {clean[k]}" for k in keys)
     return (
         "[Booking so far — these details are LOCKED. Do NOT re-ask for them and "

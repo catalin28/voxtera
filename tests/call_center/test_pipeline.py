@@ -75,6 +75,7 @@ def _build(
     decompose: dict[str, Any] | None = None,
     compound: _FakeCompound | None = None,
     render_fn: Any | None = None,
+    property_ticketer: Any | None = None,
 ) -> ConciergePipeline:
     classify = classify or {"type": "none", "confidence": 0.1, "signal": None}
     decompose = decompose or {
@@ -94,6 +95,7 @@ def _build(
         router=SourceRouter(),
         compound=compound,
         render_fn=render_fn,
+        property_ticketer=property_ticketer,
     )
 
 
@@ -540,3 +542,44 @@ async def test_render_fails_closed_when_retrieval_returns_no_hotels() -> None:
     # inventing hotels. Assert intent, not exact copy (the wording is tuned
     # for the concierge voice and may evolve).
     assert "don't have" in out["answer"].lower() or "couldn't find" in out["answer"].lower()
+
+
+# ---------- travel hotel-stay booking gate (Phase 7) ----------
+
+
+async def _seed_stay_slots(p: ConciergePipeline, sid: str, slots: dict[str, str]) -> None:
+    """Persist stay_slots onto a session so the next run() sees a booking underway."""
+    sess = await p._sessions.load(sid)
+    sess["stay_slots"] = slots
+    await p._sessions.save(sess)
+
+
+@pytest.mark.asyncio
+async def test_active_stay_booking_keeps_turn_on_booking_render() -> None:
+    """With a ticketer + slots already captured, a bare 'yes' is routed to the
+    tool-holding travel render — NOT siphoned to the conversational handler."""
+    p = _build(
+        property_ticketer=object(),  # truthy = bookings possible
+        decompose={"query_type": "conversational", "language": "en"},
+    )
+
+    async def _stub(**kwargs: Any):
+        return ("Booked — the agency will confirm your stay.", {"category": "Reservation"})
+
+    p._render_travel_booking = _stub  # type: ignore[method-assign]
+    await _seed_stay_slots(p, "stay-1", {"hotel": "Crystal Tat Beach", "check_in": "Fri 19 June"})
+
+    out = await p.run(utterance="yes, book it", session_id="stay-1")
+    assert out["reason"] == "travel_booking_filed"
+    assert "Booked" in out["answer"]
+
+
+@pytest.mark.asyncio
+async def test_no_ticketer_means_booking_gate_is_inert() -> None:
+    """Same conversational turn with NO ticketer falls through to the normal
+    conversational handler — the booking gate never fires."""
+    p = _build(decompose={"query_type": "conversational", "language": "en"})
+    await _seed_stay_slots(p, "stay-2", {"hotel": "Crystal Tat Beach"})
+
+    out = await p.run(utterance="yes, book it", session_id="stay-2")
+    assert out["path"] == "conversational"

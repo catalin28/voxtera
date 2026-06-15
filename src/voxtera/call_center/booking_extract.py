@@ -42,12 +42,12 @@ _MAX_TOKENS = 256
 ExtractFn = Callable[[str], Awaitable[dict[str, Any]]]
 
 
-def _coerce(raw: dict[str, Any] | None) -> dict[str, str]:
+def _coerce(raw: dict[str, Any] | None, slot_keys: tuple[str, ...]) -> dict[str, str]:
     """Keep only known string slots with non-empty values."""
     if not isinstance(raw, dict):
         return {}
     out: dict[str, str] = {}
-    for k in BOOKING_SLOT_KEYS:
+    for k in slot_keys:
         v = raw.get(k)
         if isinstance(v, str | int) and str(v).strip():
             out[k] = str(v).strip()
@@ -73,7 +73,7 @@ def _build_user_msg(
     return "\n\n".join(parts)
 
 
-def _build_anthropic_extract(model: str) -> ExtractFn:
+def _build_anthropic_extract(model: str, prompt_name: str) -> ExtractFn:
     async def extract(user_msg: str) -> dict[str, Any]:
         client = _anthropic()
         msg = await client.messages.create(
@@ -82,7 +82,7 @@ def _build_anthropic_extract(model: str) -> ExtractFn:
             system=[
                 {
                     "type": "text",
-                    "text": load_prompt("booking_slot_extractor"),
+                    "text": load_prompt(prompt_name),
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
@@ -111,24 +111,52 @@ async def extract_booking_slots(
     hotel_timezone: str | None = None,
     extract_fn: ExtractFn | None = None,
     model: str = DEFAULT_MODEL,
+    slot_keys: tuple[str, ...] = BOOKING_SLOT_KEYS,
+    prompt_name: str = "booking_slot_extractor",
+    log_label: str = "booking-extract",
 ) -> dict[str, str]:
     """Return the booking slots stated so far, merged onto ``prior_slots``.
 
     Never raises: on any failure it returns ``prior_slots`` unchanged (cleaned),
     so a flaky extraction degrades to prompt-only behaviour rather than dropping
-    the booking.
+    the booking. ``slot_keys`` + ``prompt_name`` select the booking domain — the
+    restaurant/spa default, or the travel hotel-stay set (see
+    :func:`extract_stay_slots`).
     """
-    fn = extract_fn or _build_anthropic_extract(model)
-    user_msg = _build_user_msg(
-        utterance=utterance, history=history, hotel_timezone=hotel_timezone
-    )
+    fn = extract_fn or _build_anthropic_extract(model, prompt_name)
+    user_msg = _build_user_msg(utterance=utterance, history=history, hotel_timezone=hotel_timezone)
     try:
         raw = await fn(user_msg)
     except Exception as e:  # noqa: BLE001 — booking degrades to prompt-only
-        logger.warning("[booking-extract] failed: {}", e)
+        logger.warning("[{}] failed: {}", log_label, e)
         return merge_slots(prior_slots, {})
-    extracted = _coerce(raw)
+    extracted = _coerce(raw, slot_keys)
     merged = merge_slots(prior_slots, extracted)
     if extracted:
-        logger.info("[booking-extract] slots={}", merged)
+        logger.info("[{}] slots={}", log_label, merged)
     return merged
+
+
+async def extract_stay_slots(
+    *,
+    utterance: str,
+    history: list[dict[str, Any]] | None,
+    prior_slots: dict[str, Any] | None,
+    hotel_timezone: str | None = None,
+    extract_fn: ExtractFn | None = None,
+    model: str = DEFAULT_MODEL,
+) -> dict[str, str]:
+    """Travel-path hotel-stay variant of :func:`extract_booking_slots`."""
+    from voxtera.call_center.travel_booking import STAY_SLOT_KEYS
+
+    return await extract_booking_slots(
+        utterance=utterance,
+        history=history,
+        prior_slots=prior_slots,
+        hotel_timezone=hotel_timezone,
+        extract_fn=extract_fn,
+        model=model,
+        slot_keys=STAY_SLOT_KEYS,
+        prompt_name="stay_slot_extractor",
+        log_label="stay-extract",
+    )

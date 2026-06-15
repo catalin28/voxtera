@@ -1178,6 +1178,22 @@ class ConciergePipeline:
         if self._web is not None and _is_web_search_request(utterance):
             return await self._handle_web_request(sid, utterance, session, t_start, timings)
 
+        # Phase 7 — a hotel-stay booking is already underway (slots captured on a
+        # prior turn). Keep this turn on the tool-holding travel render so the
+        # confirmation ("yes, book it") and the trailing detail answers ("John,
+        # 555 1234") reach the book_hotel_stay tool instead of being siphoned to
+        # the conversational handler, which has no tool. State-gated (slots
+        # exist), not intent-detected — the model still decides when to file.
+        if self._property_ticketer is not None and session.get("stay_slots"):
+            return await self._run_travel_booking_turn(
+                sid=sid,
+                utterance=utterance,
+                decomposition=decomposition,
+                session=session,
+                t_start=t_start,
+                timings=timings,
+            )
+
         # Conversational / meta / recall ("hi", "thanks", "what did I ask you?",
         # "can you repeat?"): answer from the conversation history, NOT the hotel
         # KB. Without this, such turns get embedded as a search query and match
@@ -1316,6 +1332,9 @@ class ConciergePipeline:
         # 6. Execute path.
         retrieval: dict[str, Any] | None = None
         answer: str | None = None
+        # Set when a hotel-stay booking is filed on this turn (Phase 7) so the
+        # turn's reason reflects it.
+        booking_ticket: dict[str, Any] | None = None
 
         # 6a. Hotel resolution — resolve the name mention to a hotel_id,
         #     then proceed as a scoped KB query filtered to that hotel.
@@ -1441,7 +1460,22 @@ class ConciergePipeline:
 
             if answer is None:  # web rescue above may have answered already
                 t0 = time.perf_counter()
-                answer = await self._render(utterance, decomposition, retrieval, session)
+                # Phase 7 — when the agency can file bookings and there's a hotel
+                # in hand (or a stay is already underway), answer through the
+                # tool-holding travel render so the client can book a STAY. This
+                # bootstraps the booking; later detail/confirmation turns are kept
+                # on it by the gate above. Otherwise the plain text render.
+                if self._property_ticketer is not None and (
+                    (retrieval or {}).get("hotels") or session.get("stay_slots")
+                ):
+                    answer, booking_ticket = await self._render_travel_booking(
+                        utterance=utterance,
+                        decomposition=decomposition,
+                        retrieval=retrieval,
+                        session=session,
+                    )
+                else:
+                    answer = await self._render(utterance, decomposition, retrieval, session)
                 timings["render_ms"] = _ms(time.perf_counter() - t0)
 
         elif path in (PATH_WEB, PATH_DESTINATION) and self._web is not None:
@@ -1559,11 +1593,12 @@ class ConciergePipeline:
                 session["last_results"] = presented[:5]
 
         # 7. Persist turn.
+        turn_reason = "travel_booking_filed" if booking_ticket else decision.get("reason", path)
         await self._sessions.append_turn(
             session,
             utterance=utterance,
             decomposition=decomposition,
-            reason=decision.get("reason", path),
+            reason=turn_reason,
             answer=answer,
             is_clarification=False,
         )
@@ -1573,7 +1608,7 @@ class ConciergePipeline:
             sid=sid,
             utterance=utterance,
             path=path,
-            reason=decision.get("reason", path),
+            reason=turn_reason,
             decomposition=decomposition,
             router=decision,
             retrieval=retrieval,
@@ -2450,6 +2485,107 @@ class ConciergePipeline:
         except Exception as e:  # noqa: BLE001
             logger.warning("ConciergePipeline render failed: {}", e)
             return "Sorry, I had trouble forming a reply."
+
+    async def _render_travel_booking(
+        self,
+        *,
+        utterance: str,
+        decomposition: dict[str, Any],
+        retrieval: dict[str, Any] | None,
+        session: dict[str, Any],
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Travel hotel-stay booking render (Phase 7).
+
+        Runs the tool-holding travel render and, in PARALLEL, the silent
+        stay-slot extractor (so no added wall-clock latency). Persists the
+        extracted slots as the next turn's LOCKED recap, cleared once a ticket
+        is filed. Returns ``(answer, ticket)``. Never raises — degrades to the
+        plain text render.
+        """
+        payload = {
+            "utterance": utterance,
+            "region": decomposition.get("region") or session.get("active_region"),
+            "decomposition": decomposition,
+            "retrieval": retrieval or {},
+            "transcript": build_transcript(session.get("history")),
+            "history": session.get("history"),
+            "brief": getattr(self, "_brief", False),
+            # Portfolio hotels have no config/timezone → server clock (fine for a
+            # multi-day stay). A known property id still resolves its zone.
+            "hotel_timezone": self._property_timezone(session.get("active_hotel_id")),
+            "stay_slots": session.get("stay_slots") or {},
+        }
+        extracted_slots = session.get("stay_slots") or {}
+        ticket: dict[str, Any] | None = None
+        try:
+            from voxtera.call_center.booking_extract import extract_stay_slots
+            from voxtera.call_center.deps import llm_model
+            from voxtera.call_center.travel_render import render_travel_turn
+
+            render_coro = render_travel_turn(
+                payload=payload,
+                ticketer=self._property_ticketer,
+                model=llm_model(),
+                on_delta=self._render_delta,
+            )
+            extract_coro = extract_stay_slots(
+                utterance=utterance,
+                history=session.get("history"),
+                prior_slots=session.get("stay_slots"),
+                hotel_timezone=payload["hotel_timezone"],
+                model=llm_model(),
+            )
+            rendered, extracted_slots = await asyncio.gather(render_coro, extract_coro)
+            answer = rendered["answer"] or "Sorry, I had trouble forming a reply."
+            ticket = rendered["ticket"]
+        except Exception as e:  # noqa: BLE001 — degrade to the plain render
+            logger.warning("[travel-render] failed ({}) — falling back to plain render", e)
+            answer = await self._render(utterance, decomposition, retrieval, session)
+        # Clear the slots once filed so the next booking starts clean.
+        session["stay_slots"] = {} if ticket else extracted_slots
+        return answer, ticket
+
+    async def _run_travel_booking_turn(
+        self,
+        *,
+        sid: str,
+        utterance: str,
+        decomposition: dict[str, Any],
+        session: dict[str, Any],
+        t_start: float,
+        timings: dict[str, float],
+    ) -> dict[str, Any]:
+        """Full turn handler for an in-progress hotel-stay booking (the gate).
+
+        Keeps a turn whose router would otherwise drop the booking tool (a bare
+        "yes, book it" or a trailing "John, 555 1234") on the tool-holding
+        travel render, so the booking can be confirmed and filed.
+        """
+        t0 = time.perf_counter()
+        answer, ticket = await self._render_travel_booking(
+            utterance=utterance, decomposition=decomposition, retrieval=None, session=session
+        )
+        timings["render_ms"] = _ms(time.perf_counter() - t0)
+        session["last_question"] = utterance
+        await self._sessions.append_turn(
+            session,
+            utterance=utterance,
+            decomposition=decomposition,
+            reason="travel_booking_filed" if ticket else "travel_booking",
+            answer=answer,
+            is_clarification=False,
+        )
+        await self._sessions.save(session)
+        return self._finish(
+            sid=sid,
+            utterance=utterance,
+            path=PATH_SCOPED,
+            reason="travel_booking_filed" if ticket else "travel_booking",
+            decomposition=decomposition,
+            answer=answer,
+            t_start=t_start,
+            timings=timings,
+        )
 
     def _finish(
         self,

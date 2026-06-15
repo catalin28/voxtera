@@ -17,6 +17,8 @@ Decision contract — session object stored in Redis:
       "turn_count":      int,          # number of completed turns
       "clarification_count": int,      # consecutive triage questions asked since last full answer
       "pending_slots":   list[str],    # decomposition slots the triage asked about
+      "booking_slots":   dict,         # restaurant/spa booking slots (Phase 4, property path)
+      "stay_slots":      dict,         # hotel-stay booking slots (Phase 7, travel path)
       "history": [                     # bounded ring buffer (last N turns)
         {
           "ts": float,
@@ -274,6 +276,11 @@ def _empty_session(session_id: str) -> dict[str, Any]:
         # next turn so the render never re-asks or silently changes a detail the
         # guest already gave (slot-drift fix). Cleared when a booking is filed.
         "booking_slots": {},
+        # Hotel-STAY booking slots for the travel-agency path (Phase 7). Same
+        # mechanism as booking_slots but a different domain (book a hotel stay,
+        # never a restaurant/spa); populated by extract_stay_slots, fed back as a
+        # LOCKED recap, cleared when the stay booking is filed.
+        "stay_slots": {},
         # Last presented hotel list [{hotel_id, name}] — referent for
         # follow-ups like "the first one" / "compare those two" (D9/D10).
         "last_results": [],
@@ -340,6 +347,7 @@ class SessionStore:
             obj.setdefault("history", [])
             obj.setdefault("pending_slots", [])
             obj.setdefault("booking_slots", {})
+            obj.setdefault("stay_slots", {})
             return obj
         except (json.JSONDecodeError, TypeError) as e:
             logger.warning("SessionStore.load: corrupt JSON for {}: {}", session_id, e)
