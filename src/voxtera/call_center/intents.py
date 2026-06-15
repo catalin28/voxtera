@@ -139,6 +139,46 @@ def _intent_line(schema: IntentSchema) -> str:
     )
 
 
+# Booking slot keys we track (LLM-extracted by booking_extract.py, persisted in
+# the session, fed back as the LOCKED recap). Kept here as the single list both
+# the extractor and the recap agree on.
+BOOKING_SLOT_KEYS = (
+    "intent",
+    "guest_type",
+    "restaurant",
+    "treatment",
+    "date_time",
+    "party_size",
+    "name",
+    "contact",
+)
+
+
+# Order the recap reads in — qualifying/identity first, then logistics.
+_RECAP_ORDER = BOOKING_SLOT_KEYS
+
+
+def booking_recap(slots: dict[str, str] | None) -> str:
+    """Format persisted slots into a LOCKED recap line for the next turn.
+
+    Empty string when there is nothing to recap. The wording tells the model
+    these are fixed — the antidote to it re-asking or swapping a value.
+    """
+    if not slots:
+        return ""
+    clean = {k: str(v).strip() for k, v in slots.items() if str(v).strip()}
+    if not clean:
+        return ""
+    keys = [k for k in _RECAP_ORDER if k in clean]
+    keys += [k for k in clean if k not in _RECAP_ORDER]
+    pairs = "; ".join(f"{k}: {clean[k]}" for k in keys)
+    return (
+        "[Booking so far — these details are LOCKED. Do NOT re-ask for them and "
+        "do NOT change them; use these exact values and only collect what is "
+        f"still missing: {pairs}]"
+    )
+
+
 def booking_guidance_block() -> str:
     """The always-on booking rules for the property render.
 
@@ -154,6 +194,11 @@ def booking_guidance_block() -> str:
         "outside visitor (external) — this decides how to reach them. NEVER ask "
         "an external visitor for a room number.",
         "- Ask for only ONE missing detail per reply — never bundle questions.",
+        "- A '[Booking so far … LOCKED]' note may appear in the message listing "
+        "details the guest has ALREADY given. Those values are FIXED: never "
+        "re-ask for them and never change them — use them exactly (if it says "
+        "restaurant: Tuğra, it is Tuğra, never another venue). Only collect what "
+        "is still missing.",
         "- Turn any relative date/time ('tomorrow', 'tonight at 8', 'this "
         "Friday') into an ABSOLUTE date using the booking time anchor, and read "
         "that absolute date back when you confirm.",

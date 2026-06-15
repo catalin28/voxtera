@@ -1783,24 +1783,47 @@ class ConciergePipeline:
             # Phase 4: hotel-local timezone so the render can resolve relative
             # booking dates ("tomorrow 7pm") to an absolute date.
             "hotel_timezone": self._property_timezone(pid),
+            # Slots gathered on prior turns — fed back as a LOCKED recap so the
+            # model never re-asks or changes a detail (slot-drift fix).
+            "booking_slots": session.get("booking_slots") or {},
         }
         ticket = None
+        # Slot extraction runs ONLY when the property can file tickets (a booking
+        # is possible). It runs in PARALLEL with the spoken render so it adds no
+        # wall-clock latency; its output is the next turn's LOCKED recap (the
+        # slot-drift fix). Never raises — degrades to prior slots.
+        extracted_slots = session.get("booking_slots") or {}
         try:
+            from voxtera.call_center.booking_extract import extract_booking_slots
             from voxtera.call_center.deps import llm_model
             from voxtera.call_center.property_render import render_property_turn
 
-            rendered = await render_property_turn(
+            render_coro = render_property_turn(
                 payload=payload,
                 hotel_id=pid,
                 ticketer=self._property_ticketer,
                 model=llm_model(),
                 on_delta=self._render_delta,
             )
+            if self._property_ticketer is not None:
+                extract_coro = extract_booking_slots(
+                    utterance=utterance,
+                    history=session.get("history"),
+                    prior_slots=session.get("booking_slots"),
+                    hotel_timezone=self._property_timezone(pid),
+                    model=llm_model(),
+                )
+                rendered, extracted_slots = await asyncio.gather(render_coro, extract_coro)
+            else:
+                rendered = await render_coro
             answer = rendered["answer"] or "Sorry, I had trouble forming a reply."
             ticket = rendered["ticket"]
         except Exception as e:  # noqa: BLE001 — degrade to the plain render
             logger.warning("[property-render] failed ({}) — falling back to plain render", e)
             answer = await self._render(render_utterance, decomposition, retrieval, session)
+        # Persist the extracted slots for next turn's recap; clear once a ticket
+        # is filed so the next booking starts clean.
+        session["booking_slots"] = {} if ticket else extracted_slots
 
         # Arm the KB-offer flag when this answer offered to fetch a guide detail
         # and report back (and it isn't already a web offer). A bare "yes" next

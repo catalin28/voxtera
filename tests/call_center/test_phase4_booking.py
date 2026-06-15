@@ -22,6 +22,7 @@ from voxtera.call_center.intents import (
     RESTAURANT_BOOKING,
     SPA_BOOKING,
     booking_guidance_block,
+    booking_recap,
 )
 from voxtera.call_center.property_render import (
     render_property_turn as _real_render_property_turn,
@@ -91,6 +92,10 @@ def test_guidance_block_encodes_the_phase4_rules() -> None:
     assert "absolute" in block
     assert "optional" in block
     assert "confirm" in block
+    # slot-drift guard: treat the "Booking so far" recap as LOCKED.
+    assert "booking so far" in block.lower()
+    assert "locked" in block.lower()
+    assert "never re-ask" in block
 
 
 def test_guidance_block_covers_both_intents_from_schemas() -> None:
@@ -200,6 +205,83 @@ async def test_booking_guidance_and_time_anchor_injected_when_ticketing_on() -> 
     user_msg = client.calls[0]["messages"][-1]["content"]
     assert "Europe/Istanbul" in user_msg
     assert "do not read this aloud" in user_msg
+
+
+# ------------------------- slot tracking (drift fix) ------------------------
+
+
+def test_booking_recap_empty_when_no_slots() -> None:
+    assert booking_recap(None) == ""
+    assert booking_recap({}) == ""
+    assert booking_recap({"restaurant": "", "name": "  "}) == ""
+
+
+def test_booking_recap_locks_and_orders_slots() -> None:
+    r = booking_recap({"party_size": "2", "restaurant": "Tuğra", "guest_type": "external"})
+    assert "LOCKED" in r
+    assert "Tuğra" in r and "external" in r and "2" in r
+    # qualifying/identity ordered before logistics: guest_type < restaurant < party_size
+    assert r.index("external") < r.index("Tuğra") < r.index("2")
+
+
+@pytest.mark.asyncio
+async def test_render_feeds_prior_slots_back_as_locked_recap() -> None:
+    """Slots from a prior turn ride back into the model's user message, locked."""
+    payload = _payload()
+    payload["booking_slots"] = {"restaurant": "Tuğra", "guest_type": "external"}
+    client = _one_round_client()
+    await _real_render_property_turn(
+        payload=payload, hotel_id="demo", ticketer=_FakeTicketer(), model="m", client=client
+    )
+    user_msg = client.calls[0]["messages"][-1]["content"]
+    assert "LOCKED" in user_msg and "Tuğra" in user_msg
+
+
+# --------------------- booking_extract (slot extractor) ---------------------
+
+
+@pytest.mark.asyncio
+async def test_extract_merges_known_slots_onto_prior() -> None:
+    from voxtera.call_center.booking_extract import extract_booking_slots
+
+    async def fake(_msg: str):
+        return {"name": "Daniel", "contact": "555-1234", "junk": "ignored"}
+
+    out = await extract_booking_slots(
+        utterance="under Daniel, 555-1234",
+        history=None,
+        prior_slots={"restaurant": "Tuğra"},
+        extract_fn=fake,
+    )
+    assert out["restaurant"] == "Tuğra"  # carried forward
+    assert out["name"] == "Daniel" and out["contact"] == "555-1234"
+    assert "junk" not in out  # coerced to known booking keys only
+
+
+@pytest.mark.asyncio
+async def test_extract_empty_when_not_a_booking() -> None:
+    from voxtera.call_center.booking_extract import extract_booking_slots
+
+    async def fake(_msg: str):
+        return {}
+
+    out = await extract_booking_slots(
+        utterance="what time is breakfast?", history=None, prior_slots=None, extract_fn=fake
+    )
+    assert out == {}
+
+
+@pytest.mark.asyncio
+async def test_extract_never_raises_degrades_to_prior() -> None:
+    from voxtera.call_center.booking_extract import extract_booking_slots
+
+    async def boom(_msg: str):
+        raise RuntimeError("anthropic down")
+
+    out = await extract_booking_slots(
+        utterance="x", history=None, prior_slots={"restaurant": "Tuğra"}, extract_fn=boom
+    )
+    assert out == {"restaurant": "Tuğra"}  # degraded to prior, no raise
 
 
 @pytest.mark.asyncio

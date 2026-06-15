@@ -269,6 +269,11 @@ def _empty_session(session_id: str) -> dict[str, Any]:
         "turn_count": 0,
         "clarification_count": 0,
         "pending_slots": [],
+        # Booking slots gathered so far (Phase 4). Populated by the parallel
+        # booking_extract LLM call; we persist them and feed a LOCKED recap back
+        # next turn so the render never re-asks or silently changes a detail the
+        # guest already gave (slot-drift fix). Cleared when a booking is filed.
+        "booking_slots": {},
         # Last presented hotel list [{hotel_id, name}] — referent for
         # follow-ups like "the first one" / "compare those two" (D9/D10).
         "last_results": [],
@@ -334,6 +339,7 @@ class SessionStore:
             obj = json.loads(raw)
             obj.setdefault("history", [])
             obj.setdefault("pending_slots", [])
+            obj.setdefault("booking_slots", {})
             return obj
         except (json.JSONDecodeError, TypeError) as e:
             logger.warning("SessionStore.load: corrupt JSON for {}: {}", session_id, e)

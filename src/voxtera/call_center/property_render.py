@@ -36,7 +36,7 @@ from voxtera.call_center.concierge import (
     _with_persona,
 )
 from voxtera.call_center.hotel_time import hotel_time_note
-from voxtera.call_center.intents import booking_guidance_block
+from voxtera.call_center.intents import booking_guidance_block, booking_recap
 from voxtera.call_center.session import build_message_turns
 
 # Max talk→tool→talk rounds. One ticket per turn is the contract (the old
@@ -240,6 +240,12 @@ async def render_property_turn(
     # Included whenever the property can book; harmless on non-booking turns.
     if can_book:
         user_content += "\n\n" + hotel_time_note(payload.get("hotel_timezone"))
+        # Slots extracted on prior turns (by the parallel booking_extract call,
+        # persisted by the pipeline) ride back as a LOCKED recap so the model
+        # never re-asks or silently changes a detail the guest already gave.
+        recap = booking_recap(payload.get("booking_slots"))
+        if recap:
+            user_content += "\n\n" + recap
     messages: list[dict[str, Any]] = [
         *history_messages,
         {"role": "user", "content": user_content},
@@ -295,6 +301,7 @@ async def render_property_turn(
             ticketer=ticketer,
             hotel_config=runtime.hotel_config,
         )
+
         # Spoken text flows across the tool boundary — keep a natural pause.
         if parts and parts[-1] and not parts[-1].endswith((" ", "\n")):
             parts.append(" ")
