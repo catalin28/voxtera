@@ -2153,7 +2153,13 @@ class ConciergePipeline:
         if self._converse_fn is not None:
             try:
                 result = self._converse_fn(
-                    {"utterance": utterance, "transcript": transcript, "language": lang}
+                    {
+                        "utterance": utterance,
+                        "transcript": transcript,
+                        "language": lang,
+                        # Enables per-hotel persona override on chit-chat turns too.
+                        "hotel_id": self._property_hotel_id,
+                    }
                 )
                 answer = (await result) if hasattr(result, "__await__") else result
             except Exception as e:  # noqa: BLE001

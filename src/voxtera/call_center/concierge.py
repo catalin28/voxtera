@@ -56,7 +56,11 @@ _RENDER_SYSTEM = load_prompt("concierge_render")
 
 
 def _with_persona(
-    task_prompt_name: str, *, include_images: bool = True, include_menus: bool = False
+    task_prompt_name: str,
+    *,
+    include_images: bool = True,
+    include_menus: bool = False,
+    hotel_id: str | None = None,
 ) -> str:
     """Shared persona + task prompt. The persona (tone, spoken format, language)
     lives ONCE in concierge_persona.md and is prepended to every answer-writing
@@ -67,7 +71,9 @@ def _with_persona(
     which images it can surface via ``[IMG:<id>]`` tags. Voice render skips this
     (images can't be shown in audio) by passing ``include_images=False``.
     """
-    base = load_prompt("concierge_persona") + "\n\n" + load_prompt(task_prompt_name)
+    persona = load_prompt("concierge_persona", hotel_id)
+    task = load_prompt(task_prompt_name, hotel_id)
+    base = persona + "\n\n" + task
     if include_images:
         try:
             from voxtera.whatsapp.image_catalog import system_prompt_block
@@ -350,6 +356,7 @@ def _build_anthropic_render_stream(model: str) -> RenderStreamFn:
         # Text (WhatsApp chat) replies include the image catalog so the LLM
         # can embed [IMG:<id>] tags when a visual adds value.
         include_images = not brief
+        hotel_id = (payload.get("hotel_id") or "").strip() or None
         client = _anthropic()  # shared, connection pool kept warm
         async with client.messages.stream(
             model=model,
@@ -357,7 +364,9 @@ def _build_anthropic_render_stream(model: str) -> RenderStreamFn:
             system=[
                 {
                     "type": "text",
-                    "text": _with_persona(prompt_name, include_images=include_images),
+                    "text": _with_persona(
+                        prompt_name, include_images=include_images, hotel_id=hotel_id
+                    ),
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
@@ -447,6 +456,7 @@ def _build_anthropic_converse(model: str) -> Callable[[dict[str, Any]], Awaitabl
             f"{(payload.get('transcript') or '(this is the first message)')}\n\n"
             f"Guest's current message: {payload.get('utterance')}"
         )
+        hotel_id = (payload.get("hotel_id") or "").strip() or None
         client = _anthropic()
         msg = await client.messages.create(
             model=model,
@@ -454,7 +464,7 @@ def _build_anthropic_converse(model: str) -> Callable[[dict[str, Any]], Awaitabl
             system=[
                 {
                     "type": "text",
-                    "text": _with_persona("concierge_converse"),
+                    "text": _with_persona("concierge_converse", hotel_id=hotel_id),
                     "cache_control": {"type": "ephemeral"},
                 }
             ],

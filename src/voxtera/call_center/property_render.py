@@ -196,7 +196,10 @@ async def render_property_turn(
     # never speaks a [MENU:] tag it cannot fulfil.
     include_menus = bool(payload.get("menus", False))
     system_text = _with_persona(
-        prompt_name, include_images=include_images, include_menus=include_menus
+        prompt_name,
+        include_images=include_images,
+        include_menus=include_menus,
+        hotel_id=hotel_id,  # per-hotel prompt override (prompts/<hotel_id>/…)
     )
     tools: list[dict[str, Any]] = []
     if runtime is not None:
