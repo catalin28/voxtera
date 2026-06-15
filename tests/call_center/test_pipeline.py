@@ -583,3 +583,66 @@ async def test_no_ticketer_means_booking_gate_is_inert() -> None:
 
     out = await p.run(utterance="yes, book it", session_id="stay-2")
     assert out["path"] == "conversational"
+
+
+# ---------- booking is no longer escalated when the agency can book (Phase 7) ----------
+
+
+@pytest.mark.asyncio
+async def test_classifier_booking_escalation_suppressed_when_bookable() -> None:
+    """A 'booking' escalation from the classifier is NOT a human hand-off once a
+    ticketer is wired — the turn proceeds into the (bookable) flow."""
+    compound = _FakeCompound(_ok_retrieval())
+    p = _build(
+        classify={"type": "booking", "confidence": 1.0, "signal": "book the Rixos"},
+        decompose={
+            "query_type": "broad",
+            "intent": "recommendation",
+            "region": "antalya",
+            "requirements": ["spa"],
+            "language": "en",
+        },
+        compound=compound,
+        property_ticketer=object(),
+    )
+    out = await p.run(utterance="I want to book the Rixos")
+    assert out["path"] != PATH_ESCALATE
+
+
+@pytest.mark.asyncio
+async def test_decomposer_escalate_rerouted_to_hotel_query_when_bookable() -> None:
+    """The decomposer marks bookings query_type='escalate'; with a ticketer and no
+    real (classifier) escalation, that becomes a normal hotel query, not a transfer."""
+    compound = _FakeCompound(_ok_retrieval())
+    p = _build(
+        classify={"type": "none", "confidence": 0.1, "signal": None},
+        decompose={
+            "query_type": "escalate",
+            "intent": "practical_info",
+            "hotel_mention": "Rixos Belek",
+            "region": "antalya",
+            "requirements": [],
+            "language": "en",
+        },
+        compound=compound,
+        property_ticketer=object(),
+    )
+    out = await p.run(utterance="I'd like to book Rixos Belek")
+    assert out["path"] != PATH_ESCALATE
+
+
+@pytest.mark.asyncio
+async def test_decomposer_escalate_still_escalates_without_ticketer() -> None:
+    """No ticketer → the legacy behaviour is unchanged: a decomposer 'escalate'
+    query_type still routes to a human."""
+    p = _build(
+        classify={"type": "none", "confidence": 0.1, "signal": None},
+        decompose={
+            "query_type": "escalate",
+            "intent": "practical_info",
+            "hotel_mention": "Rixos Belek",
+            "language": "en",
+        },
+    )
+    out = await p.run(utterance="I'd like to book Rixos Belek")
+    assert out["path"] == PATH_ESCALATE

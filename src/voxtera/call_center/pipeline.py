@@ -1120,6 +1120,40 @@ class ConciergePipeline:
             #         intentionally NOT enough — they routinely mis-detect.
             maybe_lock_language(session, decomposition.get("language"), utterance)
 
+        # Phase 7 — a "booking" escalation means the caller wants to make a
+        # reservation. That was a human hand-off only because the bot couldn't
+        # book; on the travel path the agency CAN now file a hotel stay, so we
+        # suppress that one escalation type and let the booking render handle it.
+        # Every other type (live_complaint, medical, post_booking, …) still
+        # escalates, and an in-progress stay booking is never interrupted.
+        # Phase 7 — the agency CAN now file a hotel stay, so a booking is no
+        # longer a human hand-off. Bookings trip TWO legacy escalation signals,
+        # so neutralise both when the agency can book:
+        booking_capable = self._property_ticketer is not None
+        #   (1) the escalation classifier's dedicated "booking" type.
+        if (
+            booking_capable
+            and verdict.get("escalate")
+            and verdict.get("escalation_type") == "booking"
+        ):
+            verdict = {**verdict, "escalate": False, "suppressed_escalation": "booking"}
+        #   (2) the decomposer marking the turn query_type="escalate". The
+        #   escalation classifier is the AUTHORITY on whether a human is needed;
+        #   when it is NOT calling for one, treat the decomposer's "escalate" as
+        #   a normal hotel query so the booking render can engage instead of
+        #   dead-ending in a transfer. Genuine escalations (live_complaint,
+        #   medical, post_booking) keep verdict.escalate=True and are untouched.
+        if (
+            booking_capable
+            and not verdict.get("escalate")
+            and (decomposition.get("query_type") or "").lower() == "escalate"
+        ):
+            decomposition["query_type"] = (
+                "scoped" if decomposition.get("hotel_mention") else "broad"
+            )
+            if decomposition.get("urgency") == "immediate_escalation":
+                decomposition["urgency"] = None
+
         if verdict.get("escalate"):
             # Localised — decomposition ran concurrently, so the detected
             # language is available even on the escalation short-circuit.
