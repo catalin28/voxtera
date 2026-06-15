@@ -24,13 +24,18 @@ remaining complaints depend on. Each phase ends with a verification step.
 
 ## Phase 1 — P0 prompt-scaffold leak (ship alone)
 *Spec: P0, §6 (one in-flight call). Highest priority — user-visible, fabricates bookings.*
-1. Replace the hand-built plain-text prompt with a structured `system` + role-separated
-   `messages` array to the Claude Messages API. Stop concatenating `User:`/`Assistant:`
-   headers into one string.
-2. Add stop sequences (`\nUser:`, `\nAssistant:`, `\nDetected language:`) as a guard.
-3. Cap `max_tokens` to a turn-sized budget.
-4. Enforce **one in-flight completion per turn**: a second `llm_start` cancels or
-   coalesces the first — never two parallel calls. (Also kills the `now.Perfect` concat.)
+1. ✅ **DONE** (commit d82863e) — structured `system` + role-separated `messages` array;
+   no more `User:`/`Assistant:` string concatenation.
+2. ✅ **DONE** (commit 00bd965) — `LLM_STOP_SEQUENCES` on all 5 guest-facing calls
+   (concerge.py ×4, property_render.py ×1).
+3. ✅ **DONE** (commit 1c13f7c / 7fb9b66) — `max_tokens` capped (140 brief / 512 chat).
+4. ℹ️ **OPTIONAL — not required by any observed bug.** No explicit `in_flight`/cancel
+   guard exists, but re-reading the traces it isn't needed: the EN `now.Perfect` concat
+   was a *single* `llm_start` (fixed by steps 1–2), and the TR double-`llm_start`
+   produced only one spoken reply with triggers already closed by Phase 3 + stop
+   sequences. A turn-level guard (a new `llm_start` cancels/coalesces the in-flight one)
+   is nice-to-have defence-in-depth; implement only if a future trace shows overlapping
+   renders.
 **Verify:** replay the TR log / a silence+fragment turn; confirm no scaffold text, no
 fake turns, no fabricated reservation, single reply.
 

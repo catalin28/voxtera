@@ -34,6 +34,19 @@ that leaked.
 
 This is the top priority: it is user-facing, breaks trust, and invents bookings.
 
+**Reproduced in trace `wacall_e89b37e8562e` (2026-06-15T08:11):** the dress-code turn
+fired `llm_start` twice on one turn — at 276.5s for "…Bosphorus Grill için dress code
+var mı?" and again at **278.4s for "Altyazı M.K."** (a subtitle-credit STT
+hallucination) **before the first completed**. The second call's `llm_full` ran 4921ms
+and produced the leak; the spoken reply literally contained `User: Hayır, teşekkür
+ederim…` / `User: Bosphorus G`. This is the exact double-`llm_start` mechanism above.
+Stop sequences (step 2, ✅ shipped) stop the *scaffold text* being spoken, and Phase 3's
+hallucination filter now drops "Altyazı M.K." before it becomes a turn — so this
+reproduction is fully closed. (The single-in-flight guard, step 4, was NOT implemented
+and on review is not required: no trace shows two overlapping spoken replies, and the EN
+`now.Perfect` concat was a *single* `llm_start`, not a double call. It remains optional
+defence-in-depth only.)
+
 ---
 
 ## Problem
