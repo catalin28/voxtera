@@ -1714,6 +1714,7 @@ class ConciergePipeline:
             "decomposition": decomposition,
             "retrieval": retrieval or {},
             "transcript": build_transcript(session.get("history")),
+            "history": session.get("history"),
             "brief": getattr(self, "_brief", False),
             # Channel can deliver images → render may offer photos ([OFFER:<id>]).
             "images": getattr(self, "_images", False),
@@ -2052,6 +2053,7 @@ class ConciergePipeline:
                 {
                     "utterance": utterance,
                     "transcript": build_transcript(session.get("history")),
+                    "history": session.get("history"),
                     "language": (session.get("language") or "en"),
                     "anchor": anchor,
                 }
@@ -2094,6 +2096,7 @@ class ConciergePipeline:
                     "transcript": build_transcript(
                         (session or {}).get("history"), char_budget=1500
                     ),
+                    "history": (session or {}).get("history"),
                 }
             )
             return (await result) if hasattr(result, "__await__") else result
@@ -2156,6 +2159,7 @@ class ConciergePipeline:
                     {
                         "utterance": utterance,
                         "transcript": transcript,
+                        "history": session.get("history"),
                         "language": lang,
                         # Enables per-hotel persona override on chit-chat turns too.
                         "hotel_id": self._property_hotel_id,
@@ -2353,6 +2357,7 @@ class ConciergePipeline:
                     "decomposition": decomposition,
                     "retrieval": retrieval or {},
                     "transcript": build_transcript(session.get("history")),
+                    "history": session.get("history"),
                     "brief": getattr(self, "_brief", False),
                 }
             )

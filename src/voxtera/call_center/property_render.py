@@ -30,6 +30,7 @@ from loguru import logger
 # Reuse the shared render plumbing so prompts/formatting stay byte-identical
 # with the travel path (private-by-underscore but same package by design).
 from voxtera.call_center.concierge import _anthropic, _build_render_user_msg, _with_persona
+from voxtera.call_center.session import build_message_turns
 
 # Max talk→tool→talk rounds. One ticket per turn is the contract (the old
 # handler allowed a single retry on argument rejection — round 3 covers it).
@@ -211,7 +212,14 @@ async def render_property_turn(
         system_text += _NO_ACTIONS_RULE
 
     client = client or _anthropic()
-    messages: list[dict[str, Any]] = [{"role": "user", "content": _build_render_user_msg(payload)}]
+    # Prior dialogue rides as role-separated ``messages`` (P0 prompt-leak fix).
+    # The current turn's payload (utterance + retrieval JSON) is the FINAL user
+    # message. Tool-call rounds below append assistant/user pairs on top.
+    history_messages = build_message_turns(payload.get("history"))
+    messages: list[dict[str, Any]] = [
+        *history_messages,
+        {"role": "user", "content": _build_render_user_msg(payload)},
+    ]
     parts: list[str] = []
     ticket: dict[str, Any] | None = None
     max_tokens = 320 if brief else 512

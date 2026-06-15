@@ -36,6 +36,7 @@ class _FakePipeline:
         region: str | None,
         brief: bool = False,
         hotel_id: str | None = None,
+        **_extra: Any,
     ) -> dict[str, Any]:
         if self._fail:
             raise RuntimeError("boom")

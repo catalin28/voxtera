@@ -73,6 +73,12 @@ def build_transcript(
     Newest-first budgeting: if the full transcript exceeds `char_budget`, the
     OLDEST turns are dropped (the recent context matters most for a follow-up),
     but the stored history in Redis is never trimmed by this function.
+
+    NOTE: This string form is for components that need a flat text view of the
+    conversation (e.g. the decomposer's classifier input). For the chat-style
+    Anthropic Messages API, use :func:`build_message_turns` — passing the
+    transcript inline as ``User:`` / ``Assistant:`` headers teaches the model
+    to autocomplete the scaffold and was the cause of the P0 prompt-leak.
     """
     turns = list(history or [])
     if not include_current and turns:
@@ -94,6 +100,49 @@ def build_transcript(
         lines.append(block)
         total += len(block)
     return "".join(reversed(lines)).strip()
+
+
+def build_message_turns(
+    history: list[dict[str, Any]] | None,
+    *,
+    char_budget: int = DEFAULT_TRANSCRIPT_CHAR_BUDGET,
+    include_current: bool = False,
+) -> list[dict[str, str]]:
+    """Render session history as role-separated messages for the Anthropic API.
+
+    Returns ``[{"role": "user", "content": ...}, {"role": "assistant", ...}, ...]``
+    in chronological order. Pair this with a final ``{"role": "user"}`` carrying
+    the current turn's payload so Claude sees structured chat history instead of
+    a hand-built ``User:`` / ``Assistant:`` text scaffold that it learns to
+    continue (the P0 leak that fabricated bookings).
+
+    Budgeting matches :func:`build_transcript` — newest turns kept, oldest
+    dropped once ``char_budget`` is exceeded.
+    """
+    turns = list(history or [])
+    if not include_current and turns:
+        turns = turns[:-1]
+    selected: list[dict[str, Any]] = []
+    total = 0
+    for turn in reversed(turns):  # newest first for budgeting
+        u = (turn.get("utterance") or "").strip()
+        a = (turn.get("answer") or "").strip()
+        if not u and not a:
+            continue
+        cost = len(u) + len(a)
+        if total + cost > char_budget and selected:
+            break
+        selected.append(turn)
+        total += cost
+    out: list[dict[str, str]] = []
+    for turn in reversed(selected):  # back to chronological order
+        u = (turn.get("utterance") or "").strip()
+        a = (turn.get("answer") or "").strip()
+        if u:
+            out.append({"role": "user", "content": u})
+        if a:
+            out.append({"role": "assistant", "content": a})
+    return out
 
 
 def _now() -> float:

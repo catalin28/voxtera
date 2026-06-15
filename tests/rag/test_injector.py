@@ -78,10 +78,15 @@ class TestRAGContextInjector:
             await injector.process_frame(frame, FrameDirection.DOWNSTREAM)
 
         msgs = frame.context.messages
-        # system prompt + RAG message + user
-        assert len(msgs) == 3
-        assert msgs[1]["role"] == "system"
+        # Excerpts are appended to the current user message (kept stable for
+        # Anthropic prompt caching — see injector.py module docstring), not
+        # inserted as a separate system message. So the message count is
+        # unchanged; only the user message content grows.
+        assert len(msgs) == 2
+        assert msgs[0]["role"] == "system"
+        assert msgs[1]["role"] == "user"
         assert _RAG_PREAMBLE in msgs[1]["content"]
+        assert "When is breakfast?" in msgs[1]["content"]
         assert "Breakfast at 7am." in msgs[1]["content"]
         assert "Pool open 8-20." in msgs[1]["content"]
         mock_push.assert_awaited_once_with(frame, FrameDirection.DOWNSTREAM)
@@ -206,9 +211,12 @@ class TestRAGContextInjector:
 
             await injector.process_frame(frame, FrameDirection.DOWNSTREAM)
 
-        retriever.retrieve.assert_awaited_once_with(hotel_id="demo", query="pool hours?")
+        # ``language`` is None when no language_getter is wired.
+        retriever.retrieve.assert_awaited_once_with(
+            hotel_id="demo", query="pool hours?", language=None
+        )
 
-    # -- RAG message is inserted after first system message -------------
+    # -- RAG excerpts attach to the LATEST user message -----------------
 
     async def test_rag_inserted_after_system_prompt(
         self, injector: RAGContextInjector, retriever: AsyncMock
@@ -229,19 +237,27 @@ class TestRAGContextInjector:
             await injector.process_frame(frame, FrameDirection.DOWNSTREAM)
 
         msgs = frame.context.messages
-        assert len(msgs) == 5
+        # Count unchanged: excerpts attach to the LATEST user message so the
+        # cached prefix (everything before the new turn) stays byte-stable.
+        assert len(msgs) == 4
         assert msgs[0]["role"] == "system"  # original system prompt
-        assert msgs[1]["role"] == "system"  # RAG injection
-        assert "Spa 9am-9pm." in msgs[1]["content"]
-        assert msgs[2]["role"] == "user"  # original first user msg
+        assert msgs[1]["role"] == "user"  # earlier turn left untouched
+        assert msgs[1]["content"] == "Massage?"
+        assert msgs[2]["role"] == "assistant"
+        assert msgs[3]["role"] == "user"  # latest user message carries excerpts
+        assert "Spa hours?" in msgs[3]["content"]
+        assert _RAG_PREAMBLE in msgs[3]["content"]
+        assert "Spa 9am-9pm." in msgs[3]["content"]
 
-    # -- Multi-turn: old RAG message is replaced, not accumulated -------
+    # -- Multi-turn: per-turn excerpts attach to that turn's user message --
 
     async def test_second_turn_replaces_previous_rag_message(
         self, injector: RAGContextInjector, retriever: AsyncMock
     ) -> None:
-        """Simulates two turns: the stale RAG message from turn 1 must be
-        removed before the turn 2 RAG message is inserted."""
+        """Two turns: turn 1 excerpts stay on turn 1's user message; turn 2
+        excerpts attach to turn 2's user message. Earlier turns are NOT
+        rewritten — that's what keeps the Anthropic prompt-cache prefix
+        stable across turns (see injector.py module docstring)."""
         # Turn 1
         retriever.retrieve.return_value = _chunks("Breakfast at 7am.")
         frame = _make_frame(
@@ -254,7 +270,8 @@ class TestRAGContextInjector:
         with patch.object(injector, "push_frame", new_callable=AsyncMock):
             await injector.process_frame(frame, FrameDirection.DOWNSTREAM)
 
-        assert len(frame.context.messages) == 3  # sys + rag + user
+        assert len(frame.context.messages) == 2  # sys + user (excerpts in user)
+        assert "Breakfast at 7am." in frame.context.messages[1]["content"]
 
         # Simulate turn 2: assistant replied, user asks again.
         frame.context.messages.append({"role": "assistant", "content": "7am."})
@@ -265,8 +282,11 @@ class TestRAGContextInjector:
             await injector.process_frame(frame, FrameDirection.DOWNSTREAM)
 
         msgs = frame.context.messages
-        # Should still be only ONE rag message, not two
-        rag_msgs = [m for m in msgs if _RAG_PREAMBLE in str(m.get("content", ""))]
-        assert len(rag_msgs) == 1
-        assert "Pool open 8-20." in rag_msgs[0]["content"]
-        assert "Breakfast at 7am." not in rag_msgs[0]["content"]
+        # Turn 1 user message is byte-stable: still carries turn-1 excerpts.
+        assert "Breakfast at 7am." in msgs[1]["content"]
+        assert "Pool open 8-20." not in msgs[1]["content"]
+        # Turn 2 user message carries turn-2 excerpts.
+        assert msgs[-1]["role"] == "user"
+        assert "pool?" in msgs[-1]["content"]
+        assert "Pool open 8-20." in msgs[-1]["content"]
+        assert "Breakfast at 7am." not in msgs[-1]["content"]

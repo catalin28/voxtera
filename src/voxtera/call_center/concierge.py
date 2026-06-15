@@ -34,6 +34,7 @@ from voxtera.call_center.clients import anthropic_client as _anthropic
 from voxtera.call_center.compound import CompoundAndDiscovery
 from voxtera.call_center.kb_config import DEFAULT_MAX_REQUIREMENTS
 from voxtera.call_center.prompts import load_prompt
+from voxtera.call_center.session import build_message_turns
 
 DEFAULT_MODEL = os.environ.get("LLM_MODEL_OVERRIDE", "claude-haiku-4-5-20251001")
 
@@ -317,15 +318,16 @@ def _build_render_user_msg(payload: dict[str, Any]) -> str:
         "hotels": hotels_out,
     }
     language = (payload.get("decomposition") or {}).get("language") or "en"
-    transcript = (payload.get("transcript") or "").strip()
-    convo = f"Conversation so far:\n{transcript}\n\n" if transcript else ""
+    # Prior dialogue lives in the chat-style ``messages`` array now (see
+    # callers), not embedded as ``User:`` / ``Assistant:`` lines in this text.
+    # Embedding role-tagged history here is what taught the model to autocomplete
+    # the scaffold and fabricate fake turns (P0 prompt-scaffold leak).
     return (
         f"Detected language: {language}\n"
         # This is the region the guest ASKED about — NOT necessarily where a
         # returned hotel is. Use each hotel's own 'location' for facts.
         f"Guest's requested region (may differ from a hotel's real "
         f"location): {payload.get('region')}\n"
-        f"{convo}"
         f"Guest utterance: {payload.get('utterance')}\n\n"
         f"Retrieval result (JSON):\n{json.dumps(trimmed, ensure_ascii=False)}"
     )
@@ -358,6 +360,10 @@ def _build_anthropic_render_stream(model: str) -> RenderStreamFn:
         include_images = not brief
         hotel_id = (payload.get("hotel_id") or "").strip() or None
         client = _anthropic()  # shared, connection pool kept warm
+        # Chat-style history goes in ``messages`` (one entry per role); the
+        # current turn's payload is the FINAL user message. Never inline
+        # ``User:`` / ``Assistant:`` headers — see P0 leak in concierge-fix-plan.md.
+        history_messages = build_message_turns(payload.get("history"))
         async with client.messages.stream(
             model=model,
             max_tokens=max_tokens,
@@ -370,7 +376,7 @@ def _build_anthropic_render_stream(model: str) -> RenderStreamFn:
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
-            messages=[{"role": "user", "content": user_msg}],
+            messages=[*history_messages, {"role": "user", "content": user_msg}],
         ) as stream:
             async for delta in stream.text_stream:
                 yield delta
@@ -422,11 +428,13 @@ def _build_anthropic_web_query(model: str) -> Callable[[dict[str, Any]], Awaitab
         # injected here so "near the hotel" anchors to that place — not to a
         # city the conversation merely discussed.
         anchor = (payload.get("anchor") or "").strip()
+        # Prior dialogue rides as structured ``messages`` (see P0 fix); only the
+        # current turn + the optional anchor sit in this user content.
         user_msg = (
             (f"{anchor}\n\n" if anchor else "")
-            + f"Conversation so far:\n{(payload.get('transcript') or '(none yet)')}\n\n"
-            f"Guest's current message: {payload.get('utterance')}"
+            + f"Guest's current message: {payload.get('utterance')}"
         )
+        history_messages = build_message_turns(payload.get("history"))
         client = _anthropic()
         msg = await client.messages.create(
             model=model,
@@ -438,7 +446,7 @@ def _build_anthropic_web_query(model: str) -> Callable[[dict[str, Any]], Awaitab
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
-            messages=[{"role": "user", "content": user_msg}],
+            messages=[*history_messages, {"role": "user", "content": user_msg}],
         )
         return _first_text_block(msg).strip()
 
@@ -450,12 +458,13 @@ def _build_anthropic_converse(model: str) -> Callable[[dict[str, Any]], Awaitabl
     the transcript (no retrieval)."""
 
     async def converse(payload: dict[str, Any]) -> str:
+        # Prior dialogue rides as structured ``messages`` (see P0 fix); only the
+        # current turn's language tag + current message sit in this user content.
         user_msg = (
             f"Detected language: {payload.get('language') or 'en'}\n\n"
-            f"Conversation so far:\n"
-            f"{(payload.get('transcript') or '(this is the first message)')}\n\n"
             f"Guest's current message: {payload.get('utterance')}"
         )
+        history_messages = build_message_turns(payload.get("history"))
         hotel_id = (payload.get("hotel_id") or "").strip() or None
         client = _anthropic()
         msg = await client.messages.create(
@@ -468,7 +477,7 @@ def _build_anthropic_converse(model: str) -> Callable[[dict[str, Any]], Awaitabl
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
-            messages=[{"role": "user", "content": user_msg}],
+            messages=[*history_messages, {"role": "user", "content": user_msg}],
         )
         return _first_text_block(msg).strip()
 
@@ -496,17 +505,13 @@ def _build_anthropic_web_synth(model: str) -> Callable[[dict[str, Any]], Awaitab
             if hotel_facts
             else ""
         )
-        transcript = (payload.get("transcript") or "").strip()
-        convo_block = (
-            f"\n\nConversation so far (vary your openings — do NOT start the way "
-            f"your previous replies started):\n{transcript}\n"
-            if transcript
-            else ""
-        )
+        # Prior dialogue rides as structured ``messages`` (see P0 fix). The
+        # "vary your openings" guidance comes from the model seeing its own
+        # previous assistant turns in the chat history, not from a text block.
+        history_messages = build_message_turns(payload.get("history"), char_budget=1500)
         user_msg = (
             f"Detected language: {payload.get('language') or 'en'}\n"
             f"Guest question: {payload.get('question')}\n"
-            f"{convo_block}"
             f"{hotel_block}\n"
             f"Aggregated web answer (shallow — verify against snippets): "
             f"{web.get('answer') or '(none)'}\n\n"
@@ -523,7 +528,7 @@ def _build_anthropic_web_synth(model: str) -> Callable[[dict[str, Any]], Awaitab
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
-            messages=[{"role": "user", "content": user_msg}],
+            messages=[*history_messages, {"role": "user", "content": user_msg}],
         )
         return _first_text_block(msg).strip()
 
