@@ -29,7 +29,12 @@ from loguru import logger
 
 # Reuse the shared render plumbing so prompts/formatting stay byte-identical
 # with the travel path (private-by-underscore but same package by design).
-from voxtera.call_center.concierge import _anthropic, _build_render_user_msg, _with_persona
+from voxtera.call_center.concierge import (
+    LLM_STOP_SEQUENCES,
+    _anthropic,
+    _build_render_user_msg,
+    _with_persona,
+)
 from voxtera.call_center.session import build_message_turns
 
 # Max talk→tool→talk rounds. One ticket per turn is the contract (the old
@@ -234,6 +239,7 @@ async def render_property_turn(
         async with client.messages.stream(
             model=model,
             max_tokens=max_tokens,
+            stop_sequences=LLM_STOP_SEQUENCES,
             system=[
                 {
                     "type": "text",

@@ -50,6 +50,14 @@ RenderFn = Callable[[dict[str, Any]], Awaitable[str]]
 RenderStreamFn = Callable[[dict[str, Any]], AsyncIterator[str]]
 
 
+# Belt-and-braces guard against the P0 prompt-scaffold leak. Even though we now
+# pass history as structured role-separated ``messages``, the model occasionally
+# tries to continue the dialogue by emitting a fake next-turn header. Anthropic
+# halts generation the moment one of these strings is produced — see
+# docs/fix-plan/concierge-fix-plan.md Phase 1 step 2.
+LLM_STOP_SEQUENCES = ["\nUser:", "\nAssistant:", "\nDetected language:"]
+
+
 # Prompts live in src/voxtera/call_center/prompts/*.md so they can be edited
 # without touching Python source (per project convention).
 _DECOMPOSE_SYSTEM = load_prompt("concierge_decompose_legacy")
@@ -367,6 +375,7 @@ def _build_anthropic_render_stream(model: str) -> RenderStreamFn:
         async with client.messages.stream(
             model=model,
             max_tokens=max_tokens,
+            stop_sequences=LLM_STOP_SEQUENCES,
             system=[
                 {
                     "type": "text",
@@ -439,6 +448,7 @@ def _build_anthropic_web_query(model: str) -> Callable[[dict[str, Any]], Awaitab
         msg = await client.messages.create(
             model=model,
             max_tokens=80,
+            stop_sequences=LLM_STOP_SEQUENCES,
             system=[
                 {
                     "type": "text",
@@ -470,6 +480,7 @@ def _build_anthropic_converse(model: str) -> Callable[[dict[str, Any]], Awaitabl
         msg = await client.messages.create(
             model=model,
             max_tokens=220,
+            stop_sequences=LLM_STOP_SEQUENCES,
             system=[
                 {
                     "type": "text",
@@ -521,6 +532,7 @@ def _build_anthropic_web_synth(model: str) -> Callable[[dict[str, Any]], Awaitab
         msg = await client.messages.create(
             model=model,
             max_tokens=420,
+            stop_sequences=LLM_STOP_SEQUENCES,
             system=[
                 {
                     "type": "text",
