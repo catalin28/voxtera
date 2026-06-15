@@ -14,6 +14,10 @@ greeting: "Good day, and welcome to the Grand Hôtel Lumière. You've reached ou
 # language, but ticket summaries land in the channel translated to English.
 official_language: "en"
 
+# IANA timezone of the property. Anchors booking date resolution ("table for
+# two tomorrow at 7pm") to the hotel's local clock. Omit only for local dev.
+timezone: "Europe/Paris"
+
 # `Voxtera Demo Tickets` channel. Bot must be admin with Post messages perm.
 # See docs/ACTIONS_FEATURE_PLAN.md Phase 1 for setup.
 telegram_channel_id: "-1003718824790"

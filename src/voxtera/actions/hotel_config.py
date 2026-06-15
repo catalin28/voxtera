@@ -55,6 +55,13 @@ class HotelConfig:
     # in the channel's default language (English on the phone path, since the
     # caller's language isn't known until they speak). May be None.
     greeting: str | None = None
+    # IANA timezone for the property (e.g. "Europe/Istanbul"). Anchors
+    # relative-date resolution ("tomorrow 7pm") to the HOTEL's local clock,
+    # which is what a booking must use — a PSTN caller's own timezone is
+    # unknown and irrelevant to when the restaurant table is reserved. When
+    # None, callers fall back to the server clock (correct only for local dev).
+    # See voxtera.call_center.hotel_time.hotel_local_now.
+    timezone: str | None = None
 
 
 def _project_root() -> Path:
@@ -78,6 +85,34 @@ def _coerce_categories(raw: Any, source: Path) -> tuple[Category, ...]:
             f"Hotel config at {source}: unknown category in `allowed_categories`. "
             f"Allowed values: {valid}"
         ) from e
+
+
+def _coerce_timezone(raw: Any, source: Path) -> str | None:
+    """Validate an optional IANA timezone string from the YAML.
+
+    Returns the trimmed value if it names a real zone, else None with a
+    warning. A bad timezone must never fail the whole config load — booking
+    date resolution degrades to the server clock instead (see
+    ``hotel_time.hotel_local_now``).
+    """
+    if raw is None:
+        return None
+    tz = str(raw).strip()
+    if not tz:
+        return None
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    try:
+        ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        logger.warning(
+            "[hotel_config] config at {} has unknown timezone {!r}; "
+            "ignoring (booking dates will use the server clock)",
+            source,
+            tz,
+        )
+        return None
+    return tz
 
 
 def load_hotel_config(hotel_id: str, config_dir: Path | None = None) -> HotelConfig:
@@ -120,12 +155,15 @@ def load_hotel_config(hotel_id: str, config_dir: Path | None = None) -> HotelCon
         allowed_categories=_coerce_categories(data["allowed_categories"], config_path),
         system_prompt_addendum=data.get("system_prompt_addendum"),
         greeting=(str(data["greeting"]).strip() if data.get("greeting") else None),
+        timezone=_coerce_timezone(data.get("timezone"), config_path),
     )
     logger.info(
-        "[hotel_config] Loaded hotel_id={} name={!r} lang={} " "categories={} channel={}",
+        "[hotel_config] Loaded hotel_id={} name={!r} lang={} tz={} "
+        "categories={} channel={}",
         config.hotel_id,
         config.hotel_name,
         config.official_language,
+        config.timezone or "(server clock)",
         len(config.allowed_categories),
         config.telegram_channel_id,
     )

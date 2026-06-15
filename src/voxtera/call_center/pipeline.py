@@ -937,6 +937,30 @@ class ConciergePipeline:
         # Per-run property scope; set by run() from the request's hotel_id.
         self._property_hotel_id: str | None = None
         self._turn_utterance = ""
+        # Cache of hotel_id -> IANA timezone (Phase 4 booking date resolution).
+        # Loaded lazily from the hotel config; None means "no/invalid tz, use
+        # the server clock". Cached either way so we don't re-read the YAML.
+        self._tz_cache: dict[str, str | None] = {}
+
+    def _property_timezone(self, hotel_id: str | None) -> str | None:
+        """Return the hotel's IANA timezone for booking date resolution.
+
+        Best-effort + cached: any failure (no config, bad tz) degrades to None
+        (server clock) without ever breaking a turn.
+        """
+        if not hotel_id:
+            return None
+        if hotel_id in self._tz_cache:
+            return self._tz_cache[hotel_id]
+        tz: str | None = None
+        try:
+            from voxtera.actions.hotel_config import load_hotel_config
+
+            tz = load_hotel_config(hotel_id).timezone
+        except Exception as e:  # noqa: BLE001 — booking dates degrade to server clock
+            logger.debug("[property] no timezone for hotel {!r}: {}", hotel_id, e)
+        self._tz_cache[hotel_id] = tz
+        return tz
 
     async def run(
         self,
@@ -1756,6 +1780,9 @@ class ConciergePipeline:
             "images": getattr(self, "_images", False),
             # Channel can deliver documents → render may offer menus ([MENU:<id>]).
             "menus": getattr(self, "_menus", False),
+            # Phase 4: hotel-local timezone so the render can resolve relative
+            # booking dates ("tomorrow 7pm") to an absolute date.
+            "hotel_timezone": self._property_timezone(pid),
         }
         ticket = None
         try:

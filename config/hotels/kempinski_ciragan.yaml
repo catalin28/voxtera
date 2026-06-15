@@ -16,6 +16,10 @@ greeting: "Hello, and welcome to Çırağan Palace Kempinski Istanbul. You've re
 # The bot still converses with guests in whatever language they speak.
 official_language: "tr"
 
+# IANA timezone of the property. Anchors booking date resolution ("table for
+# two tomorrow at 7pm") to the hotel's local clock. Omit only for local dev.
+timezone: "Europe/Istanbul"
+
 # Reusing the demo `Voxtera Demo Tickets` channel for now. Give Kempinski its
 # own channel before a real pilot. Bot must be admin with Post messages perm.
 telegram_channel_id: "-1003718824790"

@@ -35,6 +35,8 @@ from voxtera.call_center.concierge import (
     _build_render_user_msg,
     _with_persona,
 )
+from voxtera.call_center.hotel_time import hotel_time_note
+from voxtera.call_center.intents import booking_guidance_block
 from voxtera.call_center.session import build_message_turns
 
 # Max talk→tool→talk rounds. One ticket per turn is the contract (the old
@@ -208,11 +210,20 @@ async def render_property_turn(
         hotel_id=hotel_id,  # per-hotel prompt override (prompts/<hotel_id>/…)
     )
     tools: list[dict[str, Any]] = []
-    if runtime is not None:
+    can_book = runtime is not None
+    if can_book:
         from voxtera.actions.prompt import build_actions_prompt_fragment
 
         system_text += "\n" + build_actions_prompt_fragment(runtime.hotel_config)
         tools.append(_anthropic_tool_schema(runtime.hotel_config))
+        # Phase 4 — always include the booking-collection rules when the
+        # property can file tickets. This does NOT tell the model a booking is
+        # happening: the MODEL decides that from the conversation. The block
+        # only shapes HOW it collects once a booking is underway (guest_type
+        # first, one slot per turn, in-house→room / external→phone·email,
+        # absolute-date read-back, optional extras last). Generated from the
+        # declarative schemas in intents.py so the two never drift.
+        system_text += "\n\n" + booking_guidance_block()
     else:
         system_text += _NO_ACTIONS_RULE
 
@@ -221,9 +232,17 @@ async def render_property_turn(
     # The current turn's payload (utterance + retrieval JSON) is the FINAL user
     # message. Tool-call rounds below append assistant/user pairs on top.
     history_messages = build_message_turns(payload.get("history"))
+    user_content = _build_render_user_msg(payload)
+    # The booking time anchor carries a changing timestamp, so it rides on the
+    # CURRENT user message (never the cached system prompt) — same rule as
+    # TimeContextInjector. It lets the model turn "tomorrow 7pm" into an
+    # absolute date in the hotel's timezone and read it back at confirmation.
+    # Included whenever the property can book; harmless on non-booking turns.
+    if can_book:
+        user_content += "\n\n" + hotel_time_note(payload.get("hotel_timezone"))
     messages: list[dict[str, Any]] = [
         *history_messages,
-        {"role": "user", "content": _build_render_user_msg(payload)},
+        {"role": "user", "content": user_content},
     ]
     parts: list[str] = []
     ticket: dict[str, Any] | None = None
