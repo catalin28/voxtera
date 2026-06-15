@@ -318,12 +318,50 @@ _VIDEO_SITE_TOKENS: frozenset[str] = frozenset(
 )
 
 
+# "Subtitles / closed captions / translation by X" hallucination family.
+# Whisper was trained on subtitled video and emits these credit lines on
+# silent or noisy audio. The Turkish form "Altyazı: M.K." is a particularly
+# common one in our PSTN logs because Gladia inherits the same artifact.
+# A guest would never use any of these as a stand-alone utterance, so we
+# drop the frame whenever ANY of these tokens appears in a short utterance.
+_SUBTITLE_CREDIT_TOKENS: frozenset[str] = frozenset(
+    {
+        # English
+        "subtitles",
+        "captions",
+        # Turkish
+        "altyazı",
+        "altyazi",
+        "altyazılar",
+        "altyazilar",
+        # French
+        "soustitres",  # punctuation is stripped → "sous-titres" → "soustitres"
+        "soustitrage",
+        "soustitré",
+        "soustitre",
+        # Spanish / Portuguese
+        "subtítulos",
+        "subtitulos",
+        "legendas",
+        # German
+        "untertitel",
+        # Italian
+        "sottotitoli",
+        # Russian
+        "субтитры",
+        "субтитров",
+        # Translation credit (often paired with subtitle credit)
+        "перевод",
+    }
+)
+
+
 def _is_known_whisper_hallucination(normalized: str) -> bool:
     """Return True if the normalized text matches a known multilingual hallucination.
 
     `normalized` should already be lower-cased and punctuation-stripped.
 
-    Three checks:
+    Four checks:
     1. Exact match against :data:`_WHISPER_HALLUCINATION_EXACT`.
     2. Co-occurrence of a "subscribe" token and a "like" token in a short
        utterance — catches every YouTube-outro hallucination an STT model
@@ -332,6 +370,9 @@ def _is_known_whisper_hallucination(normalized: str) -> bool:
        site/channel token — catches the "see more videos on our website"
        hallucination family. All three classes are required to avoid
        dropping genuine guest speech.
+    4. Any token from :data:`_SUBTITLE_CREDIT_TOKENS` in a short utterance —
+       "Altyazı: M.K.", "Subtitles by …", "Sous-titres …" etc. A real guest
+       has no reason to use these words on a hotel call.
     """
     if normalized in _WHISPER_HALLUCINATION_EXACT:
         return True
@@ -371,6 +412,11 @@ def _is_known_whisper_hallucination(normalized: str) -> bool:
         return True
     # YouTube-outro "subscribe + like" pattern.
     if short and (tokens & _SUBSCRIBE_TOKENS) and (tokens & _LIKE_TOKENS):
+        return True
+    # Subtitle / closed-caption / translation credit family ("Altyazı M.K.",
+    # "Subtitles by …", "Sous-titres …"). A single token from the set in a
+    # short utterance is enough — a real guest never says any of them.
+    if short and (tokens & _SUBTITLE_CREDIT_TOKENS):
         return True
     # "See more videos on our website / channel" pattern.
     return bool(

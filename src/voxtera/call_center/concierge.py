@@ -369,7 +369,11 @@ def _build_anthropic_render_stream(model: str) -> RenderStreamFn:
         # not a fridge".
         brief = bool(payload.get("brief"))
         prompt_name = "travel_agent_voice_render_brief" if brief else "concierge_render"
-        max_tokens = 320 if brief else 512
+        # Voice (brief=True) caps at ~200 chars — see
+        # travel_agent_voice_render_brief.md. 140 tokens gives headroom for
+        # Turkish/Russian (worse char-to-token ratio) while still pushing the
+        # model to stay short.
+        max_tokens = 140 if brief else 512
         # Voice brief replies go to TTS — images can't be shown in audio.
         # Text (WhatsApp chat) replies include the image catalog so the LLM
         # can embed [IMG:<id>] tags when a visual adds value.

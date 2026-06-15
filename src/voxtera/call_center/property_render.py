@@ -227,7 +227,11 @@ async def render_property_turn(
     ]
     parts: list[str] = []
     ticket: dict[str, Any] | None = None
-    max_tokens = 320 if brief else 512
+    # Voice (brief=True) caps at ~200 chars — see
+    # travel_agent_voice_render_brief.md. 140 tokens gives headroom for
+    # Turkish/Russian (worse char-to-token ratio) while still pushing the
+    # model to stay short.
+    max_tokens = 140 if brief else 512
 
     tool_choice: dict[str, str] | None = None
     for round_no in range(_MAX_ROUNDS):
