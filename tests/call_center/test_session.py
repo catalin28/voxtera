@@ -15,6 +15,9 @@ from voxtera.call_center.session import (
     DEFAULT_TTL_SECONDS,
     KEY_PREFIX,
     SessionStore,
+    decide_language,
+    detect_language_unlock,
+    maybe_lock_language,
     new_session_id,
 )
 
@@ -129,3 +132,49 @@ async def test_corrupt_payload_falls_back_to_empty() -> None:
     # Recovers as a fresh skeleton rather than raising.
     assert s["session_id"] == "sid-corrupt"
     assert s["history"] == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — language-lock helpers.
+
+
+def test_decide_language_prefers_locked_over_decomposition_and_session() -> None:
+    """Lock is the highest-priority source — a mis-detected per-turn language
+    cannot flip the bot once the lock is engaged (Alo? bug)."""
+    session = {"locked_language": "tr", "language": "fr"}
+    decomposition = {"language": "fr"}
+    assert decide_language(session, decomposition) == "tr"
+
+
+def test_decide_language_falls_through_when_unlocked() -> None:
+    """Without a lock: per-turn decomposition wins, then session, then default."""
+    assert decide_language({"language": "en"}, {"language": "fr"}) == "fr"
+    assert decide_language({"language": "en"}, None) == "en"
+    assert decide_language(None, None) == "en"
+    assert decide_language(None, None, default=None) is None
+
+
+def test_maybe_lock_language_requires_substantive_utterance() -> None:
+    """A one-word "Alo?" is not enough signal to lock — Gladia routinely
+    mis-detects short noises."""
+    session: dict[str, Any] = {}
+    assert maybe_lock_language(session, "fr", "Alo?") is False
+    assert session.get("locked_language") is None
+
+    assert maybe_lock_language(session, "tr", "Merhaba spa hakkında bilgi") is True
+    assert session["locked_language"] == "tr"
+
+    # Already locked → second call is a no-op even with a substantive utterance.
+    assert maybe_lock_language(session, "fr", "Bonjour je veux parler français") is False
+    assert session["locked_language"] == "tr"
+
+
+def test_detect_language_unlock_catches_explicit_switch_requests() -> None:
+    """Deterministic regex on a small set of unambiguous phrases."""
+    assert detect_language_unlock("please speak English") == "en"
+    assert detect_language_unlock("ingilizce konuşalım") == "en"
+    assert detect_language_unlock("türkçe lütfen") == "tr"
+    assert detect_language_unlock("parlez en français") == "fr"
+    # Casual mention does NOT unlock — only directive phrases.
+    assert detect_language_unlock("My English is poor") is None
+    assert detect_language_unlock("") is None

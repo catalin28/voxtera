@@ -12,7 +12,8 @@ Decision contract — session object stored in Redis:
       "updated_at":      float,
       "active_hotel_id": str | None,   # set after first successful resolution
       "active_region":   str | None,
-      "language":        str | None,   # ISO-639-1
+      "language":        str | None,   # ISO-639-1, last detected (per-turn signal)
+      "locked_language": str | None,   # ISO-639-1, sticky once we have a confident signal
       "turn_count":      int,          # number of completed turns
       "clarification_count": int,      # consecutive triage questions asked since last full answer
       "pending_slots":   list[str],    # decomposition slots the triage asked about
@@ -145,6 +146,103 @@ def build_message_turns(
     return out
 
 
+# Minimum token count for an utterance to confidently lock the conversation
+# language. Short utterances like "Hello?", "Alo?", "Yes" are unreliable
+# language signals (Gladia routinely flips on them) so we keep the lock open
+# until we see something substantive.
+LANGUAGE_LOCK_MIN_TOKENS = 3
+
+# Deterministic unlock requests — guest explicitly asks to switch language.
+# Keep this list small and high-precision; false positives silently break the
+# lock. Matched case-insensitively against the raw utterance.
+_UNLOCK_PATTERNS: tuple[tuple[str, str], ...] = (
+    # English
+    (r"\b(speak|switch|talk)\s+(in\s+)?english\b", "en"),
+    (r"\bin\s+english\s+please\b", "en"),
+    (r"\benglish\s+please\b", "en"),
+    # Turkish
+    (r"\bingilizce\s+(konu[sş]|l[uü]tfen)", "en"),
+    (r"\bt[uü]rk[cç]e\s+(konu[sş]|l[uü]tfen)", "tr"),
+    # French
+    (r"\b(parlez|parler)\s+(en\s+)?fran[cç]ais\b", "fr"),
+    (r"\ben\s+fran[cç]ais\s+s.?il\s+vous\s+pla[iî]t\b", "fr"),
+    # Spanish
+    (r"\b(habl|hablemos)\s+(en\s+)?espa[nñ]ol\b", "es"),
+    # Russian
+    (r"\bпо[\s-]?русски\b", "ru"),
+    # Arabic
+    (r"\bبالعربي(?:ة)?\b", "ar"),
+)
+
+
+def detect_language_unlock(utterance: str) -> str | None:
+    """Return the requested language code if the utterance is an explicit
+    switch request, else None. Used to break a sticky ``locked_language``.
+    """
+    import re
+
+    if not utterance:
+        return None
+    text = utterance.lower()
+    for pattern, lang in _UNLOCK_PATTERNS:
+        if re.search(pattern, text):
+            return lang
+    return None
+
+
+def decide_language(
+    session: dict[str, Any] | None,
+    decomposition: dict[str, Any] | None = None,
+    *,
+    default: str | None = "en",
+) -> str | None:
+    """Pick the language for THIS turn's reply.
+
+    Precedence (highest first):
+      1. ``session["locked_language"]`` — set once we have a confident signal,
+         so subsequent short or mis-detected utterances ("Alo?", "Yes?") cannot
+         flip the bot mid-call.
+      2. ``decomposition["language"]`` — the per-turn STT/decomposer signal,
+         used while the lock is still open.
+      3. ``session["language"]`` — last-known sticky default.
+      4. ``default`` (typically ``"en"``; pass ``None`` for retrieval call sites
+         that prefer the index's own fallback chain when no signal exists).
+    """
+    sess = session or {}
+    locked = sess.get("locked_language")
+    if locked:
+        return str(locked).lower()
+    if decomposition and decomposition.get("language"):
+        return str(decomposition["language"]).lower()
+    if sess.get("language"):
+        return str(sess["language"]).lower()
+    return default
+
+
+def maybe_lock_language(
+    session: dict[str, Any],
+    detected_language: str | None,
+    utterance: str,
+    *,
+    min_tokens: int = LANGUAGE_LOCK_MIN_TOKENS,
+) -> bool:
+    """Set ``session["locked_language"]`` once we have a confident signal.
+
+    Returns True if the lock was just established (caller may log it). Does
+    nothing if the lock is already set or the inputs are too weak to be
+    reliable — see ``LANGUAGE_LOCK_MIN_TOKENS`` for the threshold.
+    """
+    if session is None or session.get("locked_language"):
+        return False
+    if not detected_language:
+        return False
+    token_count = len((utterance or "").split())
+    if token_count < min_tokens:
+        return False
+    session["locked_language"] = str(detected_language).lower()
+    return True
+
+
 def _now() -> float:
     return time.time()
 
@@ -167,6 +265,7 @@ def _empty_session(session_id: str) -> dict[str, Any]:
         "active_hotel_location": None,
         "active_region": None,
         "language": None,
+        "locked_language": None,
         "turn_count": 0,
         "clarification_count": 0,
         "pending_slots": [],

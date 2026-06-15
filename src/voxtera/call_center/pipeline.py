@@ -68,7 +68,14 @@ from voxtera.call_center.router import (
     PATH_WEB,
     SourceRouter,
 )
-from voxtera.call_center.session import SessionStore, build_transcript, new_session_id
+from voxtera.call_center.session import (
+    SessionStore,
+    build_transcript,
+    decide_language,
+    detect_language_unlock,
+    maybe_lock_language,
+    new_session_id,
+)
 from voxtera.call_center.triage import Triage
 from voxtera.call_center.web_retriever import WebRetriever
 
@@ -1074,10 +1081,25 @@ class ConciergePipeline:
         if self._property_hotel_id:
             session["active_hotel_id"] = self._property_hotel_id
 
+        # Language lock — Phase 2. Apply BEFORE any downstream branch reads the
+        # language so escalation, converse, render, retrieval all agree.
+        # Step 1: explicit unlock requests ("speak English please") drop the lock
+        #         and immediately retarget. Highest priority because the guest
+        #         said it out loud.
+        unlock_target = detect_language_unlock(utterance)
+        if unlock_target:
+            session["locked_language"] = unlock_target
+            session["language"] = unlock_target
+        else:
+            # Step 2: latch the lock as soon as we have a substantive utterance
+            #         with a detected language. Short noises ("Alo?", "Yes") are
+            #         intentionally NOT enough — they routinely mis-detect.
+            maybe_lock_language(session, decomposition.get("language"), utterance)
+
         if verdict.get("escalate"):
             # Localised — decomposition ran concurrently, so the detected
             # language is available even on the escalation short-circuit.
-            esc_lang = (decomposition.get("language") or session.get("language") or "en").lower()
+            esc_lang = decide_language(session, decomposition)
             answer = _escalation_answer(esc_lang)
             return self._finish(
                 sid=sid,
@@ -1100,7 +1122,7 @@ class ConciergePipeline:
             # overwrote it), so re-run THAT online.
             return await self._handle_web_request(sid, utterance, session, t_start, timings)
         if pending_web_offer and _is_refusal(utterance):
-            lang = (session.get("language") or "en").lower()
+            lang = decide_language(session)
             ack = (
                 "Tabii, başka bir konuda yardımcı olabilir miyim?"
                 if lang == "tr"
@@ -1216,7 +1238,7 @@ class ConciergePipeline:
         # that ENUMERATES the candidates rather than a bare "which hotel?".
         referent = _resolve_list_referent(utterance, decomposition, session)
         if referent == "list_ambiguous":
-            lang = (decomposition.get("language") or session.get("language") or "en").lower()
+            lang = decide_language(session, decomposition)
             question = _list_clarification(session.get("last_results") or [], lang)
             await self._sessions.append_turn(
                 session,
@@ -1386,7 +1408,7 @@ class ConciergePipeline:
                     clarification={
                         "question": question,
                         "slot": slot,
-                        "language": decomposition.get("language") or "en",
+                        "language": decide_language(session, decomposition),
                     },
                     answer=question,
                     t_start=t_start,
@@ -1412,7 +1434,7 @@ class ConciergePipeline:
             web = await self._web.discover(utterance, decomposition, query=dq, include_domains=rev)
             timings["web_ms"] = _ms(time.perf_counter() - t0)
             retrieval = {"web": web}
-            lang = (decomposition.get("language") or session.get("language") or "en").lower()
+            lang = decide_language(session, decomposition)
             answer = _web_answer(
                 web, lang, synth=await self._synth_web(utterance, web, lang, session=session)
             )
@@ -1441,7 +1463,7 @@ class ConciergePipeline:
                 "reason": "hybrid",
                 "region": (kb or {}).get("region"),
             }
-            lang = (decomposition.get("language") or session.get("language") or "en").lower()
+            lang = decide_language(session, decomposition)
             # ONE combined answer: feed the hotel's own guide facts AND the web
             # result to a single synth so it weaves them into a coherent concierge
             # reply. This avoids the old two-part glue, which produced a double
@@ -1465,7 +1487,7 @@ class ConciergePipeline:
         else:
             # Paths whose retrievers ship in later phases (destination KB), or
             # web/hybrid with no web backend wired — honest acknowledgement.
-            lang = (decomposition.get("language") or session.get("language") or "en").lower()
+            lang = decide_language(session, decomposition)
             answer = _placeholder_answer(path, lang)
 
         # If the answer ended with an offer to look something up (any path), arm
@@ -1642,6 +1664,18 @@ class ConciergePipeline:
         # Pin the session to the property (scoped follow-ups, hybrid path).
         session["active_hotel_id"] = pid
 
+        # Language lock — Phase 2. The property path has no decomposer, so the
+        # only per-turn signal we have is whatever upstream wrote into
+        # ``session["language"]`` (Pipecat TranscriptionFrame bridge, the test
+        # harness, etc.). Apply unlock detection + maybe_lock_language here so
+        # the property path is bug-compatible with the non-property path.
+        unlock_target = detect_language_unlock(utterance)
+        if unlock_target:
+            session["locked_language"] = unlock_target
+            session["language"] = unlock_target
+        else:
+            maybe_lock_language(session, session.get("language"), utterance)
+
         # Web-offer follow-ups and explicit "search online" requests reuse the
         # standard handlers (the hybrid path keeps the property scope). These
         # short-circuit before any KB retrieval runs, so handle them first.
@@ -1649,7 +1683,7 @@ class ConciergePipeline:
         if self._web is not None and pending_web_offer and _is_affirmation(utterance):
             return await self._handle_web_request(sid, utterance, session, t_start, timings)
         if pending_web_offer and _is_refusal(utterance):
-            lang = (session.get("language") or "en").lower()
+            lang = decide_language(session)
             ack = (
                 "Tabii, başka bir konuda yardımcı olabilir miyim?"
                 if lang == "tr"
@@ -1692,7 +1726,9 @@ class ConciergePipeline:
                 kb_offer_rerun = True
 
         t0 = time.perf_counter()
-        retrieval = await self._run_kb({"language": session.get("language")}, session, PATH_SCOPED)
+        retrieval = await self._run_kb(
+            {"language": decide_language(session, default=None)}, session, PATH_SCOPED
+        )
         timings["retrieve_ms"] = _ms(time.perf_counter() - t0)
 
         # On a KB-offer re-run keep last_question pointing at the substantive
@@ -1707,7 +1743,7 @@ class ConciergePipeline:
 
         # Minimal synthetic decomposition: the render formats language/type
         # from it; persona rules handle the actual reply language.
-        decomposition = {"query_type": "scoped", "language": session.get("language")}
+        decomposition = {"query_type": "scoped", "language": decide_language(session, default=None)}
         payload = {
             "utterance": render_utterance,
             "region": None,
@@ -1798,7 +1834,7 @@ class ConciergePipeline:
             return await self._property_kb.retrieve(
                 hotel_id=self._property_hotel_id,
                 query=getattr(self, "_turn_utterance", "") or "",
-                language=decomposition.get("language") or session.get("language"),
+                language=decide_language(session, decomposition, default=None),
             )
         if self._compound is None:
             return {
@@ -1933,7 +1969,7 @@ class ConciergePipeline:
     ) -> dict[str, Any]:
         """Handle an explicit 'search the web' request by re-running the previous
         question online (hybrid when a hotel is active)."""
-        lang = (session.get("language") or "en").lower()
+        lang = decide_language(session)
         prior = session.get("last_question")
         if not prior or self._web is None:
             answer = _ask_what_to_search(lang)
@@ -2054,7 +2090,7 @@ class ConciergePipeline:
                     "utterance": utterance,
                     "transcript": build_transcript(session.get("history")),
                     "history": session.get("history"),
-                    "language": (session.get("language") or "en"),
+                    "language": decide_language(session),
                     "anchor": anchor,
                 }
             )
@@ -2150,7 +2186,7 @@ class ConciergePipeline:
         retrieval. This is what makes the agent a dialogue partner instead of a
         question-answering machine: it can greet, acknowledge, recall what was
         asked, and summarise the conversation."""
-        lang = (decomposition.get("language") or session.get("language") or "en").lower()
+        lang = decide_language(session, decomposition)
         transcript = build_transcript(session.get("history"))
         answer = None
         if self._converse_fn is not None:
@@ -2332,7 +2368,7 @@ class ConciergePipeline:
         """
         hotels = (retrieval or {}).get("hotels") or []
         if not hotels:
-            lang = (decomposition.get("language") or session.get("language") or "en").lower()
+            lang = decide_language(session, decomposition)
             # Respect the user's "All regions" override for the no-match message.
             if getattr(self, "_user_region_override", None) is not None:
                 region = self._user_region_override
