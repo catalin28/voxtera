@@ -21,7 +21,9 @@ gracefully refers the guest to the front desk rather than inventing actions.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -107,17 +109,31 @@ def _validate_ticket_args(args: Any, hotel_config: Any) -> dict[str, str]:
     return fields
 
 
+def booking_fingerprint(category: str, summary: str) -> str:
+    """Stable id for a ticket's content, for cross-turn duplicate suppression.
+
+    Normalises case/whitespace/punctuation so the same booking filed twice
+    (e.g. the model re-confirming on a trailing fragment turn) hashes equal.
+    """
+    norm = re.sub(r"[^a-z0-9]+", " ", f"{category}|{summary}".lower()).strip()
+    return hashlib.sha1(norm.encode("utf-8")).hexdigest()  # noqa: S324 — dedup id, not security
+
+
 async def _execute_create_ticket(
     args: Any,
     *,
     hotel_id: str,
     ticketer: Any,
     hotel_config: Any,
-) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    """Run one create_ticket call. Returns (tool_result_payload, ticket | None).
+    recent_fps: set[str],
+) -> tuple[dict[str, Any], dict[str, Any] | None, str | None]:
+    """Run one create_ticket call. Returns (tool_result_payload, ticket, fingerprint).
 
     The payloads mirror the legacy handler's statuses + guidance strings, so
-    the model's follow-up behaviour carries over unchanged.
+    the model's follow-up behaviour carries over unchanged. ``recent_fps`` holds
+    fingerprints of bookings already filed earlier in the session; an identical
+    booking is NOT delivered again (idempotency) so a re-confirmation on a
+    fragment turn can't post a duplicate ticket.
     """
     try:
         fields = _validate_ticket_args(args, hotel_config)
@@ -133,6 +149,22 @@ async def _execute_create_ticket(
                 ),
             },
             None,
+            None,
+        )
+
+    fp = booking_fingerprint(fields["category"], fields["summary"])
+    if fp in recent_fps:
+        logger.info("[property-render] duplicate booking suppressed (fp={})", fp[:8])
+        return (
+            {
+                "status": "already_filed",
+                "guidance": (
+                    "This exact booking was ALREADY filed moments ago — do NOT "
+                    "file it again. Briefly reassure the guest it is taken care of."
+                ),
+            },
+            None,
+            fp,
         )
 
     ticket = await ticketer.file(
@@ -153,6 +185,7 @@ async def _execute_create_ticket(
                 ),
             },
             ticket,
+            fp,
         )
     return (
         {
@@ -162,6 +195,7 @@ async def _execute_create_ticket(
                 "guest's language and suggest they call the front desk directly."
             ),
         },
+        None,
         None,
     )
 
@@ -174,6 +208,8 @@ async def render_property_turn(
     model: str,
     on_delta: Callable[[str], Awaitable[None]] | None = None,
     client: Any | None = None,
+    force_tool: bool = False,
+    recent_fps: list[str] | None = None,
 ) -> dict[str, Any]:
     """Answer one hotel-mode turn; the model may file a Telegram ticket.
 
@@ -185,9 +221,16 @@ async def render_property_turn(
         model: Anthropic model id.
         on_delta: Streamed text callback (voice path); None for sync JSON.
         client: Anthropic client override (tests).
+        force_tool: When True, the first round is forced to call create_ticket
+            (``tool_choice`` = the tool). Set by the pipeline when the guest just
+            affirmed a pending booking, so a spoken "confirmed" can't diverge
+            from an actual filing. Released after the first round so a rejected
+            (incomplete) call falls back to asking for the missing detail.
+        recent_fps: Fingerprints of bookings already filed earlier this session;
+            an identical booking is suppressed (not delivered twice).
 
     Returns:
-        {"answer": str, "ticket": {"session_id", "category"} | None}
+        {"answer": str, "ticket": {...} | None, "filed_fp": str | None}
     """
     runtime = ticketer.runtime(hotel_id) if ticketer is not None else None
 
@@ -252,22 +295,37 @@ async def render_property_turn(
     ]
     parts: list[str] = []
     ticket: dict[str, Any] | None = None
+    filed_fp: str | None = None
+    recent = set(recent_fps or [])
     # Voice (brief=True) caps at ~200 chars — see
     # travel_agent_voice_render_brief.md. 140 tokens gives headroom for
     # Turkish/Russian (worse char-to-token ratio) while still pushing the
     # model to stay short.
     max_tokens = 140 if brief else 512
 
-    tool_choice: dict[str, str] | None = None
+    # Force the file on the confirm turn so the model can't speak a confirmation
+    # without actually calling the tool (the divergence that left bookings off
+    # Telegram). Only meaningful when the property can book.
+    tool_choice: dict[str, str] | None = (
+        {"type": "tool", "name": "create_ticket"} if force_tool and can_book and tools else None
+    )
     for round_no in range(_MAX_ROUNDS):
         kwargs: dict[str, Any] = {}
+        forcing_tool = False
         if tools:
             kwargs["tools"] = tools
             if tool_choice is not None:
                 kwargs["tool_choice"] = tool_choice
+                forcing_tool = tool_choice.get("type") == "tool"
+        # A forced tool round emits ONLY the create_ticket arguments (no speech),
+        # which easily exceed the brief ~140-token spoken cap and truncate into
+        # an invalid tool call (the booking then silently never files). Give the
+        # JSON args room; the spoken confirmation comes on the next round at the
+        # normal cap.
+        round_max_tokens = 512 if forcing_tool else max_tokens
         async with client.messages.stream(
             model=model,
-            max_tokens=max_tokens,
+            max_tokens=round_max_tokens,
             stop_sequences=LLM_STOP_SEQUENCES,
             system=[
                 {
@@ -295,11 +353,12 @@ async def render_property_turn(
             round_no + 1,
             {k: str(v)[:60] for k, v in (tool_use.input or {}).items()},
         )
-        result_payload, ticket = await _execute_create_ticket(
+        result_payload, ticket, fp = await _execute_create_ticket(
             tool_use.input,
             hotel_id=hotel_id,
             ticketer=ticketer,
             hotel_config=runtime.hotel_config,
+            recent_fps=recent,
         )
 
         # Spoken text flows across the tool boundary — keep a natural pause.
@@ -318,10 +377,23 @@ async def render_property_turn(
                 ],
             }
         )
-        if ticket is not None and result_payload.get("status") == "filed":
+        status = result_payload.get("status")
+        if status == "filed" and ticket is not None:
             # One ticket per turn: the model speaks its confirmation in the
             # next round but may not call the tool again. (The tools param
             # must stay present — the conversation now contains tool blocks.)
+            filed_fp = fp
+            if fp:
+                recent.add(fp)
             tool_choice = {"type": "none"}
+        elif status == "already_filed":
+            # Duplicate suppressed — let the model reassure, don't file again.
+            # Surface the fp so the caller treats the booking as accounted for.
+            filed_fp = fp
+            tool_choice = {"type": "none"}
+        elif tool_choice is not None and tool_choice.get("type") == "tool":
+            # A forced call that was rejected/failed: release the force so the
+            # next round asks for the missing detail instead of re-calling blind.
+            tool_choice = None
 
-    return {"answer": "".join(parts).strip(), "ticket": ticket}
+    return {"answer": "".join(parts).strip(), "ticket": ticket, "filed_fp": filed_fp}

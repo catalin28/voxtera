@@ -209,6 +209,11 @@ def booking_guidance_block() -> str:
         "never lead with them.",
         "- File the booking only after the guest confirms, then close with a "
         "single short confirmation line.",
+        "- CRITICAL: never tell the guest a booking is confirmed, sent, filed or "
+        "done UNLESS you have called create_ticket in THIS reply and it "
+        "succeeded. When they confirm, actually CALL create_ticket — do not just "
+        "say you are sending it. And once a booking is filed, do not announce it "
+        "as newly confirmed again on a later turn.",
     ]
     lines.extend(_intent_line(s) for s in INTENT_SCHEMAS)
     return "\n".join(lines)

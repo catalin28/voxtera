@@ -181,8 +181,12 @@ def _payload():
 
 def _one_round_client():
     return _FakeAnthropic(
-        [(["Are you staying with us, or joining us from outside?"],
-          SimpleNamespace(stop_reason="end_turn", content=[]))]
+        [
+            (
+                ["Are you staying with us, or joining us from outside?"],
+                SimpleNamespace(stop_reason="end_turn", content=[]),
+            )
+        ]
     )
 
 
@@ -299,3 +303,79 @@ async def test_no_booking_guidance_or_time_anchor_without_ticketing() -> None:
     assert "You CANNOT perform actions" in system_text
     user_msg = client.calls[0]["messages"][-1]["content"]
     assert "do not read this aloud" not in user_msg
+
+
+# --------- confirm-time guarantees: force-tool, dedup, fingerprint -----------
+
+
+def _ticket_args() -> dict[str, str]:
+    return {
+        "category": "Restaurant",
+        "summary": "Table for two at Tuğra, Tue 16 June 7pm, under Daniel",
+        "room_number": "412",
+        "original_quote": "book a table",
+        "language_detected": "en",
+    }
+
+
+def _tool_final(args: dict[str, str]):
+    tu = SimpleNamespace(type="tool_use", id="tu1", input=args)
+    return SimpleNamespace(stop_reason="tool_use", content=[tu])
+
+
+def _end_final():
+    return SimpleNamespace(stop_reason="end_turn", content=[])
+
+
+class _RecordingTicketer:
+    def __init__(self):
+        self._rt = SimpleNamespace(hotel_config=_hotel_config())
+        self.files: list[dict] = []
+
+    def runtime(self, _hotel_id):
+        return self._rt
+
+    async def file(self, **kwargs):
+        self.files.append(kwargs)
+        return {"session_id": f"vox-{len(self.files)}", "category": kwargs["fields"]["category"]}
+
+
+@pytest.mark.asyncio
+async def test_force_tool_requires_create_ticket_on_first_round() -> None:
+    """With force_tool, the first round is hard-forced to call create_ticket so a
+    spoken 'confirmed' cannot diverge from an actual filing."""
+    client = _FakeAnthropic([([], _tool_final(_ticket_args())), (["Booked!"], _end_final())])
+    out = await _real_render_property_turn(
+        payload=_payload(),
+        hotel_id="demo",
+        ticketer=_RecordingTicketer(),
+        model="m",
+        client=client,
+        force_tool=True,
+    )
+    assert client.calls[0]["tool_choice"] == {"type": "tool", "name": "create_ticket"}
+    assert out["ticket"] is not None
+    assert out["filed_fp"]  # fingerprint surfaced for next-turn dedup
+
+
+@pytest.mark.asyncio
+async def test_duplicate_booking_suppressed_across_turns() -> None:
+    """An identical booking filed earlier this session is NOT delivered again."""
+    tk = _RecordingTicketer()
+    args = _ticket_args()
+
+    c1 = _FakeAnthropic([([], _tool_final(args)), (["Booked."], _end_final())])
+    out1 = await _real_render_property_turn(
+        payload=_payload(), hotel_id="demo", ticketer=tk, model="m", client=c1, force_tool=True
+    )
+    assert out1["ticket"] is not None and len(tk.files) == 1
+    fp = out1["filed_fp"]
+
+    # Same booking again, but the fingerprint is now known → suppressed.
+    c2 = _FakeAnthropic([([], _tool_final(args)), (["All set."], _end_final())])
+    out2 = await _real_render_property_turn(
+        payload=_payload(), hotel_id="demo", ticketer=tk, model="m", client=c2, recent_fps=[fp]
+    )
+    assert out2["ticket"] is None  # not filed again
+    assert len(tk.files) == 1  # ticketer.file was NOT called a second time
+    assert out2["filed_fp"] == fp  # recognised as already filed

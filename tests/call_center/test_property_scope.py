@@ -220,7 +220,7 @@ async def test_kb_offer_yes_reruns_original_question(monkeypatch) -> None:
     # Turn 1 offers to fetch; turn 2 answers. Scripted by call order.
     calls: list[dict[str, Any]] = []
 
-    async def fake_render(*, payload, hotel_id, ticketer, model, on_delta=None, client=None):
+    async def fake_render(*, payload, hotel_id, ticketer, model, on_delta=None, client=None, **_kw):
         calls.append(payload)
         if len(calls) == 1:
             answer = (
@@ -264,7 +264,7 @@ async def test_bare_yes_without_offer_does_not_rerun(monkeypatch) -> None:
     """A "yes" that does NOT follow a guide-fetch offer must behave normally —
     the KB query is the literal utterance, no re-run hijack."""
 
-    async def fake_render(*, payload, hotel_id, ticketer, model, on_delta=None, client=None):
+    async def fake_render(*, payload, hotel_id, ticketer, model, on_delta=None, client=None, **_kw):
         # Plain answer with no fetch offer → pending_kb_offer never armed.
         answer = "The breakfast buffet runs until 10:30."
         if on_delta is not None:
@@ -292,7 +292,7 @@ async def test_misheard_venue_canonicalized_before_kb_query(monkeypatch) -> None
     searches for "Tula" and finds nothing. Uses the real kempinski_ciragan
     venue list from config/stt_vocabulary.json."""
 
-    async def fake_render(*, payload, hotel_id, ticketer, model, on_delta=None, client=None):
+    async def fake_render(*, payload, hotel_id, ticketer, model, on_delta=None, client=None, **_kw):
         return {"answer": f"About {payload['utterance']}", "ticket": None}
 
     monkeypatch.setattr("voxtera.call_center.property_render.render_property_turn", fake_render)
@@ -317,7 +317,7 @@ async def test_misheard_venue_canonicalized_before_kb_query(monkeypatch) -> None
 async def test_clean_utterance_has_no_entities_block(monkeypatch) -> None:
     """When nothing is canonicalized, no entities block is attached."""
 
-    async def fake_render(*, payload, hotel_id, ticketer, model, on_delta=None, client=None):
+    async def fake_render(*, payload, hotel_id, ticketer, model, on_delta=None, client=None, **_kw):
         return {"answer": "ok", "ticket": None}
 
     monkeypatch.setattr("voxtera.call_center.property_render.render_property_turn", fake_render)
@@ -342,7 +342,7 @@ def _stub_property_render(monkeypatch):
     re-patch it to script ticket outcomes.
     """
 
-    async def fake(*, payload, hotel_id, ticketer, model, on_delta=None, client=None):
+    async def fake(*, payload, hotel_id, ticketer, model, on_delta=None, client=None, **_kw):
         names = ", ".join(
             (h.get("payload") or {}).get("hotel_name", h.get("hotel_id"))
             for h in (payload.get("retrieval") or {}).get("hotels", [])[:3]
@@ -598,3 +598,72 @@ def test_validate_ticket_args_rules() -> None:
         _validate_ticket_args({**_TOOL_ARGS, "room_number": "  "}, cfg)
     with _pytest.raises(ValueError, match="category"):
         _validate_ticket_args({**_TOOL_ARGS, "category": "Maintenance"}, cfg)  # not allowed here
+
+
+# ---------- force create_ticket on the confirm step (speech == action) ----------
+
+
+def _ticketed_pipeline(store):
+    """A property pipeline that CAN book (ticketer wired)."""
+    return ConciergePipeline(
+        session_store=store,
+        classifier=EscalationClassifier(
+            classify_fn=_scripted_classify({"type": "none", "confidence": 0.1, "signal": None}),
+            cache_get=None,
+            cache_set=None,
+        ),
+        decomposer=QueryDecomposer(decompose_fn=_forbidden_decompose()),
+        triage=Triage(),
+        router=SourceRouter(),
+        compound=_FakeCompound(),
+        property_kb=_FakePropertyKB(),
+        property_ticketer=object(),  # truthy → booking possible
+    )
+
+
+async def _fake_extract_keep_prior(*, prior_slots=None, **_kw):
+    return {k: str(v) for k, v in (prior_slots or {}).items()}
+
+
+async def _run_confirm_case(monkeypatch, *, sid, awaiting, utterance):
+    seen: dict[str, Any] = {}
+
+    async def fake_render(
+        *, payload, hotel_id, ticketer, model, on_delta=None, client=None, force_tool=False, **_kw
+    ):
+        seen["force_tool"] = force_tool
+        return {"answer": "Done.", "ticket": None, "filed_fp": None}
+
+    monkeypatch.setattr("voxtera.call_center.property_render.render_property_turn", fake_render)
+    monkeypatch.setattr(
+        "voxtera.call_center.booking_extract.extract_booking_slots", _fake_extract_keep_prior
+    )
+    store = SessionStore()
+    sess = await store.load(sid)
+    sess["awaiting_booking_confirmation"] = awaiting
+    sess["booking_slots"] = {"restaurant": "Tuğra", "date_time": "Tue 16 June 7pm"}
+    await store.save(sess)
+    await _ticketed_pipeline(store).run(utterance=utterance, session_id=sid, hotel_id=HOTEL)
+    return seen["force_tool"]
+
+
+@pytest.mark.asyncio
+async def test_affirmation_at_confirm_step_forces_create_ticket(monkeypatch) -> None:
+    forced = await _run_confirm_case(
+        monkeypatch, sid="fc-1", awaiting=True, utterance="yes, send it"
+    )
+    assert forced is True
+
+
+@pytest.mark.asyncio
+async def test_non_affirmation_at_confirm_step_does_not_force(monkeypatch) -> None:
+    forced = await _run_confirm_case(
+        monkeypatch, sid="fc-2", awaiting=True, utterance="the name is Daniel Petrov"
+    )
+    assert forced is False
+
+
+@pytest.mark.asyncio
+async def test_affirmation_without_pending_confirmation_does_not_force(monkeypatch) -> None:
+    forced = await _run_confirm_case(monkeypatch, sid="fc-3", awaiting=False, utterance="yes")
+    assert forced is False

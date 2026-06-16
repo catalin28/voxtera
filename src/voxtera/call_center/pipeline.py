@@ -1857,6 +1857,17 @@ class ConciergePipeline:
             "booking_slots": session.get("booking_slots") or {},
         }
         ticket = None
+        filed_fp: str | None = None
+        # Force-the-tool-on-confirm: when the previous property turn ended by
+        # asking the guest to confirm a pending booking and they now affirm
+        # ("yes"/"send it"), REQUIRE create_ticket so a spoken "confirmed" can't
+        # diverge from an actual filing (the bug that left bookings off Telegram).
+        # The flag is consumed each turn; a non-affirmation reply just collects.
+        force_booking_tool = (
+            self._property_ticketer is not None
+            and bool(session.pop("awaiting_booking_confirmation", False))
+            and _is_affirmation(utterance)
+        )
         # Slot extraction runs ONLY when the property can file tickets (a booking
         # is possible). It runs in PARALLEL with the spoken render so it adds no
         # wall-clock latency; its output is the next turn's LOCKED recap (the
@@ -1873,6 +1884,8 @@ class ConciergePipeline:
                 ticketer=self._property_ticketer,
                 model=llm_model(),
                 on_delta=self._render_delta,
+                force_tool=force_booking_tool,
+                recent_fps=session.get("filed_booking_fps") or [],
             )
             if self._property_ticketer is not None:
                 extract_coro = extract_booking_slots(
@@ -1887,12 +1900,29 @@ class ConciergePipeline:
                 rendered = await render_coro
             answer = rendered["answer"] or "Sorry, I had trouble forming a reply."
             ticket = rendered["ticket"]
+            filed_fp = rendered.get("filed_fp")
         except Exception as e:  # noqa: BLE001 — degrade to the plain render
             logger.warning("[property-render] failed ({}) — falling back to plain render", e)
             answer = await self._render(render_utterance, decomposition, retrieval, session)
-        # Persist the extracted slots for next turn's recap; clear once a ticket
-        # is filed so the next booking starts clean.
-        session["booking_slots"] = {} if ticket else extracted_slots
+        # Persist the extracted slots for next turn's recap; clear once a booking
+        # is filed (or a duplicate was suppressed) so the next one starts clean.
+        booking_done = bool(ticket or filed_fp)
+        session["booking_slots"] = {} if booking_done else extracted_slots
+        # Remember filed fingerprints (last few) so a re-confirmation on a later
+        # fragment turn can't post a duplicate ticket (idempotency).
+        if filed_fp:
+            fps = [f for f in (session.get("filed_booking_fps") or []) if f != filed_fp]
+            fps.append(filed_fp)
+            session["filed_booking_fps"] = fps[-5:]
+        # Arm the confirm-step flag: a booking is pending (slots present), nothing
+        # was filed, and this reply ended on a question ("…shall I send this?").
+        # The next affirmation then forces the file. Language-agnostic ("?").
+        session["awaiting_booking_confirmation"] = bool(
+            self._property_ticketer is not None
+            and not booking_done
+            and session.get("booking_slots")
+            and answer.strip().endswith("?")
+        )
 
         # Arm the KB-offer flag when this answer offered to fetch a guide detail
         # and report back (and it isn't already a web offer). A bare "yes" next
