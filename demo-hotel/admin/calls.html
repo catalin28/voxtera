@@ -181,7 +181,10 @@
       </div>
 
       <div class="detail-wrap">
-        <h3>Conversation</h3>
+        <h3 style="display:flex; align-items:center; justify-content:space-between;">
+          <span>Conversation</span>
+          <button class="btn-secondary" id="btn-download-transcript" style="display:none;">⬇ Transcript</button>
+        </h3>
         <div class="detail-content" id="detail-content">
           <div class="detail-placeholder">Select a call to view its transcript</div>
         </div>
@@ -194,6 +197,7 @@
 let token = '';
 let allCalls = [];
 let selectedId = null;
+let currentRecord = null;
 
 // ─── Token gate ───────────────────────────────────────────────────
 const stored = sessionStorage.getItem('voxtera_admin_token');
@@ -230,6 +234,21 @@ document.getElementById('btn-logout').addEventListener('click', () => {
 });
 
 document.getElementById('btn-refresh').addEventListener('click', loadCalls);
+
+// ─── Download transcript ──────────────────────────────────────────
+document.getElementById('btn-download-transcript').addEventListener('click', () => {
+  if (!currentRecord) return;
+  const blob = new Blob([JSON.stringify(currentRecord, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = (currentRecord.started_at || '').replace(/[:.]/g, '-') || 'transcript';
+  a.href = url;
+  a.download = `voxtera-transcript-${currentRecord.session_id}-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
 
 // ─── Load calls ───────────────────────────────────────────────────
 async function loadCalls() {
@@ -358,6 +377,8 @@ async function loadDetail(sessionId) {
 
   const detail = document.getElementById('detail-content');
   detail.innerHTML = '<div class="detail-placeholder">Loading...</div>';
+  currentRecord = null;
+  document.getElementById('btn-download-transcript').style.display = 'none';
 
   try {
     const r = await fetch(`/api/admin/call/${sessionId}`, { headers: { 'X-Admin-Token': token } });
@@ -373,6 +394,8 @@ async function loadDetail(sessionId) {
 }
 
 function renderDetail(record) {
+  currentRecord = record;
+  document.getElementById('btn-download-transcript').style.display = '';
   const detail = document.getElementById('detail-content');
   const started = record.started_at ? new Date(record.started_at).toLocaleString() : '—';
   const ended = record.ended_at ? new Date(record.ended_at).toLocaleString() : 'in progress';
